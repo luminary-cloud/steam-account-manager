@@ -1,0 +1,26 @@
+#include "app/app_paths.hpp"
+
+#include "platform/paths.hpp"
+
+namespace sam::app {
+
+void ensure_data_dirs() {
+    std::error_code ec;
+    std::filesystem::create_directories(platform::data_dir(), ec);
+    std::filesystem::create_directories(platform::log_dir(), ec);
+}
+
+std::filesystem::path vault_path()    { return platform::vault_path(); }
+std::filesystem::path settings_path() { return platform::settings_path(); }
+std::filesystem::path master_pw_cache_path() {
+    return platform::data_dir() / "master_pw.bin";
+}
+std::filesystem::path notifications_path() {
+    return platform::data_dir() / "notifications.json";
+}
+std::filesystem::path conf_audit_path() {
+    return platform::data_dir() / "conf_audit.json";
+}
+std::filesystem::path log_dir()       { return platform::log_dir(); }
+
+}  // namespace sam::app

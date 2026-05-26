@@ -1,0 +1,123 @@
+# Build output
+build/
+out/
+[Dd]ebug/
+[Rr]elease/
+x64/
+Win32/
+bin/
+obj/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+CMakeUserPresets.json
+cmake_install.cmake
+CTestTestfile.cmake
+*.cmake.in
+
+# vcpkg
+vcpkg_installed/
+vcpkg/
+
+# Visual Studio / MSVC
+.vs/
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.opendb
+*.VC.db
+*.VC.opendb
+*.aps
+*.tlog
+*.ipdb
+*.iobj
+*.log
+*.cache
+*.cachefile
+*.lastbuildstate
+*.lastcodeanalysissucceeded
+*.unsuccessfulbuild
+
+# Compiled artifacts
+*.obj
+*.o
+*.lo
+*.so
+*.dll
+*.dylib
+*.lai
+*.la
+*.a
+*.lib
+*.exe
+*.pdb
+*.exp
+*.ilk
+*.idb
+
+# Precompiled headers
+*.gch
+*.pch
+
+# Editor / OS
+*.swp
+*.swo
+.idea/
+.vscode/
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# Generated protobuf sources (regenerated each build by the GenProtos target)
+**/*.pb.cc
+**/*.pb.h
+core/steam_auth/gen/.timestamp
+
+# Vendored libraries are fetched by scripts/init_third_party.ps1, not committed.
+/third_party/*
+!/third_party/.gitkeep
+!/third_party/README.md
+!/third_party/steam_protos/
+!/third_party/steam_protos/**
+!/third_party/protobuf/
+!/third_party/protobuf/bin/
+!/third_party/protobuf/bin/protoc.exe
+!/third_party/protobuf/include/
+!/third_party/protobuf/include/**
+!/third_party/protobuf/lib/
+!/third_party/protobuf/lib/libprotobuf.lib
+!/third_party/protobuf/lib/libprotobuf-lite.lib
+!/third_party/protobuf/proto-include/
+!/third_party/protobuf/proto-include/**
+!/third_party/protobuf/README.md
+
+# Vendored library build artifacts
+/third_party/*/build/
+/third_party/*/out/
+/third_party/*/Debug/
+/third_party/*/Release/
+/third_party/*/x64/
+
+# App runtime artifacts (never commit these)
+/run/
+/logs/
+vault.bin
+settings.json
+*.maFile
+combos.txt
+fixtures.local/
+
+# Test outputs
+/tests/output/
+*.gcda
+*.gcno
+
+# Project-specific
+portable.flag
+*.bak
+*.tmp
+*~

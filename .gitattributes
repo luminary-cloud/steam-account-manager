@@ -1,0 +1,54 @@
+# Default: detect text, normalise to LF in the repo, restore native EOL on checkout
+* text=auto
+
+# Text files we want consistent across hosts
+*.hpp        text eol=lf
+*.cpp        text eol=lf
+*.h          text eol=lf
+*.c          text eol=lf
+*.cc         text eol=lf
+*.proto      text eol=lf
+*.py         text eol=lf
+*.md         text eol=lf
+*.json       text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+*.toml       text eol=lf
+*.cfg        text eol=lf
+*.ini        text eol=lf
+*.editorconfig text eol=lf
+*.clang-format text eol=lf
+*.clang-tidy   text eol=lf
+*.gitignore    text eol=lf
+*.gitattributes text eol=lf
+LICENSE      text eol=lf
+
+# Windows resource and project files
+*.rc         text eol=crlf
+*.manifest   text eol=crlf
+*.sln        text eol=crlf
+*.vcxproj    text eol=crlf
+*.vcxproj.filters text eol=crlf
+*.vcxproj.user    text eol=crlf
+*.props      text eol=crlf
+*.targets    text eol=crlf
+
+# Binary assets: never touch them
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.ico        binary
+*.ttf        binary
+*.otf        binary
+*.woff       binary
+*.woff2      binary
+*.zip        binary
+*.7z         binary
+*.exe        binary
+*.dll        binary
+*.lib        binary
+*.pdb        binary
+*.bin        binary
+
+# GitHub linguist hints: don't count vendored sources toward language stats.
+third_party/** linguist-vendored

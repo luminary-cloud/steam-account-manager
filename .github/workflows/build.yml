@@ -1,0 +1,85 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Windows x64 Release
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Fetch vendored dependencies
+        shell: pwsh
+        run: ./scripts/init_third_party.ps1
+
+      - name: Build
+        shell: pwsh
+        run: |
+          msbuild steam-account-manager.sln `
+            /m `
+            /p:Configuration=Release `
+            /p:Platform=x64 `
+            /verbosity:minimal `
+            /nologo
+
+      - name: Verify binary
+        shell: pwsh
+        run: |
+          $exe = "build/Release/steam-account-manager.exe"
+          if (-not (Test-Path $exe)) {
+              Write-Error "Build did not produce $exe"
+              exit 1
+          }
+          Get-Item $exe | Format-List Length, LastWriteTime
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: steam-account-manager-Release-x64
+          path: build/Release/steam-account-manager.exe
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-2022
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: steam-account-manager-Release-x64
+          path: dist
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release create $tag dist/steam-account-manager.exe `
+              --title "$tag" `
+              --notes "Automated release for $tag." `
+              --verify-tag

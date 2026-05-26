@@ -1,0 +1,552 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{aa47f5e5-c4f2-4468-8f9f-c80406387a4d}</ProjectGuid>
+    <RootNamespace>sam</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props"
+            Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')"
+            Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props"
+            Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')"
+            Label="LocalAppDataPlatform" />
+  </ImportGroup>
+
+  <PropertyGroup Label="UserMacros" />
+
+  <PropertyGroup>
+    <OutDir>$(ProjectDir)build\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)build\$(Configuration)\obj\$(ProjectName)\</IntDir>
+    <TargetName>steam-account-manager</TargetName>
+    <LinkIncremental Condition="'$(Configuration)'=='Debug'">true</LinkIncremental>
+    <LinkIncremental Condition="'$(Configuration)'=='Release'">false</LinkIncremental>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <ConformanceMode>true</ConformanceMode>
+      <WarningLevel>Level4</WarningLevel>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <SDLCheck>true</SDLCheck>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DiagnosticsFormat>Caret</DiagnosticsFormat>
+      <ObjectFileName>$(IntDir)%(RelativeDir)\</ObjectFileName>
+      <AdditionalOptions>/Zc:__cplusplus /utf-8 /FS %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>
+        $(ProjectDir);
+        $(ProjectDir)core\steam_auth\gen;
+        $(ProjectDir)third_party\imgui;
+        $(ProjectDir)third_party\imgui\backends;
+        $(ProjectDir)third_party\nlohmann_json\single_include;
+        $(ProjectDir)third_party\spdlog\include;
+        $(ProjectDir)third_party\mbedtls\include;
+        $(ProjectDir)third_party\protobuf\include;
+        $(ProjectDir)third_party\stb;
+        $(ProjectDir)third_party\utfcpp\source;
+        $(ProjectDir)third_party\doctest;
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>
+        WIN32;WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;_UNICODE;
+        _CRT_SECURE_NO_WARNINGS;
+        _WINDOWS;_WIN32_WINNT=0x0A00;
+        SPDLOG_USE_STD_FORMAT;
+        IMGUI_DEFINE_MATH_OPERATORS;
+        IMGUI_DISABLE_OBSOLETE_FUNCTIONS;IMGUI_DISABLE_OBSOLETE_KEYIO;
+        %(PreprocessorDefinitions)
+      </PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>
+        d3d11.lib;dxgi.lib;d3dcompiler.lib;dwmapi.lib;
+        Bcrypt.lib;Crypt32.lib;Advapi32.lib;
+        Shell32.lib;Ole32.lib;OleAut32.lib;Shlwapi.lib;User32.lib;Gdi32.lib;
+        Comctl32.lib;Comdlg32.lib;Windowscodecs.lib;
+        Ws2_32.lib;winmm.lib;
+        UxTheme.lib;version.lib;
+        Winhttp.lib;
+        UIAutomationCore.lib;
+        $(ProjectDir)third_party\protobuf\lib\libprotobuf.lib;
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+    </Link>
+    <ResourceCompile>
+      <Culture>0x0409</Culture>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+    <Link>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <StringPooling>true</StringPooling>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemGroup Label="Project sources">
+    <ClCompile Include="app\win_main.cpp" />
+    <ClCompile Include="app\app_state.cpp" />
+    <ClCompile Include="app\app_paths.cpp" />
+    <ClCompile Include="app\job_pump.cpp" />
+    <ClCompile Include="app\conf_poller.cpp" />
+
+    <ClCompile Include="core\time_aligner.cpp" />
+    <ClCompile Include="core\log.cpp" />
+
+    <ClCompile Include="core\sda\totp.cpp" />
+    <ClCompile Include="core\sda\confirmation.cpp" />
+    <ClCompile Include="core\sda\mafile.cpp" />
+    <ClCompile Include="core\sda\info_dat.cpp" />
+    <ClCompile Include="core\sda\revoke.cpp" />
+
+    <ClCompile Include="core\steam_api\web_api.cpp" />
+    <ClCompile Include="core\steam_api\ban_check.cpp" />
+    <ClCompile Include="core\steam_api\summaries.cpp" />
+
+    <ClCompile Include="core\steam_login\mobile_auth.cpp" />
+    <ClCompile Include="core\steam_login\rsa_password.cpp" />
+    <ClCompile Include="core\steam_login\session.cpp" />
+
+    <ClCompile Include="core\steam_gcpd\gcpd_scraper.cpp" />
+    <ClCompile Include="core\steam_gcpd\gcpd_parser.cpp" />
+
+    <ClCompile Include="core\account_store\store.cpp" />
+    <ClCompile Include="core\account_store\filter.cpp" />
+    <ClCompile Include="core\account_store\ban_diff.cpp" />
+
+    <ClCompile Include="core\notifications\notification_store.cpp" />
+
+    <ClCompile Include="core\crypto\kdf.cpp" />
+    <ClCompile Include="core\crypto\aead.cpp" />
+    <ClCompile Include="core\crypto\aes_cbc.cpp" />
+    <ClCompile Include="core\crypto\rijndael256.cpp" />
+    <ClCompile Include="core\crypto\hmac.cpp" />
+    <ClCompile Include="core\crypto\rng.cpp" />
+    <ClCompile Include="core\crypto\base64.cpp" />
+
+    <ClCompile Include="core\http\client.cpp" />
+    <ClCompile Include="core\http\url.cpp" />
+
+    <ClCompile Include="core\launch\steam_launcher.cpp" />
+    <ClCompile Include="core\launch\login_driver.cpp" />
+    <ClCompile Include="core\launch\code_clipboard.cpp" />
+
+    <ClCompile Include="core\steam_local\loginusers.cpp" />
+
+    <ClCompile Include="platform\fs.cpp" />
+    <ClCompile Include="platform\file_dialog.cpp" />
+    <ClCompile Include="platform\paths.cpp" />
+    <ClCompile Include="platform\registry.cpp" />
+    <ClCompile Include="platform\process.cpp" />
+    <ClCompile Include="platform\clipboard.cpp" />
+    <ClCompile Include="platform\dpapi.cpp" />
+    <ClCompile Include="platform\dpi.cpp" />
+    <ClCompile Include="platform\single_instance.cpp" />
+    <ClCompile Include="platform\ui_automation.cpp" />
+    <ClCompile Include="platform\global_hotkey.cpp" />
+
+    <ClCompile Include="ui\main_window.cpp" />
+    <ClCompile Include="ui\theme.cpp" />
+    <ClCompile Include="ui\fonts.cpp" />
+    <ClCompile Include="ui\icons.cpp" />
+    <ClCompile Include="ui\icons_data.cpp" />
+    <ClCompile Include="ui\stb_impl.cpp" />
+    <ClCompile Include="ui\util.cpp" />
+
+    <ClCompile Include="ui\screens\unlock_screen.cpp" />
+    <ClCompile Include="ui\screens\accounts_screen.cpp" />
+    <ClCompile Include="ui\screens\accounts_list_view.cpp" />
+    <ClCompile Include="ui\screens\sda_screen.cpp" />
+    <ClCompile Include="ui\screens\add_account_screen.cpp" />
+    <ClCompile Include="ui\screens\confirmations_screen.cpp" />
+    <ClCompile Include="ui\screens\settings_screen.cpp" />
+
+    <ClCompile Include="ui\widgets\rail_nav.cpp" />
+    <ClCompile Include="ui\widgets\account_card.cpp" />
+    <ClCompile Include="ui\widgets\account_panel.cpp" />
+    <ClCompile Include="ui\widgets\avatar.cpp" />
+    <ClCompile Include="ui\widgets\tag_chip.cpp" />
+    <ClCompile Include="ui\widgets\trust_badge.cpp" />
+    <ClCompile Include="ui\widgets\code_display.cpp" />
+    <ClCompile Include="ui\widgets\search_bar.cpp" />
+    <ClCompile Include="ui\widgets\ban_pills.cpp" />
+    <ClCompile Include="ui\widgets\master_pw_field.cpp" />
+    <ClCompile Include="ui\widgets\redacted_text.cpp" />
+    <ClCompile Include="ui\widgets\avatar_cache.cpp" />
+    <ClCompile Include="ui\widgets\rank_image.cpp" />
+    <ClCompile Include="ui\widgets\stepper.cpp" />
+    <ClCompile Include="ui\widgets\bundle_dialogs.cpp" />
+    <ClCompile Include="ui\widgets\status_markers.cpp" />
+    <ClCompile Include="ui\widgets\toast_stack.cpp" />
+    <ClCompile Include="ui\widgets\sda_backup_dialogs.cpp" />
+    <ClCompile Include="ui\widgets\sda_wizard_dialogs.cpp" />
+
+    <ClCompile Include="core\sda\mafile_export.cpp" />
+    <ClCompile Include="core\sda\conf_audit.cpp" />
+  </ItemGroup>
+
+  <ItemGroup Label="Project headers">
+    <ClInclude Include="app\resource.h" />
+    <ClInclude Include="app\app_state.hpp" />
+    <ClInclude Include="app\app_paths.hpp" />
+    <ClInclude Include="app\job_pump.hpp" />
+    <ClInclude Include="app\conf_poller.hpp" />
+
+    <ClInclude Include="core\version.hpp" />
+    <ClInclude Include="core\time_aligner.hpp" />
+    <ClInclude Include="core\log.hpp" />
+
+    <ClInclude Include="core\sda\totp.hpp" />
+    <ClInclude Include="core\sda\confirmation.hpp" />
+    <ClInclude Include="core\sda\mafile.hpp" />
+    <ClInclude Include="core\sda\mafile_export.hpp" />
+    <ClInclude Include="core\sda\conf_audit.hpp" />
+    <ClInclude Include="core\sda\info_dat.hpp" />
+    <ClInclude Include="core\sda\info_dat_keys.hpp" />
+    <ClInclude Include="core\sda\revoke.hpp" />
+
+    <ClInclude Include="core\steam_api\web_api.hpp" />
+    <ClInclude Include="core\steam_api\ban_check.hpp" />
+    <ClInclude Include="core\steam_api\summaries.hpp" />
+
+    <ClInclude Include="core\steam_login\mobile_auth.hpp" />
+    <ClInclude Include="core\steam_login\rsa_password.hpp" />
+    <ClInclude Include="core\steam_login\session.hpp" />
+
+    <ClInclude Include="core\steam_gcpd\gcpd_scraper.hpp" />
+    <ClInclude Include="core\steam_gcpd\gcpd_parser.hpp" />
+
+    <ClInclude Include="core\account_store\account.hpp" />
+    <ClInclude Include="core\account_store\group.hpp" />
+    <ClInclude Include="core\account_store\tag.hpp" />
+    <ClInclude Include="core\account_store\store.hpp" />
+    <ClInclude Include="core\account_store\schema.hpp" />
+    <ClInclude Include="core\account_store\filter.hpp" />
+    <ClInclude Include="core\account_store\ban_event.hpp" />
+    <ClInclude Include="core\account_store\ban_diff.hpp" />
+
+    <ClInclude Include="core\notifications\notification_store.hpp" />
+
+    <ClInclude Include="core\crypto\kdf.hpp" />
+    <ClInclude Include="core\crypto\aead.hpp" />
+    <ClInclude Include="core\crypto\aes_cbc.hpp" />
+    <ClInclude Include="core\crypto\rijndael256.hpp" />
+    <ClInclude Include="core\crypto\hmac.hpp" />
+    <ClInclude Include="core\crypto\rng.hpp" />
+    <ClInclude Include="core\crypto\base64.hpp" />
+    <ClInclude Include="core\crypto\secure_string.hpp" />
+
+    <ClInclude Include="core\http\client.hpp" />
+    <ClInclude Include="core\http\url.hpp" />
+    <ClInclude Include="core\http\response.hpp" />
+
+    <ClInclude Include="core\launch\steam_launcher.hpp" />
+    <ClInclude Include="core\launch\login_driver.hpp" />
+    <ClInclude Include="core\launch\code_clipboard.hpp" />
+
+    <ClInclude Include="core\steam_local\loginusers.hpp" />
+
+    <ClInclude Include="platform\fs.hpp" />
+    <ClInclude Include="platform\file_dialog.hpp" />
+    <ClInclude Include="platform\paths.hpp" />
+    <ClInclude Include="platform\registry.hpp" />
+    <ClInclude Include="platform\process.hpp" />
+    <ClInclude Include="platform\clipboard.hpp" />
+    <ClInclude Include="platform\dpapi.hpp" />
+    <ClInclude Include="platform\dpi.hpp" />
+    <ClInclude Include="platform\single_instance.hpp" />
+    <ClInclude Include="platform\global_hotkey.hpp" />
+    <ClInclude Include="platform\ui_automation.hpp" />
+
+    <ClInclude Include="ui\main_window.hpp" />
+    <ClInclude Include="ui\theme.hpp" />
+    <ClInclude Include="ui\fonts.hpp" />
+    <ClInclude Include="ui\icons.hpp" />
+    <ClInclude Include="ui\util.hpp" />
+
+    <ClInclude Include="ui\screens\unlock_screen.hpp" />
+    <ClInclude Include="ui\screens\accounts_screen.hpp" />
+    <ClInclude Include="ui\screens\accounts_list_view.hpp" />
+    <ClInclude Include="ui\screens\sda_screen.hpp" />
+    <ClInclude Include="ui\screens\add_account_screen.hpp" />
+    <ClInclude Include="ui\screens\confirmations_screen.hpp" />
+    <ClInclude Include="ui\screens\settings_screen.hpp" />
+
+    <ClInclude Include="ui\widgets\rail_nav.hpp" />
+    <ClInclude Include="ui\widgets\account_card.hpp" />
+    <ClInclude Include="ui\widgets\account_panel.hpp" />
+    <ClInclude Include="ui\widgets\avatar.hpp" />
+    <ClInclude Include="ui\widgets\tag_chip.hpp" />
+    <ClInclude Include="ui\widgets\trust_badge.hpp" />
+    <ClInclude Include="ui\widgets\code_display.hpp" />
+    <ClInclude Include="ui\widgets\search_bar.hpp" />
+    <ClInclude Include="ui\widgets\ban_pills.hpp" />
+    <ClInclude Include="ui\widgets\master_pw_field.hpp" />
+    <ClInclude Include="ui\widgets\redacted_text.hpp" />
+    <ClInclude Include="ui\widgets\avatar_cache.hpp" />
+    <ClInclude Include="ui\widgets\rank_image.hpp" />
+    <ClInclude Include="ui\widgets\stepper.hpp" />
+    <ClInclude Include="ui\widgets\bundle_dialogs.hpp" />
+    <ClInclude Include="ui\widgets\status_markers.hpp" />
+    <ClInclude Include="ui\widgets\toast_stack.hpp" />
+    <ClInclude Include="ui\widgets\sda_backup_dialogs.hpp" />
+    <ClInclude Include="ui\widgets\sda_wizard_dialogs.hpp" />
+  </ItemGroup>
+
+  <Target Name="GenProtos" BeforeTargets="ClCompile"
+          Inputs="@(SteamProtoFiles)"
+          Outputs="$(ProjectDir)core\steam_auth\gen\.timestamp">
+    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(ProjectDir)scripts\gen_protos.ps1&quot;"
+          WorkingDirectory="$(ProjectDir)" ContinueOnError="false" />
+    <Touch Files="$(ProjectDir)core\steam_auth\gen\.timestamp" AlwaysCreate="true" />
+  </Target>
+
+  <ItemGroup>
+    <SteamProtoFiles Include="$(ProjectDir)third_party\steam_protos\*.proto" />
+  </ItemGroup>
+
+  <ItemGroup Label="Generated protos">
+    <ClCompile Include="core\steam_auth\gen\steammessages_base.pb.cc"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\enums.pb.cc"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\steammessages_unified_base.steamclient.pb.cc"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\steammessages_auth.steamclient.pb.cc"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError></ClCompile>
+    <ClInclude Include="core\steam_auth\gen\steammessages_base.pb.h" />
+    <ClInclude Include="core\steam_auth\gen\enums.pb.h" />
+    <ClInclude Include="core\steam_auth\gen\steammessages_unified_base.steamclient.pb.h" />
+    <ClInclude Include="core\steam_auth\gen\steammessages_auth.steamclient.pb.h" />
+  </ItemGroup>
+
+  <ItemGroup Label="ImGui">
+    <ClCompile Include="third_party\imgui\imgui.cpp">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_draw.cpp">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_tables.cpp">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_widgets.cpp">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_demo.cpp">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <ExcludedFromBuild Condition="'$(Configuration)'=='Release'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\backends\imgui_impl_win32.cpp">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\backends\imgui_impl_dx11.cpp">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+  </ItemGroup>
+
+  <ItemGroup Label="mbedtls">
+    <ClCompile Include="third_party\mbedtls\library\aes.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\aesce.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\aesni.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\aria.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\asn1parse.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\asn1write.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\base64.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\bignum.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\bignum_core.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\bignum_mod.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\bignum_mod_raw.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\block_cipher.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\camellia.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ccm.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\chacha20.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\chachapoly.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\cipher.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\cipher_wrap.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\cmac.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\constant_time.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ctr_drbg.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\debug.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\des.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\dhm.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ecdh.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ecdsa.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ecjpake.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ecp.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ecp_curves.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ecp_curves_new.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\entropy.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\entropy_poll.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\error.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\gcm.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\hkdf.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\hmac_drbg.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\lmots.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\lms.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\md.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\md5.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\memory_buffer_alloc.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\mps_reader.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\mps_trace.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\net_sockets.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\nist_kw.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\oid.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\padlock.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pem.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pk.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pk_ecc.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pk_wrap.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pkcs12.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pkcs5.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pkcs7.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pkparse.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pkwrite.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\platform.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\platform_util.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\poly1305.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_aead.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_cipher.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_client.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_driver_wrappers_no_static.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_ecp.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_ffdh.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_hash.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_mac.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_pake.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_rsa.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_se.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_slot_management.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_storage.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_its_file.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_util.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ripemd160.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\rsa.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\rsa_alt_helpers.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\sha1.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\sha256.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\sha3.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\sha512.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_cache.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_ciphersuites.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_client.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_cookie.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_debug_helpers_generated.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_msg.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_ticket.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls12_client.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls12_server.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls13_client.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls13_generic.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls13_keys.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls13_server.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\threading.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\timing.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\version.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\version_features.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509_create.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509_crl.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509_crt.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509_csr.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509write.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509write_crt.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509write_csr.c"><WarningLevel>TurnOffAllWarnings</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ResourceCompile Include="app.rc" />
+    <Manifest Include="app.manifest" />
+    <None Include="LICENSE" />
+    <None Include="README.md" />
+    <None Include=".clang-format" />
+    <None Include=".clang-tidy" />
+    <None Include=".editorconfig" />
+    <None Include=".gitignore" />
+    <None Include=".gitattributes" />
+    <None Include="scripts\gen_protos.ps1" />
+    <None Include="scripts\init_third_party.ps1" />
+    <None Include=".github\workflows\build.yml" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

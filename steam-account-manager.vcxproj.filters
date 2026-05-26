@@ -1,0 +1,382 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <ItemGroup>
+    <Filter Include="app"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000001}</UniqueIdentifier></Filter>
+    <Filter Include="core"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000002}</UniqueIdentifier></Filter>
+    <Filter Include="core\sda"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000003}</UniqueIdentifier></Filter>
+    <Filter Include="core\steam_api"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000004}</UniqueIdentifier></Filter>
+    <Filter Include="core\steam_login"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000005}</UniqueIdentifier></Filter>
+    <Filter Include="core\steam_auth"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000006}</UniqueIdentifier></Filter>
+    <Filter Include="core\steam_auth\gen"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000015}</UniqueIdentifier></Filter>
+    <Filter Include="core\steam_gcpd"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000007}</UniqueIdentifier></Filter>
+    <Filter Include="core\account_store"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000008}</UniqueIdentifier></Filter>
+    <Filter Include="core\notifications"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000001a}</UniqueIdentifier></Filter>
+    <Filter Include="core\crypto"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000009}</UniqueIdentifier></Filter>
+    <Filter Include="core\http"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000000a}</UniqueIdentifier></Filter>
+    <Filter Include="core\launch"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000000b}</UniqueIdentifier></Filter>
+    <Filter Include="core\steam_local"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000014}</UniqueIdentifier></Filter>
+    <Filter Include="platform"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000000c}</UniqueIdentifier></Filter>
+    <Filter Include="ui"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000000d}</UniqueIdentifier></Filter>
+    <Filter Include="ui\screens"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000000e}</UniqueIdentifier></Filter>
+    <Filter Include="ui\widgets"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000000f}</UniqueIdentifier></Filter>
+    <Filter Include="third_party"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000010}</UniqueIdentifier></Filter>
+    <Filter Include="third_party\imgui"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000011}</UniqueIdentifier></Filter>
+    <Filter Include="third_party\imgui\backends"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000016}</UniqueIdentifier></Filter>
+    <Filter Include="third_party\mbedtls"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000017}</UniqueIdentifier></Filter>
+    <Filter Include="project"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000012}</UniqueIdentifier></Filter>
+    <Filter Include="scripts"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000018}</UniqueIdentifier></Filter>
+    <Filter Include=".github"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000019}</UniqueIdentifier></Filter>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClCompile Include="app\win_main.cpp"><Filter>app</Filter></ClCompile>
+    <ClCompile Include="app\app_state.cpp"><Filter>app</Filter></ClCompile>
+    <ClCompile Include="app\app_paths.cpp"><Filter>app</Filter></ClCompile>
+    <ClCompile Include="app\job_pump.cpp"><Filter>app</Filter></ClCompile>
+    <ClCompile Include="app\conf_poller.cpp"><Filter>app</Filter></ClCompile>
+
+    <ClCompile Include="core\time_aligner.cpp"><Filter>core</Filter></ClCompile>
+    <ClCompile Include="core\log.cpp"><Filter>core</Filter></ClCompile>
+
+    <ClCompile Include="core\sda\totp.cpp"><Filter>core\sda</Filter></ClCompile>
+    <ClCompile Include="core\sda\confirmation.cpp"><Filter>core\sda</Filter></ClCompile>
+    <ClCompile Include="core\sda\mafile.cpp"><Filter>core\sda</Filter></ClCompile>
+    <ClCompile Include="core\sda\mafile_export.cpp"><Filter>core\sda</Filter></ClCompile>
+    <ClCompile Include="core\sda\conf_audit.cpp"><Filter>core\sda</Filter></ClCompile>
+    <ClCompile Include="core\sda\info_dat.cpp"><Filter>core\sda</Filter></ClCompile>
+    <ClCompile Include="core\sda\revoke.cpp"><Filter>core\sda</Filter></ClCompile>
+
+    <ClCompile Include="core\steam_api\web_api.cpp"><Filter>core\steam_api</Filter></ClCompile>
+    <ClCompile Include="core\steam_api\ban_check.cpp"><Filter>core\steam_api</Filter></ClCompile>
+    <ClCompile Include="core\steam_api\summaries.cpp"><Filter>core\steam_api</Filter></ClCompile>
+
+    <ClCompile Include="core\steam_login\mobile_auth.cpp"><Filter>core\steam_login</Filter></ClCompile>
+    <ClCompile Include="core\steam_login\rsa_password.cpp"><Filter>core\steam_login</Filter></ClCompile>
+    <ClCompile Include="core\steam_login\session.cpp"><Filter>core\steam_login</Filter></ClCompile>
+
+    <ClCompile Include="core\steam_gcpd\gcpd_scraper.cpp"><Filter>core\steam_gcpd</Filter></ClCompile>
+    <ClCompile Include="core\steam_gcpd\gcpd_parser.cpp"><Filter>core\steam_gcpd</Filter></ClCompile>
+
+    <ClCompile Include="core\account_store\store.cpp"><Filter>core\account_store</Filter></ClCompile>
+    <ClCompile Include="core\account_store\filter.cpp"><Filter>core\account_store</Filter></ClCompile>
+    <ClCompile Include="core\account_store\ban_diff.cpp"><Filter>core\account_store</Filter></ClCompile>
+
+    <ClCompile Include="core\notifications\notification_store.cpp"><Filter>core\notifications</Filter></ClCompile>
+
+    <ClCompile Include="core\crypto\kdf.cpp"><Filter>core\crypto</Filter></ClCompile>
+    <ClCompile Include="core\crypto\aead.cpp"><Filter>core\crypto</Filter></ClCompile>
+    <ClCompile Include="core\crypto\aes_cbc.cpp"><Filter>core\crypto</Filter></ClCompile>
+    <ClCompile Include="core\crypto\rijndael256.cpp"><Filter>core\crypto</Filter></ClCompile>
+    <ClCompile Include="core\crypto\hmac.cpp"><Filter>core\crypto</Filter></ClCompile>
+    <ClCompile Include="core\crypto\rng.cpp"><Filter>core\crypto</Filter></ClCompile>
+    <ClCompile Include="core\crypto\base64.cpp"><Filter>core\crypto</Filter></ClCompile>
+
+    <ClCompile Include="core\http\client.cpp"><Filter>core\http</Filter></ClCompile>
+    <ClCompile Include="core\http\url.cpp"><Filter>core\http</Filter></ClCompile>
+
+    <ClCompile Include="core\launch\steam_launcher.cpp"><Filter>core\launch</Filter></ClCompile>
+    <ClCompile Include="core\launch\login_driver.cpp"><Filter>core\launch</Filter></ClCompile>
+    <ClCompile Include="core\launch\code_clipboard.cpp"><Filter>core\launch</Filter></ClCompile>
+
+    <ClCompile Include="core\steam_local\loginusers.cpp"><Filter>core\steam_local</Filter></ClCompile>
+
+    <ClCompile Include="core\steam_auth\gen\steammessages_base.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\enums.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\steammessages_unified_base.steamclient.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\steammessages_auth.steamclient.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
+
+    <ClCompile Include="platform\fs.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\file_dialog.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\paths.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\registry.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\process.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\clipboard.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\dpapi.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\dpi.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\single_instance.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\global_hotkey.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\ui_automation.cpp"><Filter>platform</Filter></ClCompile>
+
+    <ClCompile Include="ui\main_window.cpp"><Filter>ui</Filter></ClCompile>
+    <ClCompile Include="ui\theme.cpp"><Filter>ui</Filter></ClCompile>
+    <ClCompile Include="ui\fonts.cpp"><Filter>ui</Filter></ClCompile>
+    <ClCompile Include="ui\icons.cpp"><Filter>ui</Filter></ClCompile>
+    <ClCompile Include="ui\icons_data.cpp"><Filter>ui</Filter></ClCompile>
+    <ClCompile Include="ui\stb_impl.cpp"><Filter>ui</Filter></ClCompile>
+    <ClCompile Include="ui\util.cpp"><Filter>ui</Filter></ClCompile>
+
+    <ClCompile Include="ui\screens\unlock_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\accounts_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\accounts_list_view.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\sda_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\add_account_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\confirmations_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\settings_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
+
+    <ClCompile Include="ui\widgets\rail_nav.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\account_card.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\account_panel.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\avatar.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\tag_chip.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\trust_badge.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\code_display.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\search_bar.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\ban_pills.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\master_pw_field.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\redacted_text.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\avatar_cache.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\rank_image.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\stepper.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\bundle_dialogs.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\status_markers.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\toast_stack.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\sda_backup_dialogs.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\sda_wizard_dialogs.cpp"><Filter>ui\widgets</Filter></ClCompile>
+
+    <ClCompile Include="third_party\imgui\imgui.cpp"><Filter>third_party\imgui</Filter></ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_draw.cpp"><Filter>third_party\imgui</Filter></ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_tables.cpp"><Filter>third_party\imgui</Filter></ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_widgets.cpp"><Filter>third_party\imgui</Filter></ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_demo.cpp"><Filter>third_party\imgui</Filter></ClCompile>
+    <ClCompile Include="third_party\imgui\backends\imgui_impl_win32.cpp"><Filter>third_party\imgui\backends</Filter></ClCompile>
+    <ClCompile Include="third_party\imgui\backends\imgui_impl_dx11.cpp"><Filter>third_party\imgui\backends</Filter></ClCompile>
+
+    <ClCompile Include="third_party\mbedtls\library\aes.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\aesce.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\aesni.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\aria.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\asn1parse.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\asn1write.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\base64.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\bignum.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\bignum_core.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\bignum_mod.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\bignum_mod_raw.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\block_cipher.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\camellia.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ccm.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\chacha20.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\chachapoly.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\cipher.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\cipher_wrap.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\cmac.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\constant_time.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ctr_drbg.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\debug.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\des.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\dhm.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ecdh.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ecdsa.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ecjpake.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ecp.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ecp_curves.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ecp_curves_new.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\entropy.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\entropy_poll.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\error.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\gcm.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\hkdf.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\hmac_drbg.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\lmots.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\lms.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\md.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\md5.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\memory_buffer_alloc.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\mps_reader.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\mps_trace.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\net_sockets.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\nist_kw.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\oid.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\padlock.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pem.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pk.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pk_ecc.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pk_wrap.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pkcs12.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pkcs5.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pkcs7.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pkparse.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\pkwrite.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\platform.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\platform_util.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\poly1305.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_aead.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_cipher.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_client.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_driver_wrappers_no_static.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_ecp.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_ffdh.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_hash.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_mac.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_pake.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_rsa.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_se.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_slot_management.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_crypto_storage.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_its_file.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\psa_util.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ripemd160.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\rsa.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\rsa_alt_helpers.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\sha1.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\sha256.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\sha3.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\sha512.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_cache.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_ciphersuites.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_client.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_cookie.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_debug_helpers_generated.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_msg.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_ticket.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls12_client.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls12_server.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls13_client.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls13_generic.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls13_keys.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\ssl_tls13_server.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\threading.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\timing.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\version.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\version_features.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509_create.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509_crl.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509_crt.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509_csr.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509write.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509write_crt.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+    <ClCompile Include="third_party\mbedtls\library\x509write_csr.c"><Filter>third_party\mbedtls</Filter></ClCompile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClInclude Include="app\resource.h"><Filter>app</Filter></ClInclude>
+    <ClInclude Include="app\app_state.hpp"><Filter>app</Filter></ClInclude>
+    <ClInclude Include="app\app_paths.hpp"><Filter>app</Filter></ClInclude>
+    <ClInclude Include="app\job_pump.hpp"><Filter>app</Filter></ClInclude>
+    <ClInclude Include="app\conf_poller.hpp"><Filter>app</Filter></ClInclude>
+
+    <ClInclude Include="core\version.hpp"><Filter>core</Filter></ClInclude>
+    <ClInclude Include="core\time_aligner.hpp"><Filter>core</Filter></ClInclude>
+    <ClInclude Include="core\log.hpp"><Filter>core</Filter></ClInclude>
+
+    <ClInclude Include="core\sda\totp.hpp"><Filter>core\sda</Filter></ClInclude>
+    <ClInclude Include="core\sda\confirmation.hpp"><Filter>core\sda</Filter></ClInclude>
+    <ClInclude Include="core\sda\mafile.hpp"><Filter>core\sda</Filter></ClInclude>
+    <ClInclude Include="core\sda\mafile_export.hpp"><Filter>core\sda</Filter></ClInclude>
+    <ClInclude Include="core\sda\conf_audit.hpp"><Filter>core\sda</Filter></ClInclude>
+    <ClInclude Include="core\sda\info_dat.hpp"><Filter>core\sda</Filter></ClInclude>
+    <ClInclude Include="core\sda\info_dat_keys.hpp"><Filter>core\sda</Filter></ClInclude>
+    <ClInclude Include="core\sda\revoke.hpp"><Filter>core\sda</Filter></ClInclude>
+
+    <ClInclude Include="core\steam_api\web_api.hpp"><Filter>core\steam_api</Filter></ClInclude>
+    <ClInclude Include="core\steam_api\ban_check.hpp"><Filter>core\steam_api</Filter></ClInclude>
+    <ClInclude Include="core\steam_api\summaries.hpp"><Filter>core\steam_api</Filter></ClInclude>
+
+    <ClInclude Include="core\steam_login\mobile_auth.hpp"><Filter>core\steam_login</Filter></ClInclude>
+    <ClInclude Include="core\steam_login\rsa_password.hpp"><Filter>core\steam_login</Filter></ClInclude>
+    <ClInclude Include="core\steam_login\session.hpp"><Filter>core\steam_login</Filter></ClInclude>
+
+    <ClInclude Include="core\steam_gcpd\gcpd_scraper.hpp"><Filter>core\steam_gcpd</Filter></ClInclude>
+    <ClInclude Include="core\steam_gcpd\gcpd_parser.hpp"><Filter>core\steam_gcpd</Filter></ClInclude>
+
+    <ClInclude Include="core\account_store\account.hpp"><Filter>core\account_store</Filter></ClInclude>
+    <ClInclude Include="core\account_store\group.hpp"><Filter>core\account_store</Filter></ClInclude>
+    <ClInclude Include="core\account_store\tag.hpp"><Filter>core\account_store</Filter></ClInclude>
+    <ClInclude Include="core\account_store\store.hpp"><Filter>core\account_store</Filter></ClInclude>
+    <ClInclude Include="core\account_store\schema.hpp"><Filter>core\account_store</Filter></ClInclude>
+    <ClInclude Include="core\account_store\filter.hpp"><Filter>core\account_store</Filter></ClInclude>
+    <ClInclude Include="core\account_store\ban_event.hpp"><Filter>core\account_store</Filter></ClInclude>
+    <ClInclude Include="core\account_store\ban_diff.hpp"><Filter>core\account_store</Filter></ClInclude>
+
+    <ClInclude Include="core\notifications\notification_store.hpp"><Filter>core\notifications</Filter></ClInclude>
+
+    <ClInclude Include="core\crypto\kdf.hpp"><Filter>core\crypto</Filter></ClInclude>
+    <ClInclude Include="core\crypto\aead.hpp"><Filter>core\crypto</Filter></ClInclude>
+    <ClInclude Include="core\crypto\aes_cbc.hpp"><Filter>core\crypto</Filter></ClInclude>
+    <ClInclude Include="core\crypto\rijndael256.hpp"><Filter>core\crypto</Filter></ClInclude>
+    <ClInclude Include="core\crypto\hmac.hpp"><Filter>core\crypto</Filter></ClInclude>
+    <ClInclude Include="core\crypto\rng.hpp"><Filter>core\crypto</Filter></ClInclude>
+    <ClInclude Include="core\crypto\base64.hpp"><Filter>core\crypto</Filter></ClInclude>
+    <ClInclude Include="core\crypto\secure_string.hpp"><Filter>core\crypto</Filter></ClInclude>
+
+    <ClInclude Include="core\http\client.hpp"><Filter>core\http</Filter></ClInclude>
+    <ClInclude Include="core\http\url.hpp"><Filter>core\http</Filter></ClInclude>
+    <ClInclude Include="core\http\response.hpp"><Filter>core\http</Filter></ClInclude>
+
+    <ClInclude Include="core\launch\steam_launcher.hpp"><Filter>core\launch</Filter></ClInclude>
+    <ClInclude Include="core\launch\login_driver.hpp"><Filter>core\launch</Filter></ClInclude>
+    <ClInclude Include="core\launch\code_clipboard.hpp"><Filter>core\launch</Filter></ClInclude>
+
+    <ClInclude Include="core\steam_local\loginusers.hpp"><Filter>core\steam_local</Filter></ClInclude>
+
+    <ClInclude Include="core\steam_auth\gen\steammessages_base.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
+    <ClInclude Include="core\steam_auth\gen\enums.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
+    <ClInclude Include="core\steam_auth\gen\steammessages_unified_base.steamclient.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
+    <ClInclude Include="core\steam_auth\gen\steammessages_auth.steamclient.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
+
+    <ClInclude Include="platform\fs.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\file_dialog.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\paths.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\registry.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\process.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\clipboard.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\dpapi.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\dpi.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\single_instance.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\global_hotkey.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\ui_automation.hpp"><Filter>platform</Filter></ClInclude>
+
+    <ClInclude Include="ui\main_window.hpp"><Filter>ui</Filter></ClInclude>
+    <ClInclude Include="ui\theme.hpp"><Filter>ui</Filter></ClInclude>
+    <ClInclude Include="ui\fonts.hpp"><Filter>ui</Filter></ClInclude>
+    <ClInclude Include="ui\icons.hpp"><Filter>ui</Filter></ClInclude>
+    <ClInclude Include="ui\util.hpp"><Filter>ui</Filter></ClInclude>
+
+    <ClInclude Include="ui\screens\unlock_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\accounts_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\accounts_list_view.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\sda_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\add_account_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\confirmations_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\settings_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+
+    <ClInclude Include="ui\widgets\rail_nav.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\account_card.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\account_panel.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\avatar.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\tag_chip.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\trust_badge.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\code_display.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\search_bar.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\ban_pills.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\master_pw_field.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\redacted_text.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\avatar_cache.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\rank_image.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\stepper.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\bundle_dialogs.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\status_markers.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\toast_stack.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\sda_backup_dialogs.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\sda_wizard_dialogs.hpp"><Filter>ui\widgets</Filter></ClInclude>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ResourceCompile Include="app.rc"><Filter>project</Filter></ResourceCompile>
+    <Manifest Include="app.manifest"><Filter>project</Filter></Manifest>
+    <None Include="LICENSE"><Filter>project</Filter></None>
+    <None Include="README.md"><Filter>project</Filter></None>
+    <None Include=".clang-format"><Filter>project</Filter></None>
+    <None Include=".clang-tidy"><Filter>project</Filter></None>
+    <None Include=".editorconfig"><Filter>project</Filter></None>
+    <None Include=".gitignore"><Filter>project</Filter></None>
+    <None Include=".gitattributes"><Filter>project</Filter></None>
+    <None Include="scripts\gen_protos.ps1"><Filter>scripts</Filter></None>
+    <None Include="scripts\init_third_party.ps1"><Filter>scripts</Filter></None>
+    <None Include=".github\workflows\build.yml"><Filter>.github</Filter></None>
+  </ItemGroup>
+</Project>
