@@ -73,13 +73,19 @@ jobs:
           name: steam-account-manager-Release-x64
           path: dist
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "${{ github.ref_name }}"
-          gh release create $tag dist/steam-account-manager.exe `
-              --title "$tag" `
-              --notes "Automated release for $tag." `
-              --verify-tag
+          $existing = gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0) {
+              Write-Host "Release $tag already exists; uploading binary with --clobber."
+              gh release upload $tag dist/steam-account-manager.exe --clobber
+          } else {
+              gh release create $tag dist/steam-account-manager.exe `
+                  --title "$tag" `
+                  --notes "Automated release for $tag." `
+                  --verify-tag
+          }
