@@ -73,19 +73,32 @@ jobs:
           name: steam-account-manager-Release-x64
           path: dist
 
-      - name: Create or update GitHub Release
+      - name: Stage zip
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $existing = gh release view $tag 2>$null
-          if ($LASTEXITCODE -eq 0) {
-              Write-Host "Release $tag already exists; uploading binary with --clobber."
-              gh release upload $tag dist/steam-account-manager.exe --clobber
-          } else {
-              gh release create $tag dist/steam-account-manager.exe `
-                  --title "$tag" `
-                  --notes "Automated release for $tag." `
-                  --verify-tag
-          }
+          Copy-Item LICENSE  dist/LICENSE.txt
+          Copy-Item README.md dist/README.md
+          Compress-Archive `
+              -Path dist/steam-account-manager.exe, dist/LICENSE.txt, dist/README.md `
+              -DestinationPath dist/steam-account-manager-${{ github.ref_name }}-x64.zip `
+              -Force
+
+      - name: Compute checksums
+        shell: pwsh
+        run: |
+          (Get-FileHash dist/steam-account-manager.exe -Algorithm SHA256).Hash.ToLower() `
+              | Out-File -NoNewline -Encoding ASCII dist/steam-account-manager.exe.sha256
+          (Get-FileHash dist/steam-account-manager-${{ github.ref_name }}-x64.zip -Algorithm SHA256).Hash.ToLower() `
+              | Out-File -NoNewline -Encoding ASCII dist/steam-account-manager-${{ github.ref_name }}-x64.zip.sha256
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/steam-account-manager.exe
+            dist/steam-account-manager.exe.sha256
+            dist/steam-account-manager-${{ github.ref_name }}-x64.zip
+            dist/steam-account-manager-${{ github.ref_name }}-x64.zip.sha256
+          generate_release_notes: true
+          draft: false
+          fail_on_unmatched_files: true

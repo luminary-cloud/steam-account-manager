@@ -102,6 +102,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
       <AdditionalDependencies>
         d3d11.lib;dxgi.lib;d3dcompiler.lib;dwmapi.lib;
         Bcrypt.lib;Crypt32.lib;Advapi32.lib;
