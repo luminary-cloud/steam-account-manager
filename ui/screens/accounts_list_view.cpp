@@ -17,6 +17,7 @@
 #include "core/account_store/group.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
+#include "ui/widgets/account_context_menu.hpp"
 #include "ui/widgets/account_panel.hpp"
 #include "ui/widgets/redacted_text.hpp"
 #include "ui/widgets/status_markers.hpp"
@@ -145,10 +146,21 @@ bool draw_group_header(const std::string& key,
                           IM_COL32(255, 255, 255, drop_target ? 22 : 12), 4.0F);
     }
 
-    const float chevron_x = cursor.x + 6.0F;
     const float center_y  = cursor.y + box.y * 0.5F;
-    dl->AddText(ImVec2(chevron_x, center_y - ImGui::GetTextLineHeight() * 0.5F),
-                IM_COL32(200, 200, 200, 200), open ? "v" : ">");
+    const ImU32 chevron_col = IM_COL32(200, 200, 200, 200);
+    if (open) {
+        const float cx = cursor.x + 10.0F;
+        dl->AddTriangleFilled(ImVec2(cx - 4.0F, center_y - 2.0F),
+                              ImVec2(cx + 4.0F, center_y - 2.0F),
+                              ImVec2(cx,        center_y + 3.0F),
+                              chevron_col);
+    } else {
+        const float cx = cursor.x + 8.0F;
+        dl->AddTriangleFilled(ImVec2(cx, center_y - 4.0F),
+                              ImVec2(cx, center_y + 4.0F),
+                              ImVec2(cx + 5.0F, center_y),
+                              chevron_col);
+    }
 
     draw_dot(ImVec2(cursor.x + 24.0F, center_y), group_dot_color(color_rgba));
 
@@ -181,6 +193,7 @@ void draw_account_row(app::AppState& state, const core::Account& a) {
 
     const bool clicked = ImGui::InvisibleButton("##row", box);
     const bool hovered = ImGui::IsItemHovered();
+    const bool right_clicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
 
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceNoDisableHover)) {
         ImGui::SetDragDropPayload(kDragPayload, a.id.data(), a.id.size());
@@ -211,9 +224,12 @@ void draw_account_row(app::AppState& state, const core::Account& a) {
         dl->AddCircle(ImVec2(dot_x, center_y), kDotRadius + 1.0F,
                       IM_COL32(255, 255, 255, 80), 16, 1.0F);
         if (is_checked) {
-            dl->AddText(ImVec2(dot_x - 3.5F,
-                               center_y - ImGui::GetTextLineHeight() * 0.5F),
-                        IM_COL32_WHITE, "x");
+            const float r = kDotRadius - 1.5F;
+            const ImU32 col = IM_COL32_WHITE;
+            dl->AddLine(ImVec2(dot_x - r, center_y - r),
+                        ImVec2(dot_x + r, center_y + r), col, 1.5F);
+            dl->AddLine(ImVec2(dot_x + r, center_y - r),
+                        ImVec2(dot_x - r, center_y + r), col, 1.5F);
         }
     } else {
         draw_dot(ImVec2(dot_x, center_y), status_dot_color(a));
@@ -289,6 +305,14 @@ void draw_account_row(app::AppState& state, const core::Account& a) {
         } else {
             state.selected_account_id = a.id;
         }
+    }
+
+    if (right_clicked && !state.selection_mode) {
+        ImGui::OpenPopup("##acc-ctx");
+    }
+    if (begin_styled_popup("##acc-ctx")) {
+        widgets::draw_account_context_menu(state, a);
+        end_styled_popup();
     }
 
     ImGui::PopID();
@@ -447,10 +471,10 @@ ListViewResult draw_list_body(app::AppState& state,
         if (right_clicked && can_manage) {
             ImGui::OpenPopup(("##group-ctx-" + key).c_str());
         }
-        if (ImGui::BeginPopup(("##group-ctx-" + key).c_str())) {
+        if (begin_styled_popup(("##group-ctx-" + key).c_str())) {
             if (ImGui::MenuItem("Rename...")) group_to_rename = key;
             if (ImGui::MenuItem("Delete"))    group_to_delete = key;
-            ImGui::EndPopup();
+            end_styled_popup();
         }
 
         if (open) {

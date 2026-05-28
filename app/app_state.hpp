@@ -180,6 +180,15 @@ struct Settings {
         bool only_cooldown = false;
         bool only_prime = false;
     } quick_filters;
+
+    struct CS2VideoConfig {
+        // When on, pressing Login copies the stored template into the launched
+        // account's CS2 cfg folder. The template lives at
+        // app::cs2_video_template_path(); source_label is the path it was
+        // imported from and is shown in Settings for reference only.
+        bool auto_apply_on_login = false;
+        std::string source_label;
+    } cs2_video;
 };
 
 struct Job {
@@ -201,6 +210,9 @@ struct AppState {
     Screen current_screen = Screen::Unlock;
     std::string selected_account_id;
     std::string search_query;
+    // Set by the account context menu to request the "Change username" modal for
+    // selected_account_id; consumed (reset) by the Accounts screen next frame.
+    bool persona_change_requested = false;
     // Account IDs whose login is currently revealed in privacy_mode.
     std::unordered_set<std::string> revealed_logins;
 
@@ -273,6 +285,11 @@ struct AppState {
     std::unordered_map<std::string, std::int64_t> last_gcpd_refresh_unix;
     std::int64_t last_batch_refresh_unix = 0;
 
+    // Per-account cooldown timestamps for display-name changes (unix seconds).
+    // Set when a rename succeeds; the Change-username modal greys out Apply
+    // until the cooldown elapses.
+    std::unordered_map<std::string, std::int64_t> last_persona_change_unix;
+
     // Drag-and-drop: WM_DROPFILES handler enqueues every .maFile (and every
     // .maFile found inside a dropped directory) into pending_mafile_drops.
     // Likewise info.dat files go to pending_info_dat_drops. The AddAccount
@@ -317,6 +334,12 @@ struct AppState {
     void refresh_account_data();
     void refresh_single_account(const std::string& id, bool batch_refresh = false);
 
+    // Copies the stored CS2 video template (app::cs2_video_template_path()) into
+    // `a`'s CS2 config folder and pushes a result toast. Surfaces failures as a
+    // warning toast rather than throwing. Shared by the login flow and the
+    // "Add video config" context-menu item.
+    void apply_cs2_video_config(const core::Account& a);
+
     // Stagger a refresh across many accounts. Submits one outer job that
     // walks `ids` and posts refresh_single_account(aid, /*batch_refresh=*/true)
     // onto completed_jobs with `stagger` between iterations, so the worker
@@ -328,6 +351,10 @@ struct AppState {
     // Returns the seconds remaining before this account can be refreshed again
     // (per the per-account rate limit). 0 means the refresh is allowed now.
     std::int64_t refresh_cooldown_seconds(const std::string& id) const;
+
+    // Returns the seconds remaining before this account's display name can be
+    // changed again. 0 means a change is allowed now.
+    std::int64_t persona_change_cooldown_seconds(const std::string& id) const;
 
     // Silent credentials-based re-login. Reads login+password+sda from `creds`,
     // runs the full mobile auth flow, and on success copies the new tokens

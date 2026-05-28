@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <ctime>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <imgui.h>
 
@@ -28,7 +30,7 @@ namespace sam::ui::widgets {
 namespace {
 
 constexpr float kAvatarSize = 56.0F;
-constexpr float kFooterReserved = 44.0F;
+constexpr float kFooterReserved = 60.0F;
 constexpr float kFooterGap = 8.0F;
 
 std::string format_with_commas(int value) {
@@ -73,15 +75,6 @@ std::string format_relative(std::int64_t unix_seconds) {
     return format_date(unix_seconds);
 }
 
-void info_row(const char* label, const std::string& value) {
-    if (value.empty()) return;
-    ImGui::TableNextRow();
-    ImGui::TableNextColumn();
-    ImGui::TextColored(theme::dim_text(), "%s", label);
-    ImGui::TableNextColumn();
-    ImGui::TextUnformatted(value.c_str());
-}
-
 }  // namespace
 
 CardAction draw_account_panel(app::AppState& state, core::Account& a) {
@@ -89,10 +82,216 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
 
     ImGui::PushID(a.id.c_str());
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
-                        ImVec2(ImGui::GetStyle().ItemSpacing.x, 4.0F));
+                        ImVec2(ImGui::GetStyle().ItemSpacing.x, 12.0F));
 
     ImGui::BeginChild("##panel-body", ImVec2(0, -kFooterReserved),
                       ImGuiChildFlags_NavFlattened);
+
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    const float text_h  = ImGui::GetTextLineHeight();
+    const float sp_y    = ImGui::GetStyle().ItemSpacing.y;
+
+    const bool any_refresh = a.web.last_refreshed_unix > 0
+                          || a.bans.last_refreshed_unix > 0
+                          || a.cs2.last_refreshed_unix > 0;
+
+    BanPillsOptions opts;
+    opts.show_vac       = state.settings.info.show_vac;
+    opts.show_game      = state.settings.info.show_game_ban;
+    opts.show_trade     = state.settings.info.show_trade_ban;
+    opts.show_community = state.settings.info.show_community_ban;
+    opts.show_vac_live  = state.settings.info.show_vac_live;
+    opts.vac_live       = a.cs2.vac_live;
+    const bool any_ban_pill = opts.show_vac || opts.show_game || opts.show_trade ||
+                              opts.show_community || (opts.show_vac_live && opts.vac_live);
+
+    constexpr float kBadgeH = 26.0F;
+    constexpr float kWinsGap = 3.0F;
+    constexpr float kModeGap = 2.0F;
+    constexpr float kRankGap = 18.0F;
+
+    const rank_image::TexEntry* premier_e = nullptr;
+    if (state.settings.info.show_premier) {
+        const int bracket = a.cs2.premier_rating > 0
+            ? premier_bracket_for_rating(a.cs2.premier_rating) : 0;
+        premier_e = rank_image::premier(bracket);
+    }
+    const rank_image::TexEntry* wingman_e = nullptr;
+    if (state.settings.info.show_wingman) {
+        const int rank = a.cs2.wingman_rank > 0 ? a.cs2.wingman_rank : 0;
+        wingman_e = rank_image::wingman(rank);
+    }
+    const bool draw_premier = premier_e && premier_e->srv && premier_e->h > 0;
+    const bool draw_wingman = wingman_e && wingman_e->srv && wingman_e->h > 0;
+    const bool show_mode_label = draw_premier && draw_wingman;
+    const float mode_block   = show_mode_label ? (text_h + kModeGap) : 0.0F;
+    const float rank_block_h = mode_block + kBadgeH + kWinsGap + text_h;
+    const float premier_w = draw_premier
+        ? kBadgeH * (static_cast<float>(premier_e->w) / static_cast<float>(premier_e->h))
+        : 0.0F;
+    const float wingman_w = draw_wingman
+        ? kBadgeH * (static_cast<float>(wingman_e->w) / static_cast<float>(wingman_e->h))
+        : 0.0F;
+    const float rank_total_w = premier_w
+                              + (draw_premier && draw_wingman ? kRankGap : 0.0F)
+                              + wingman_w;
+
+    struct ChipSpec {
+        std::string label;
+        std::string value;
+        ImVec4 color{};
+        bool has_color = false;
+        float width = 0.0F;
+    };
+    std::vector<ChipSpec> chips;
+    auto push_chip = [&](const char* label, const char* value,
+                          const ImVec4* col = nullptr) {
+        ChipSpec s;
+        s.label = label;
+        s.value = value;
+        if (col) { s.has_color = true; s.color = *col; }
+        constexpr float pad_x = 8.0F;
+        constexpr float inner_gap = 5.0F;
+        s.width = ImGui::CalcTextSize(label).x + inner_gap +
+                  ImGui::CalcTextSize(value).x + pad_x * 2.0F;
+        chips.push_back(std::move(s));
+    };
+    {
+        char buf[40];
+        if (state.settings.info.show_steam_level && a.web.steam_level >= 0) {
+            std::snprintf(buf, sizeof(buf), "%d", a.web.steam_level);
+            push_chip("Steam Lv", buf);
+        }
+        if (state.settings.info.show_owned_games && a.web.owned_games_count >= 0) {
+            if (a.web.total_playtime_minutes > 0) {
+                std::snprintf(buf, sizeof(buf), "%d \xC2\xB7 %lldh",
+                              a.web.owned_games_count,
+                              static_cast<long long>(a.web.total_playtime_minutes / 60));
+            } else {
+                std::snprintf(buf, sizeof(buf), "%d", a.web.owned_games_count);
+            }
+            push_chip("Games", buf);
+        }
+        if (state.settings.info.show_prime) {
+            const ImVec4 col = a.cs2.prime_status
+                ? theme::success() : theme::dim_text();
+            push_chip("Prime", a.cs2.prime_status ? "yes" : "no", &col);
+        }
+        if (a.cs2.cs2_player_level >= 0) {
+            std::snprintf(buf, sizeof(buf), "%d", a.cs2.cs2_player_level);
+            push_chip("CS2 Lv", buf);
+        }
+        if (a.cs2.cs2_player_xp >= 0) {
+            const std::string xp = format_with_commas(a.cs2.cs2_player_xp);
+            push_chip("XP", xp.c_str());
+        }
+        if (a.steam_id_64 != 0) {
+            char sid[24];
+            std::snprintf(sid, sizeof(sid), "%llu",
+                          static_cast<unsigned long long>(a.steam_id_64));
+            push_chip("Steam ID", sid);
+        }
+    }
+
+    constexpr float kChipGap = 6.0F;
+    std::vector<std::pair<std::size_t, std::size_t>> chip_rows;
+    {
+        std::size_t start = 0;
+        float row_w = 0.0F;
+        for (std::size_t i = 0; i < chips.size(); ++i) {
+            const float add = (i == start) ? chips[i].width
+                                            : kChipGap + chips[i].width;
+            if (i == start || row_w + add <= avail_w) {
+                row_w += add;
+            } else {
+                chip_rows.emplace_back(start, i);
+                start = i;
+                row_w = chips[i].width;
+            }
+        }
+        if (start < chips.size()) chip_rows.emplace_back(start, chips.size());
+    }
+
+    // Report the OLDEST applicable freshness timestamp so the line tells the
+    // truth during the launch refresh window: the bulk Web API call updates
+    // web/bans within seconds, but the per-account GCPD scrape (which produces
+    // a.cs2) is staggered and can lag by minutes for large vaults. Including
+    // cs2 here pulls the display back to honest "Xh ago" until the scrape
+    // lands. Skipped when GCPD isn't applicable (disabled, or no session
+    // cookies) so the line doesn't get stuck at "never".
+    std::int64_t last_refresh = 0;
+    {
+        auto fold = [&](std::int64_t t) {
+            if (t <= 0) return;
+            last_refresh = (last_refresh == 0) ? t : std::min(last_refresh, t);
+        };
+        fold(a.web.last_refreshed_unix);
+        fold(a.bans.last_refreshed_unix);
+        const bool gcpd_applicable = state.settings.gcpd_enabled
+                                      && !a.session_id.empty()
+                                      && !a.steam_login_secure.empty();
+        if (gcpd_applicable) fold(a.cs2.last_refreshed_unix);
+    }
+    std::string meta_line;
+    if (a.web.created_unix > 0) {
+        meta_line += "Created ";
+        meta_line += format_date(a.web.created_unix);
+    }
+    if (a.web.created_unix > 0 || last_refresh > 0) {
+        if (!meta_line.empty()) meta_line += " \xC2\xB7 ";
+        meta_line += "Last refreshed ";
+        meta_line += format_relative(last_refresh);
+    }
+    const bool has_meta_line = !meta_line.empty();
+
+    const auto now_s = now_seconds();
+    const bool has_cooldown = state.settings.info.show_cooldown
+                              && a.cs2.cooldown_expires_unix > now_s;
+    std::string cooldown_line;
+    if (has_cooldown) {
+        const auto remaining = a.cs2.cooldown_expires_unix - now_s;
+        const char* reason = a.cs2.cooldown_reason.empty()
+            ? "Cooldown active" : a.cs2.cooldown_reason.c_str();
+        char buf[160];
+        if (remaining >= 86400) {
+            std::snprintf(buf, sizeof(buf), "%s \xC2\xB7 %lldd left",
+                          reason, static_cast<long long>(remaining / 86400));
+        } else if (remaining >= 3600) {
+            std::snprintf(buf, sizeof(buf), "%s \xC2\xB7 %lldh left",
+                          reason, static_cast<long long>(remaining / 3600));
+        } else {
+            std::snprintf(buf, sizeof(buf), "%s \xC2\xB7 %lldm left",
+                          reason, static_cast<long long>(remaining / 60));
+        }
+        cooldown_line = buf;
+    }
+
+    const float chip_h = text_h + 6.0F;
+    float middle_h = 0.0F;
+    if (draw_premier || draw_wingman) middle_h += rank_block_h;
+    // Each section after the rank block is preceded by an ImGui::Spacing(),
+    // which is an empty item that adds two item-spacings of gap (one before it
+    // and one after) instead of one. Use 2*sp_y here so the height estimate
+    // matches what actually gets rendered.
+    if (!chip_rows.empty()) {
+        if (middle_h > 0) middle_h += 2.0F * sp_y;
+        middle_h += static_cast<float>(chip_rows.size()) * chip_h;
+        if (chip_rows.size() > 1) {
+            middle_h += static_cast<float>(chip_rows.size() - 1) * sp_y;
+        }
+    }
+    if (has_meta_line)      middle_h += 2.0F * sp_y + text_h;
+    if (has_cooldown)       middle_h += 2.0F * sp_y + text_h;
+    if (!a.tag_ids.empty()) middle_h += 2.0F * sp_y + chip_h;
+    if (!a.notes.empty())   middle_h += 2.0F * sp_y + text_h * 2.0F;
+
+    auto center_h_lead = [&](float section_w) {
+        const float lead = (avail_w - section_w) * 0.5F;
+        if (lead > 0) {
+            ImGui::Dummy(ImVec2(lead, 0));
+            ImGui::SameLine(0.0F, 0.0F);
+        }
+    };
 
     const ImVec2 header_origin_screen = ImGui::GetCursorScreenPos();
     const float  pane_inner_w         = ImGui::GetContentRegionAvail().x;
@@ -115,12 +314,11 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         draw_login_text(state, a);
         ImGui::PopStyleColor();
     }
-
     {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
         bool any = false;
         auto sep = [&]() {
-            if (any) { ImGui::SameLine(); ImGui::TextDisabled("·"); ImGui::SameLine(); }
+            if (any) { ImGui::SameLine(); ImGui::TextDisabled("\xC2\xB7"); ImGui::SameLine(); }
             any = true;
         };
         if (!a.web.country_code.empty()) {
@@ -131,15 +329,11 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
                 cc.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
             ImGui::TextDisabled("%s", cc.c_str());
         }
-        if (a.steam_id_64 != 0) {
-            sep();
-            ImGui::TextDisabled("%llu", static_cast<unsigned long long>(a.steam_id_64));
-        }
         if (a.last_login_unix > 0) {
             sep();
             ImGui::TextDisabled("last login %s", format_relative(a.last_login_unix).c_str());
         }
-        if (!any) {
+        if (!any && !any_refresh) {
             ImGui::TextDisabled("no profile data yet");
         }
         ImGui::PopStyleColor();
@@ -160,171 +354,106 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     ImGui::Spacing();
     ImGui::Separator();
 
+    if (any_ban_pill) draw_ban_pills(a.bans, opts);
+
+    // Vertically center the rank + stat block in the space between the ban
+    // pills and the panel-body bottom. If the block is taller than the
+    // remaining space (long notes/tags/recent-changes), skip the spacer and
+    // let it flow naturally; the child window will scroll as a last resort.
     {
-        BanPillsOptions opts;
-        opts.show_vac       = state.settings.info.show_vac;
-        opts.show_game      = state.settings.info.show_game_ban;
-        opts.show_trade     = state.settings.info.show_trade_ban;
-        opts.show_community = state.settings.info.show_community_ban;
-        opts.show_vac_live  = state.settings.info.show_vac_live;
-        opts.vac_live       = a.cs2.vac_live;
-        if (opts.show_vac || opts.show_game || opts.show_trade ||
-            opts.show_community || (opts.show_vac_live && opts.vac_live)) {
-            draw_ban_pills(a.bans, opts);
+        const float y_cursor  = ImGui::GetCursorPosY();
+        const float child_h   = ImGui::GetWindowHeight();
+        const float remaining = child_h - y_cursor;
+        if (middle_h < remaining) {
+            ImGui::Dummy(ImVec2(0, (remaining - middle_h) * 0.5F));
         }
     }
 
-    {
-        constexpr float kBadgeH = 32.0F;
-        constexpr float kWinsGap = 3.0F;
-        const bool show_premier_slot = state.settings.info.show_premier;
-        const bool show_wingman_slot = state.settings.info.show_wingman;
+    if (draw_premier || draw_wingman) {
+        auto* dl = ImGui::GetWindowDrawList();
+        center_h_lead(rank_total_w);
 
-        const rank_image::TexEntry* premier_e = nullptr;
-        if (show_premier_slot) {
-            const int bracket = a.cs2.premier_rating > 0
-                ? premier_bracket_for_rating(a.cs2.premier_rating)
-                : 0;
-            premier_e = rank_image::premier(bracket);
-        }
-        const rank_image::TexEntry* wingman_e = nullptr;
-        if (show_wingman_slot) {
-            const int rank = a.cs2.wingman_rank > 0 ? a.cs2.wingman_rank : 0;
-            wingman_e = rank_image::wingman(rank);
-        }
+        auto draw_card = [&](const rank_image::TexEntry* e, const char* mode,
+                              int wins, int rating, bool rating_overlay,
+                              float card_w) {
+            const ImVec2 origin = ImGui::GetCursorScreenPos();
+            ImGui::Dummy(ImVec2(card_w, rank_block_h));
 
-        const bool draw_premier = premier_e && premier_e->srv && premier_e->h > 0;
-        const bool draw_wingman = wingman_e && wingman_e->srv && wingman_e->h > 0;
-
-        if (draw_premier || draw_wingman) {
-            auto* dl = ImGui::GetWindowDrawList();
-            const float wins_h = ImGui::GetTextLineHeight();
-
-            auto wins_label = [&](const ImVec2& at, float bw, int wins) {
-                char buf[32];
-                if (wins >= 0) std::snprintf(buf, sizeof(buf), "Wins: %d", wins);
-                else           std::snprintf(buf, sizeof(buf), "Wins: ---");
-                const ImVec2 ts = ImGui::CalcTextSize(buf);
-                const float tx = at.x + (bw - ts.x) * 0.5F;
-                const float ty = at.y - kWinsGap - wins_h;
-                dl->AddText(ImVec2(tx, ty), ImGui::GetColorU32(ImGuiCol_TextDisabled), buf);
-            };
-
-            ImGui::Dummy(ImVec2(0.0F, wins_h + kWinsGap));
-
-            if (draw_premier) {
-                const float w = kBadgeH * (static_cast<float>(premier_e->w) /
-                                            static_cast<float>(premier_e->h));
-                const ImVec2 cursor = ImGui::GetCursorScreenPos();
-                ImGui::Dummy(ImVec2(w, kBadgeH));
-                dl->AddImage(reinterpret_cast<ImTextureID>(premier_e->srv),
-                             cursor, ImVec2(cursor.x + w, cursor.y + kBadgeH));
-                wins_label(cursor, w, a.cs2.premier_wins);
-
-                const std::string text = a.cs2.premier_rating > 0
-                    ? format_with_commas(a.cs2.premier_rating)
-                    : std::string("---");
+            const ImU32 dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+            if (show_mode_label) {
+                const ImVec2 ts = ImGui::CalcTextSize(mode);
+                dl->AddText(ImVec2(origin.x + (card_w - ts.x) * 0.5F, origin.y),
+                            dim, mode);
+            }
+            const float badge_y = origin.y + mode_block;
+            dl->AddImage(reinterpret_cast<ImTextureID>(e->srv),
+                         ImVec2(origin.x, badge_y),
+                         ImVec2(origin.x + card_w, badge_y + kBadgeH));
+            if (rating_overlay) {
+                const std::string text = rating > 0
+                    ? format_with_commas(rating) : std::string("---");
                 ImFont* font = fonts::badge();
                 const float fsize = font->LegacySize;
                 const ImVec2 ts = font->CalcTextSizeA(fsize, FLT_MAX, 0.0F, text.c_str());
-                const float tx = cursor.x + w * 0.58F - ts.x * 0.5F;
-                const float ty = cursor.y + (kBadgeH - fsize) * 0.5F - 2.0F;
-                const ImU32 col = a.cs2.premier_rating > 0
-                    ? IM_COL32_WHITE
-                    : IM_COL32(255, 255, 255, 140);
+                const float tx = origin.x + card_w * 0.58F - ts.x * 0.5F;
+                const float ty = badge_y + (kBadgeH - fsize) * 0.5F - 2.0F;
+                const ImU32 col = rating > 0
+                    ? IM_COL32_WHITE : IM_COL32(255, 255, 255, 140);
                 dl->AddText(font, fsize, ImVec2(tx, ty), col, text.c_str());
-
-                if (draw_wingman) ImGui::SameLine(0.0F, 18.0F);
             }
-
-            if (draw_wingman) {
-                const float w = kBadgeH * (static_cast<float>(wingman_e->w) /
-                                            static_cast<float>(wingman_e->h));
-                const ImVec2 cursor = ImGui::GetCursorScreenPos();
-                ImGui::Dummy(ImVec2(w, kBadgeH));
-                dl->AddImage(reinterpret_cast<ImTextureID>(wingman_e->srv),
-                             cursor, ImVec2(cursor.x + w, cursor.y + kBadgeH));
-                wins_label(cursor, w, a.cs2.wingman_wins);
-            }
-        }
-    }
-
-    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4.0F, 2.0F));
-    if (ImGui::BeginTable("##panel-info", 2,
-            ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoBordersInBody,
-            ImVec2(0, 0))) {
-        ImGui::TableSetupColumn("k", ImGuiTableColumnFlags_WidthFixed, 150.0F);
-        ImGui::TableSetupColumn("v", ImGuiTableColumnFlags_WidthStretch);
-
-        if (state.settings.info.show_steam_level && a.web.steam_level >= 0) {
-            info_row("Steam level", std::to_string(a.web.steam_level));
-        }
-        if (state.settings.info.show_owned_games && a.web.owned_games_count >= 0) {
-            info_row("Games owned", std::to_string(a.web.owned_games_count));
-            if (a.web.total_playtime_minutes > 0) {
-                char buf[32];
-                std::snprintf(buf, sizeof(buf), "%lld h",
-                              static_cast<long long>(a.web.total_playtime_minutes / 60));
-                info_row("Total playtime", buf);
-            }
-        }
-        if (state.settings.info.show_prime) {
-            info_row("Prime", a.cs2.prime_status ? "yes" : "no");
-        }
-        if (a.cs2.cs2_player_level >= 0) {
-            info_row("CS2 player level", std::to_string(a.cs2.cs2_player_level));
-        }
-        if (a.cs2.cs2_player_xp >= 0) {
-            info_row("CS2 XP", format_with_commas(a.cs2.cs2_player_xp));
-        }
-        if (a.web.created_unix > 0) {
-            info_row("Account created", format_date(a.web.created_unix));
-        }
-        // Report the OLDEST applicable freshness timestamp so the row tells the
-        // truth during the launch refresh window: the bulk Web API call updates
-        // web/bans within seconds, but the per-account GCPD scrape (which
-        // produces a.cs2) is staggered and can lag by minutes for large vaults.
-        // Including cs2 here pulls the display back to honest "Xh ago" until the
-        // scrape lands. Skipped when GCPD isn't applicable (disabled, or no
-        // session cookies) so the row doesn't get stuck at "never".
-        std::int64_t last_refresh = 0;
-        auto fold = [&](std::int64_t t) {
-            if (t <= 0) return;
-            last_refresh = (last_refresh == 0) ? t : std::min(last_refresh, t);
+            char buf[32];
+            if (wins >= 0) std::snprintf(buf, sizeof(buf), "Wins: %d", wins);
+            else           std::snprintf(buf, sizeof(buf), "Wins: ---");
+            const ImVec2 ws = ImGui::CalcTextSize(buf);
+            dl->AddText(ImVec2(origin.x + (card_w - ws.x) * 0.5F,
+                                badge_y + kBadgeH + kWinsGap),
+                        dim, buf);
         };
-        fold(a.web.last_refreshed_unix);
-        fold(a.bans.last_refreshed_unix);
-        const bool gcpd_applicable = state.settings.gcpd_enabled
-                                      && !a.session_id.empty()
-                                      && !a.steam_login_secure.empty();
-        if (gcpd_applicable) fold(a.cs2.last_refreshed_unix);
-        info_row("Last refreshed", format_relative(last_refresh));
 
-        ImGui::EndTable();
-    }
-    ImGui::PopStyleVar();
-
-    if (state.settings.info.show_cooldown && a.cs2.cooldown_expires_unix > 0) {
-        const auto now_s = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        if (a.cs2.cooldown_expires_unix > now_s) {
-            const auto remaining = a.cs2.cooldown_expires_unix - now_s;
-            ImGui::Spacing();
-            ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
-            const char* reason = a.cs2.cooldown_reason.empty()
-                ? "Cooldown active" : a.cs2.cooldown_reason.c_str();
-            if (remaining >= 86400) {
-                ImGui::Text("%s · %lldd left",
-                            reason, static_cast<long long>(remaining / 86400));
-            } else if (remaining >= 3600) {
-                ImGui::Text("%s · %lldh left",
-                            reason, static_cast<long long>(remaining / 3600));
-            } else {
-                ImGui::Text("%s · %lldm left",
-                            reason, static_cast<long long>(remaining / 60));
-            }
-            ImGui::PopStyleColor();
+        if (draw_premier) {
+            draw_card(premier_e, "PREMIER",
+                      a.cs2.premier_wins, a.cs2.premier_rating, true, premier_w);
+            if (draw_wingman) ImGui::SameLine(0.0F, kRankGap);
         }
+        if (draw_wingman) {
+            draw_card(wingman_e, "WINGMAN",
+                      a.cs2.wingman_wins, 0, false, wingman_w);
+        }
+    }
+
+    if (!chip_rows.empty()) {
+        ImGui::Spacing();
+        for (std::size_t r = 0; r < chip_rows.size(); ++r) {
+            const auto [start, end] = chip_rows[r];
+            float row_total = 0.0F;
+            for (std::size_t i = start; i < end; ++i) row_total += chips[i].width;
+            if (end > start + 1) {
+                row_total += kChipGap * static_cast<float>(end - start - 1);
+            }
+            center_h_lead(row_total);
+            for (std::size_t i = start; i < end; ++i) {
+                if (i > start) ImGui::SameLine(0.0F, kChipGap);
+                const auto& c = chips[i];
+                if (c.has_color) draw_stat_chip(c.label.c_str(), c.value.c_str(), c.color);
+                else             draw_stat_chip(c.label.c_str(), c.value.c_str());
+            }
+        }
+    }
+
+    if (has_meta_line) {
+        ImGui::Spacing();
+        const ImVec2 ts = ImGui::CalcTextSize(meta_line.c_str());
+        center_h_lead(ts.x);
+        ImGui::TextDisabled("%s", meta_line.c_str());
+    }
+
+    if (has_cooldown) {
+        ImGui::Spacing();
+        const ImVec2 ts = ImGui::CalcTextSize(cooldown_line.c_str());
+        center_h_lead(ts.x);
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
+        ImGui::TextUnformatted(cooldown_line.c_str());
+        ImGui::PopStyleColor();
     }
 
     if (!a.tag_ids.empty()) {

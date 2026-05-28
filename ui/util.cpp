@@ -3,6 +3,8 @@
 #include <windows.h>
 #include <shellapi.h>
 
+#include "ui/theme.hpp"
+
 namespace sam::ui {
 
 std::string to_utf8(const std::wstring& w) {
@@ -55,6 +57,30 @@ void end_styled_modal() {
     ImGui::PopStyleVar();
 }
 
+bool begin_styled_combo(const char* label, const char* preview_value, ImGuiComboFlags flags) {
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
+    const bool open = ImGui::BeginCombo(label, preview_value, flags);
+    if (!open) ImGui::PopStyleVar();
+    return open;
+}
+
+void end_styled_combo() {
+    ImGui::EndCombo();
+    ImGui::PopStyleVar();
+}
+
+bool begin_styled_popup(const char* str_id, ImGuiWindowFlags flags) {
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
+    const bool open = ImGui::BeginPopup(str_id, flags);
+    if (!open) ImGui::PopStyleVar();
+    return open;
+}
+
+void end_styled_popup() {
+    ImGui::EndPopup();
+    ImGui::PopStyleVar();
+}
+
 bool action_button(const char* label, const ImVec2& size) {
     // Uniform "medium" height across all screens. Slightly tighter horizontal
     // padding than ImGui's default; vertical padding is computed so the final
@@ -87,6 +113,38 @@ void draw_pill(const char* label, const ImVec4& fill, bool on, float width) {
     const float text_x = cursor.x + (box.x - sz.x) * 0.5F;
     dl->AddText(ImVec2(text_x, cursor.y + pad.y), fg_col, label);
     ImGui::Dummy(box);
+}
+
+namespace {
+
+void draw_stat_chip_impl(const char* label, const char* value, ImU32 value_col) {
+    const ImVec2 pad{8, 3};
+    const float  inner_gap = 5.0F;
+    const ImVec2 ls = ImGui::CalcTextSize(label);
+    const ImVec2 vs = ImGui::CalcTextSize(value);
+    const float  h  = (ls.y > vs.y ? ls.y : vs.y);
+    const ImVec2 box{ls.x + inner_gap + vs.x + pad.x * 2.0F, h + pad.y * 2.0F};
+    const ImVec2 cursor = ImGui::GetCursorScreenPos();
+
+    auto* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(cursor, ImVec2(cursor.x + box.x, cursor.y + box.y),
+                      IM_COL32(255, 255, 255, 14), 6.0F);
+
+    const ImU32 label_col = ImGui::GetColorU32(theme::dim_text());
+    dl->AddText(ImVec2(cursor.x + pad.x, cursor.y + pad.y), label_col, label);
+    dl->AddText(ImVec2(cursor.x + pad.x + ls.x + inner_gap, cursor.y + pad.y),
+                value_col, value);
+    ImGui::Dummy(box);
+}
+
+}  // namespace
+
+void draw_stat_chip(const char* label, const char* value) {
+    draw_stat_chip_impl(label, value, ImGui::GetColorU32(theme::text()));
+}
+
+void draw_stat_chip(const char* label, const char* value, const ImVec4& value_color) {
+    draw_stat_chip_impl(label, value, ImGui::ColorConvertFloat4ToU32(value_color));
 }
 
 }  // namespace sam::ui

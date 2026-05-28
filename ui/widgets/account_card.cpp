@@ -13,6 +13,7 @@
 #include "ui/fonts.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
+#include "ui/widgets/account_context_menu.hpp"
 #include "ui/widgets/avatar.hpp"
 #include "ui/widgets/ban_pills.hpp"
 #include "ui/widgets/rank_image.hpp"
@@ -406,6 +407,17 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
     if (action_button("Edit",    ImVec2(btn_w, 0))) action = CardAction::Edit;
     ImGui::SameLine();
     if (action_button("Remove",  ImVec2(btn_w, 0))) action = CardAction::Remove;
+
+    if (!state.selection_mode) {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
+        if (ImGui::BeginPopupContextWindow(
+                "##acc-ctx",
+                ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
+            draw_account_context_menu(state, a);
+            ImGui::EndPopup();
+        }
+        ImGui::PopStyleVar();
+    }
 
     ImGui::EndChild();
     ImGui::PopStyleVar(3);

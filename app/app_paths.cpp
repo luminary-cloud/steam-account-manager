@@ -21,6 +21,9 @@ std::filesystem::path notifications_path() {
 std::filesystem::path conf_audit_path() {
     return platform::data_dir() / "conf_audit.json";
 }
+std::filesystem::path cs2_video_template_path() {
+    return platform::data_dir() / "cs2_video_template.txt";
+}
 std::filesystem::path log_dir()       { return platform::log_dir(); }
 
 }  // namespace sam::app

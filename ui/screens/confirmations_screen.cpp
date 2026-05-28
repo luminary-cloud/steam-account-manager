@@ -1138,14 +1138,18 @@ void draw_confirmations(app::AppState& state) {
         ImGui::TextDisabled("Sort");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(160);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
         ImGui::Combo("##conf-sort", &g_conf_sort,
                      "Vault order\0Pending desc\0Persona A-Z\0");
+        ImGui::PopStyleVar();
         ImGui::SameLine();
         ImGui::TextDisabled("Type");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(160);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
         ImGui::Combo("##conf-type", &g_conf_type_filter,
                      "All\0Trade\0Market\0Account recovery\0Phone change\0Other\0");
+        ImGui::PopStyleVar();
     }
 
     auto type_matches_filter = [&](sda::ConfirmationType t) {

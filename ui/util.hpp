@@ -23,10 +23,31 @@ void hover_tooltip(const char* text);
 bool begin_styled_modal(const char* name, float width = 420.0F);
 void end_styled_modal();
 
+// Combo / popup helpers that push a small inner WindowPadding so the popup
+// items aren't flush against the popup border. The global theme sets
+// WindowPadding to (0, 0) so plain BeginCombo / BeginPopup popups clip their
+// first and last item against the border; these wrappers fix that.
+//
+// Pair begin_/end_ symmetrically; the wrapper only calls End* + Pop* when
+// Begin* returned true (same shape as begin_styled_modal/end_styled_modal).
+bool begin_styled_combo(const char* label, const char* preview_value,
+                        ImGuiComboFlags flags = 0);
+void end_styled_combo();
+
+bool begin_styled_popup(const char* str_id, ImGuiWindowFlags flags = 0);
+void end_styled_popup();
+
 // Draws a small rounded label "pill" used for ban indicators and similar
 // status chips. When `width` is 0 the pill auto-sizes to its label; when
 // positive the pill rect is forced to that width and the label is centered.
 void draw_pill(const char* label, const ImVec4& fill, bool on, float width = 0.0F);
+
+// Two-tone stat chip: dim label on the left, bright value on the right,
+// inside a soft rounded rect. Used for compact key/value stat display
+// (e.g. "Steam Lv 9", "XP 2,557"). The 3-arg variant colorizes the value
+// (useful for binary-state stats like Prime → success green when on).
+void draw_stat_chip(const char* label, const char* value);
+void draw_stat_chip(const char* label, const char* value, const ImVec4& value_color);
 
 // Uniform-styled action button used across all screens and cards. Drop-in
 // replacement for ImGui::Button / ImGui::SmallButton so every button looks

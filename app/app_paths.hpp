@@ -11,6 +11,7 @@ std::filesystem::path settings_path();
 std::filesystem::path master_pw_cache_path();
 std::filesystem::path notifications_path();
 std::filesystem::path conf_audit_path();
+std::filesystem::path cs2_video_template_path();
 std::filesystem::path log_dir();
 
 }  // namespace sam::app

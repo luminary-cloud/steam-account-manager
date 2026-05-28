@@ -184,6 +184,10 @@
     <ClCompile Include="core\steam_gcpd\gcpd_scraper.cpp" />
     <ClCompile Include="core\steam_gcpd\gcpd_parser.cpp" />
 
+    <ClCompile Include="core\profile\edit.cpp" />
+
+    <ClCompile Include="core\cs2_config\video_config.cpp" />
+
     <ClCompile Include="core\account_store\store.cpp" />
     <ClCompile Include="core\account_store\filter.cpp" />
     <ClCompile Include="core\account_store\ban_diff.cpp" />
@@ -237,6 +241,7 @@
 
     <ClCompile Include="ui\widgets\rail_nav.cpp" />
     <ClCompile Include="ui\widgets\account_card.cpp" />
+    <ClCompile Include="ui\widgets\account_context_menu.cpp" />
     <ClCompile Include="ui\widgets\account_panel.cpp" />
     <ClCompile Include="ui\widgets\avatar.cpp" />
     <ClCompile Include="ui\widgets\tag_chip.cpp" />
@@ -289,6 +294,10 @@
 
     <ClInclude Include="core\steam_gcpd\gcpd_scraper.hpp" />
     <ClInclude Include="core\steam_gcpd\gcpd_parser.hpp" />
+
+    <ClInclude Include="core\profile\edit.hpp" />
+
+    <ClInclude Include="core\cs2_config\video_config.hpp" />
 
     <ClInclude Include="core\account_store\account.hpp" />
     <ClInclude Include="core\account_store\group.hpp" />
@@ -348,6 +357,7 @@
 
     <ClInclude Include="ui\widgets\rail_nav.hpp" />
     <ClInclude Include="ui\widgets\account_card.hpp" />
+    <ClInclude Include="ui\widgets\account_context_menu.hpp" />
     <ClInclude Include="ui\widgets\account_panel.hpp" />
     <ClInclude Include="ui\widgets\avatar.hpp" />
     <ClInclude Include="ui\widgets\tag_chip.hpp" />

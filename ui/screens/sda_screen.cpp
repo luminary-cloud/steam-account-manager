@@ -49,7 +49,7 @@ void draw_account_picker(app::AppState& state) {
 
     const std::string filter_lower = lowercase(g_picker_filter);
 
-    if (ImGui::BeginCombo("##picker", preview.c_str())) {
+    if (begin_styled_combo("##picker", preview.c_str())) {
         for (auto& a : state.vault.accounts) {
             if (!filter_lower.empty()) {
                 const std::string hay = lowercase(account_label(state, a));
@@ -66,7 +66,7 @@ void draw_account_picker(app::AppState& state) {
                 state.selected_account_id = a.id;
             }
         }
-        ImGui::EndCombo();
+        end_styled_combo();
     }
 }
 

@@ -1,13 +1,21 @@
 #include "ui/screens/accounts_screen.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cstdio>
+#include <filesystem>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include <imgui.h>
 
+#include "app/app_paths.hpp"
+#include "app/job_pump.hpp"
 #include "core/account_store/filter.hpp"
 #include "core/launch/steam_launcher.hpp"
+#include "core/profile/edit.hpp"
 #include "core/sda/totp.hpp"
 #include "platform/clipboard.hpp"
 #include "ui/screens/accounts_list_view.hpp"
@@ -35,6 +43,11 @@ void handle_card_action(app::AppState& state,
             if (result.status != sam::launch::LaunchStatus::Ok) {
                 state.launch_error = result.message;
                 ImGui::OpenPopup("Launch failed");
+                break;
+            }
+            if (state.settings.cs2_video.auto_apply_on_login &&
+                std::filesystem::exists(app::cs2_video_template_path())) {
+                state.apply_cs2_video_config(a);
             }
             break;
         }
@@ -91,6 +104,135 @@ void draw_grid_body(app::AppState& state,
         col = (col + 1) % columns;
     }
     ImGui::Unindent(kGridInset);
+}
+
+// "Change username" modal. The account context menu sets
+// state.persona_change_requested + selected_account_id; we own the popup here so
+// it lives at a stable ImGui ID scope (the per-card context menu is nested under
+// PushID(account) and can't host the modal itself). The rename runs on a worker
+// thread; the result is reported in-modal.
+void draw_change_username_modal(app::AppState& state) {
+    static std::array<char, 128> name_buf{};
+    static bool busy = false;
+    static std::string status;
+    static bool status_error = false;
+
+    if (state.persona_change_requested) {
+        state.persona_change_requested = false;
+        busy = false;
+        status.clear();
+        name_buf.fill('\0');
+        if (const auto* acc = state.find_account(state.selected_account_id)) {
+            std::snprintf(name_buf.data(), name_buf.size(), "%s",
+                          acc->web.persona_name.c_str());
+        }
+        ImGui::OpenPopup("Change username");
+    }
+
+    if (!begin_styled_modal("Change username")) return;
+
+    const core::Account* acc = state.find_account(state.selected_account_id);
+    if (acc == nullptr) {
+        ImGui::TextDisabled("Account no longer exists.");
+        if (action_button("Close", ImVec2(80, 0))) ImGui::CloseCurrentPopup();
+        end_styled_modal();
+        return;
+    }
+
+    ImGui::TextUnformatted("New Steam display name");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::BeginDisabled(busy);
+    ImGui::InputText("##new-persona", name_buf.data(), name_buf.size());
+    ImGui::EndDisabled();
+
+    if (!status.empty()) {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text,
+                              status_error ? theme::danger() : theme::success());
+        ImGui::TextWrapped("%s", status.c_str());
+        ImGui::PopStyleColor();
+    } else if (busy) {
+        ImGui::Spacing();
+        ImGui::TextDisabled("Applying...");
+    }
+
+    const std::int64_t cooldown = state.persona_change_cooldown_seconds(acc->id);
+    if (cooldown > 0) {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
+        if (cooldown >= 60) {
+            ImGui::Text("Rate limited - try again in %lldm %02llds",
+                        static_cast<long long>(cooldown / 60),
+                        static_cast<long long>(cooldown % 60));
+        } else {
+            ImGui::Text("Rate limited - try again in %llds",
+                        static_cast<long long>(cooldown));
+        }
+        ImGui::PopStyleColor();
+    }
+
+    ImGui::Spacing();
+    const bool name_ok = name_buf[0] != '\0';
+    ImGui::BeginDisabled(busy || !name_ok || cooldown > 0);
+    if (action_button("Apply", ImVec2(100, 0))) {
+        busy = true;
+        status.clear();
+        const std::string new_name = name_buf.data();
+        core::Account snapshot = *acc;
+        app::job_pump::submit(
+            [&state, snapshot, new_name]() mutable {
+                auto res = sam::profile::change_persona_name(snapshot, new_name);
+                if (!res.ok && res.needs_relogin) {
+                    std::string err;
+                    if (state.auto_relogin(snapshot.id, snapshot, &err)) {
+                        res = sam::profile::change_persona_name(snapshot, new_name);
+                    }
+                }
+                state.post_ui_callback(
+                    [&state, snapshot = std::move(snapshot),
+                     new_name = std::move(new_name), res]() mutable {
+                        const std::string shown =
+                            res.applied_name.empty() ? new_name : res.applied_name;
+                        if (auto* a = state.find_account(snapshot.id)) {
+                            a->refresh_token        = snapshot.refresh_token;
+                            a->access_token         = snapshot.access_token;
+                            a->access_token_expires = snapshot.access_token_expires;
+                            a->steam_login_secure   = snapshot.steam_login_secure;
+                            a->session_id           = snapshot.session_id;
+                            if (res.ok) {
+                                a->web.persona_name = shown;
+                                state.last_persona_change_unix[snapshot.id] =
+                                    sam::ui::now_seconds();
+                            }
+                            state.vault_dirty = true;
+                            state.save_vault_if_dirty();
+                        }
+                        // Only surface the result if this account's modal is
+                        // still the one showing, so a cancel+reopen on another
+                        // account doesn't inherit a stale message.
+                        if (state.selected_account_id != snapshot.id) return;
+                        busy = false;
+                        if (res.ok) {
+                            status = "Display name changed to \"" + shown + "\".";
+                            status_error = false;
+                        } else {
+                            status = res.error.empty()
+                                ? std::string("Failed to change the name.")
+                                : res.error;
+                            status_error = true;
+                        }
+                    });
+            });
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (action_button(status.empty() ? "Cancel" : "Close", ImVec2(100, 0))) {
+        name_buf.fill('\0');
+        status.clear();
+        busy = false;
+        ImGui::CloseCurrentPopup();
+    }
+    end_styled_modal();
 }
 
 }  // namespace
@@ -168,9 +310,11 @@ void draw_accounts(app::AppState& state) {
             "Created\0"
             "Premier rating\0"
             "Steam level\0";
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
         if (ImGui::Combo("##sort", &state.settings.accounts_sort, sort_labels)) {
             state.save_settings();
         }
+        ImGui::PopStyleVar();
         ImGui::SameLine();
         ImGui::TextDisabled("|");
         ImGui::SameLine();
@@ -316,6 +460,8 @@ void draw_accounts(app::AppState& state) {
         }
         end_styled_modal();
     }
+
+    draw_change_username_modal(state);
 
     widgets::draw_export_bundle_modal(state, export_state);
 }

@@ -12,7 +12,7 @@ On first launch Windows SmartScreen may show "Windows protected your PC" because
 
 Five things, picked from the left-nav.
 
-**Accounts.** Every account in the vault, in one of two layouts (toggle in Settings → Appearance): a responsive card grid, or a list view with user-created groups in a left rail and the selected account's details and actions in a right panel. Groups have a name plus a colour, accounts get assigned by dragging them onto a group header, and an "Ungrouped" bucket catches the rest. Add an account manually, by `.maFile` import (the Steam Guard mobile authenticator backup format), by `info.dat` import (a legacy XML-in-Rijndael-256 export), or by walking the full mobile login flow (RSA-encrypted password, BeginAuthSession, polling). Per-account password, freeform notes, tags with custom colours, trust labels (green / yellow / red), and trade-hold timers. Search, filter, multi-select. Privacy mode hides every login as `<hidden>` until you click to reveal one. Drag-and-drop a `.maFile`, an `info.dat`, or a directory of either onto the window and the add-account screen pops open with the queue pre-filled.
+**Accounts.** Every account in the vault, in one of two layouts (toggle in Settings → Appearance): a responsive card grid, or a list view with user-created groups in a left rail and the selected account's details and actions in a right panel. Groups have a name plus a colour, accounts get assigned by dragging them onto a group header, and an "Ungrouped" bucket catches the rest. Add an account manually, by `.maFile` import (the Steam Guard mobile authenticator backup format), by `info.dat` import (a legacy XML-in-Rijndael-256 export), or by walking the full mobile login flow (RSA-encrypted password, BeginAuthSession, polling). Per-account password, freeform notes, tags with custom colours, trust labels (green / yellow / red), and trade-hold timers. Search, filter, multi-select. Privacy mode hides every login as `<hidden>` until you click to reveal one. Drag-and-drop a `.maFile`, an `info.dat`, or a directory of either onto the window and the add-account screen pops open with the queue pre-filled. Right-click any account (card or list row) for a quick-action menu: copy the login, password, current 2FA code, SteamID64, or profile URL; apply the CS2 video config; or change the account's Steam display name. The rename happens in place through Steam's community `ajaxsetpersonaname` endpoint and honours the 5-minute per-account cooldown Steam enforces on rapid persona changes, shown as a countdown in the dialog.
 
 **Authenticator.** Generate Steam Guard codes for any imported authenticator. Add Steam Guard from inside the app via the mobile auth flow (phone status check, AddAuthenticator, SMS finalize). Remove Steam Guard using the saved revocation code; scheme 1 reverts to email-based Steam Guard, scheme 2 strips Steam Guard entirely (15-day market hold either way). Optional configurable global hotkey copies the current selected account's code to the clipboard without focusing the app, with auto-clear; a preview of the next code is shown in the panel so you don't lose a half-typed code as the window rolls over.
 
@@ -20,13 +20,13 @@ Five things, picked from the left-nav.
 
 **Account review.** VAC / game / community / trade ban indicators. Steam level, persona, avatar, profile country, owned games count. CS2 Premier rating, Wingman rank, account level, Prime status, current cooldown, VAC-Live indicator (the CS2 fields come from the authenticated `/gcpd/730` page on steamcommunity.com). The ban / level / owned-games fields use the public Steam Web API and need a key pasted into Settings (free, get one at `steamcommunity.com/dev/apikey`); the key is stored encrypted with the vault. Every indicator is individually toggleable in Settings. New bans, cooldown changes, and VAC-Live flips are detected between refreshes and surfaced as a badge on the account card and a toast in the corner; the events are stored in a local notification log with configurable retention so you can scroll back through what changed and when. Per-event-type toggles, coalescing threshold, and toast duration all live in Settings.
 
-**Launch.** One-click launch into any saved account through the standard registry flow (`HKCU\Software\Valve\Steam\AutoLoginUser` + `RememberPassword`, restart `steam.exe`, flip the matching `loginusers.vdf` entry so Steam actually picks it). Best-effort auto-typing of the Steam Guard code into the freshly-opened Steam login popup via Windows UI Automation; falls back to placing the code on the clipboard with auto-clear after a configurable timeout.
+**Launch.** One-click launch into any saved account through the standard registry flow (`HKCU\Software\Valve\Steam\AutoLoginUser` + `RememberPassword`, restart `steam.exe`, flip the matching `loginusers.vdf` entry so Steam actually picks it). Best-effort auto-typing of the Steam Guard code into the freshly-opened Steam login popup via Windows UI Automation; falls back to placing the code on the clipboard with auto-clear after a configurable timeout. Optional per-launch CS2 video config: pick a `video.txt` in Settings and, with *Apply video config on login* enabled, launching an account copies it into that account's CS2 config folder (`<Steam>\userdata\<id>\730\local\cfg\cs2_video.txt`), backing up any existing file with a UTC timestamp first. The same template can be applied on demand from the account's right-click menu.
 
 **Export / import.** Encrypted bundle round-trip: a passphrase-protected `.sambundle` you can carry between machines (passphrase distinct from your master password). Import shows a merge preview first - which logins would be added, which would be skipped because the same account is already in the vault - and only writes after you confirm. Plain combo export (`login:password` text) is gated behind a typed confirmation phrase, in case you really do need to dump credentials in cleartext.
 
 ## What it doesn't do
 
-- No telemetry. The only network calls this app makes are the ones you trigger: account refresh, login, confirmations, GCPD scrape.
+- No telemetry. The only network calls this app makes are the ones you trigger: account refresh, login, confirmations, GCPD scrape, display-name change.
 - No password recovery, no escrow, no support email. Lose the master password, lose the vault. There is no backdoor.
 - No multi-platform. Windows x64 only.
 - No code signing. SmartScreen will warn on first run.
@@ -90,6 +90,7 @@ core/
   sda/           TOTP, confirmations, maFile import, info.dat import, add and remove Steam Guard
   steam_api/     Steam Web API (player summaries, bans, level, owned games, vanity resolution)
   steam_login/   mobile auth flow (RSA, BeginAuthSession, poll, finalizelogin, settoken)
+  profile/       Steam display-name (persona) change via the community endpoint
   steam_gcpd/    GCPD page scraper and parser for CS2 ranks / cooldowns
   steam_local/   loginusers.vdf parsing and rewriting
   steam_auth/    generated protobuf for IAuthenticationService
@@ -97,10 +98,11 @@ core/
   crypto/        AES-GCM, AES-CBC, HMAC, PBKDF2, base64, Rijndael-256, RSA, SecureString
   http/          WinHTTP wrapper, URL helpers
   launch/        steam.exe relaunch, UI-Automation login driver, code clipboard with auto-clear
+  cs2_config/    CS2 video.txt deploy into the per-account userdata cfg folder
 platform/        Win32 wrappers: paths, registry, process, clipboard, DPAPI, DPI, file dialog, UIA
 ui/
   screens/       one file per screen (unlock, accounts, add_account, sda, confirmations, settings)
-  widgets/       reusable composites (account_card, rank_image, ban_pills, tag_chip, rail_nav, ...)
+  widgets/       reusable composites (account_card, account_context_menu, rank_image, ban_pills, tag_chip, rail_nav, ...)
 third_party/     fetched by scripts/init_third_party.ps1
 scripts/         proto codegen, third-party fetch
 assets/          app icon and CS2 rank images, compiled into the .exe via app.rc

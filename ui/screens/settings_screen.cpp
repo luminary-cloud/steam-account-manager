@@ -15,6 +15,7 @@
 #include "app/app_paths.hpp"
 #include "core/log.hpp"
 #include "platform/dpapi.hpp"
+#include "platform/file_dialog.hpp"
 #include "platform/fs.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
@@ -338,6 +339,55 @@ void draw_settings(app::AppState& state) {
                   "vault opens automatically next launch. Anyone signed in as you on this "
                   "machine can open the vault without typing the password. Disabling this "
                   "option deletes the cached password.");
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("CS2 video config");
+    ImGui::Checkbox("Apply video config on login",
+                    &state.settings.cs2_video.auto_apply_on_login);
+    hover_tooltip("When you press Login on an account, copy the stored cs2_video.txt into that "
+                  "account's CS2 config folder (userdata/<id>/730/local/cfg/cs2_video.txt). Any "
+                  "existing file is backed up first. Requires a template chosen below.");
+    {
+        ImGui::TextUnformatted("Template:");
+        ImGui::SameLine();
+        if (state.settings.cs2_video.source_label.empty()) {
+            ImGui::TextDisabled("none selected");
+        } else {
+            ImGui::TextDisabled("%s", state.settings.cs2_video.source_label.c_str());
+        }
+        if (action_button("Choose video.txt...", ImVec2(160, 0))) {
+            platform::file_dialog::Options opts;
+            opts.parent = state.main_hwnd;
+            opts.title = L"Select CS2 video.txt";
+            opts.filters = {{L"Video config (*.txt)", L"*.txt"},
+                            {L"All files (*.*)", L"*.*"}};
+            const auto res = platform::file_dialog::open_file(opts);
+            if (res.ok) {
+                // Keep our own copy so the imported file survives the original
+                // being moved or deleted.
+                std::error_code ec;
+                std::filesystem::copy_file(res.path, app::cs2_video_template_path(),
+                                           std::filesystem::copy_options::overwrite_existing, ec);
+                if (ec) {
+                    SAM_LOG_ERROR("cs2 video template import failed: {}", ec.message());
+                } else {
+                    state.settings.cs2_video.source_label = res.path.string();
+                    state.save_settings();
+                }
+            }
+        }
+        if (!state.settings.cs2_video.source_label.empty()) {
+            ImGui::SameLine();
+            if (action_button("Clear", ImVec2(80, 0))) {
+                std::error_code ec;
+                std::filesystem::remove(app::cs2_video_template_path(), ec);
+                state.settings.cs2_video.source_label.clear();
+                state.save_settings();
+            }
+        }
+    }
+    hover_tooltip("The chosen file is copied to the app data folder and used as the single "
+                  "default for every account.");
 
     ImGui::Spacing();
     if (action_button("Save settings", ImVec2(160, 0))) {

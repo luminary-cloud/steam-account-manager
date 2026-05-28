@@ -10,6 +10,7 @@
 #include "app/app_paths.hpp"
 #include "app/job_pump.hpp"
 #include "core/account_store/ban_diff.hpp"
+#include "core/cs2_config/video_config.hpp"
 #include "core/account_store/store.hpp"
 #include "core/crypto/rng.hpp"
 #include "core/log.hpp"
@@ -32,6 +33,11 @@ constexpr std::chrono::milliseconds kSaveDebounce{250};
 constexpr std::int64_t kMinAccountRefreshSeconds = 30;
 constexpr std::int64_t kMinBatchRefreshSeconds = 120;
 constexpr std::int64_t kMinGcpdRefreshSeconds = 90;
+
+// Per-account cooldown between display-name changes. Steam can flag accounts
+// for rapid persona renames, so a successful change locks the action out for
+// this long.
+constexpr std::int64_t kPersonaChangeCooldownSeconds = 300;
 
 bool event_enabled(const Settings::NotificationToggles& t, core::BanEventKind k) {
     using K = core::BanEventKind;
@@ -219,6 +225,16 @@ std::int64_t AppState::refresh_cooldown_seconds(const std::string& id) const {
     const auto elapsed = now - it->second;
     if (elapsed >= kMinAccountRefreshSeconds) return 0;
     return kMinAccountRefreshSeconds - elapsed;
+}
+
+std::int64_t AppState::persona_change_cooldown_seconds(const std::string& id) const {
+    auto it = last_persona_change_unix.find(id);
+    if (it == last_persona_change_unix.end()) return 0;
+    const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    const auto elapsed = now - it->second;
+    if (elapsed >= kPersonaChangeCooldownSeconds) return 0;
+    return kPersonaChangeCooldownSeconds - elapsed;
 }
 
 void AppState::refresh_account_data() {
@@ -928,6 +944,10 @@ void AppState::save_settings() {
     qf["only_cooldown"] = settings.quick_filters.only_cooldown;
     qf["only_prime"]    = settings.quick_filters.only_prime;
 
+    auto& vj = j["cs2_video"];
+    vj["auto_apply_on_login"] = settings.cs2_video.auto_apply_on_login;
+    vj["source_label"]        = settings.cs2_video.source_label;
+
     auto path = settings_path();
     std::filesystem::create_directories(path.parent_path());
     std::ofstream out(path);
@@ -1073,6 +1093,38 @@ void AppState::load_settings() {
         get_q("only_banned",   settings.quick_filters.only_banned);
         get_q("only_cooldown", settings.quick_filters.only_cooldown);
         get_q("only_prime",    settings.quick_filters.only_prime);
+    }
+
+    if (j.contains("cs2_video")) {
+        auto& vj = j["cs2_video"];
+        auto get_v = [&](const char* key, auto& dst) {
+            if (vj.contains(key)) {
+                dst = vj[key].get<std::remove_reference_t<decltype(dst)>>();
+            }
+        };
+        get_v("auto_apply_on_login", settings.cs2_video.auto_apply_on_login);
+        get_v("source_label",        settings.cs2_video.source_label);
+    }
+}
+
+void AppState::apply_cs2_video_config(const core::Account& a) {
+    const auto result =
+        cs2_config::deploy_video_config(a.steam_id_64, cs2_video_template_path());
+
+    const auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+
+    ui::widgets::ToastItem t;
+    t.id = "cs2video-" + a.id + "-" + std::to_string(now_unix);
+    t.message = result.ok ? "CS2 video config applied"
+                          : ("CS2 video config: " + result.message);
+    t.account_id = a.id;
+    t.is_warning = !result.ok;
+    t.expires_at_unix = now_unix + settings.notifications.toast_duration_seconds;
+    toasts.push(std::move(t));
+
+    if (!result.ok) {
+        SAM_LOG_WARN("cs2 video config: {} (login={})", result.message, a.login);
     }
 }
 
