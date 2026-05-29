@@ -1,7 +1,7 @@
 #pragma once
 
 #define SAM_VERSION_MAJOR 1
-#define SAM_VERSION_MINOR 1
+#define SAM_VERSION_MINOR 2
 #define SAM_VERSION_PATCH 0
 
 #ifdef __cplusplus
@@ -14,7 +14,7 @@ inline constexpr int kVersionMajor = SAM_VERSION_MAJOR;
 inline constexpr int kVersionMinor = SAM_VERSION_MINOR;
 inline constexpr int kVersionPatch = SAM_VERSION_PATCH;
 
-inline constexpr std::string_view kVersion = "1.1.0";
+inline constexpr std::string_view kVersion = "1.2.0";
 inline constexpr std::string_view kAppName = "Steam Account Manager";
 inline constexpr std::string_view kRepoUrl = "https://github.com/luminary-cloud/steam-account-manager";
 
