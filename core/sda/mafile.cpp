@@ -36,18 +36,30 @@ std::string read_text(const std::filesystem::path& path) {
     return ss.str();
 }
 
+// Some maFile exporters write numeric fields as JSON strings (e.g.
+// "server_time": "1774469674"), so a plain j.value<int>() throws type_error.302.
+std::int64_t parse_json_i64(const json& v, std::int64_t fallback) {
+    if (v.is_number_integer())  return v.get<std::int64_t>();
+    if (v.is_number_unsigned()) return static_cast<std::int64_t>(v.get<std::uint64_t>());
+    if (v.is_number_float())    return static_cast<std::int64_t>(v.get<double>());
+    if (v.is_string()) {
+        try { return std::stoll(v.get<std::string>()); } catch (...) { return fallback; }
+    }
+    return fallback;
+}
+
 core::SteamGuardAccount from_json_obj(const json& j) {
     core::SteamGuardAccount s;
     s.shared_secret   = j.value("shared_secret", "");
     s.serial_number   = j.value("serial_number", "");
     s.revocation_code = j.value("revocation_code", "");
     s.uri             = j.value("uri", "");
-    s.server_time     = j.value("server_time", 0);
+    s.server_time     = j.contains("server_time") ? parse_json_i64(j["server_time"], 0) : 0;
     s.account_name    = j.value("account_name", "");
     s.token_gid       = j.value("token_gid", "");
     s.identity_secret = j.value("identity_secret", "");
     s.secret_1        = j.value("secret_1", "");
-    s.status          = j.value("status", 1);
+    s.status          = j.contains("status") ? static_cast<int>(parse_json_i64(j["status"], 1)) : 1;
     s.device_id       = j.value("device_id", "");
     s.fully_enrolled  = j.value("fully_enrolled", true);
     return s;

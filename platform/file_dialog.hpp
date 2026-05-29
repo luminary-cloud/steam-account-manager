@@ -23,11 +23,18 @@ struct Options {
     // Extension automatically appended by save_file when the user doesn't type
     // one. Ignored by open_file.
     std::wstring default_extension;
+    // open_file only. When true the user can pick several files and they all come
+    // back in Result::paths. Ignored by save_file / pick_folder.
+    bool allow_multiselect = false;
 };
 
 struct Result {
     bool ok = false;
+    // First selected path. Always set when ok, so single-select callers can keep
+    // reading path regardless of how many files were chosen.
     std::filesystem::path path;
+    // Every selected path. Single-select dialogs return one entry here.
+    std::vector<std::filesystem::path> paths;
 };
 
 // Modal "Open file" dialog. Blocks the calling thread until the user accepts

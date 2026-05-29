@@ -85,13 +85,16 @@ void ToastStack::render(const std::function<void(const std::string&)>& on_click)
             ImGuiWindowFlags_NoNav;
         if (ImGui::Begin(win_name.c_str(), nullptr, flags)) {
             const ImVec2 region = ImGui::GetContentRegionAvail();
-            ImGui::PushTextWrapPos(region.x - 22.0F);
+            const float close_w =
+                ImGui::CalcTextSize("x").x + ImGui::GetStyle().FramePadding.x * 2.0F;
+            ImGui::PushTextWrapPos(region.x - close_w - 6.0F);
             ImGui::TextUnformatted(it->message.c_str());
             ImGui::PopTextWrapPos();
 
             const ImVec2 win_pos = ImGui::GetWindowPos();
             const ImVec2 win_size = ImGui::GetWindowSize();
-            const ImVec2 x_pos(win_pos.x + win_size.x - 18.0F, win_pos.y + 6.0F);
+            const ImVec2 x_pos(win_pos.x + win_size.x - kToastPad - close_w,
+                               win_pos.y + kToastPad);
             ImGui::SetCursorScreenPos(x_pos);
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
             if (ImGui::SmallButton("x")) {

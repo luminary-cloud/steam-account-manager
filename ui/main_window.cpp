@@ -1,7 +1,11 @@
 #include "ui/main_window.hpp"
 
+#include <mutex>
+#include <string>
+
 #include <imgui.h>
 
+#include "core/version.hpp"
 #include "ui/screens/accounts_screen.hpp"
 #include "ui/screens/add_account_screen.hpp"
 #include "ui/screens/confirmations_screen.hpp"
@@ -9,6 +13,7 @@
 #include "ui/screens/settings_screen.hpp"
 #include "ui/screens/unlock_screen.hpp"
 #include "ui/theme.hpp"
+#include "ui/util.hpp"
 #include "ui/widgets/rail_nav.hpp"
 
 namespace sam::ui {
@@ -94,6 +99,47 @@ bool draw(app::AppState& state) {
         state.selected_account_id = account_id;
         state.current_screen = app::Screen::Accounts;
     });
+
+    // Surface the background release check once the vault is unlocked, so the
+    // modal never steals focus from the Unlock-screen password field.
+    if (state.unlocked) {
+        {
+            std::lock_guard lk(state.update_mutex);
+            if (state.update_result && !state.update_modal_dismissed_this_session &&
+                state.update_result->latest_tag != state.settings.version_check_skip_until) {
+                ImGui::OpenPopup("Update available");
+            }
+        }
+        if (begin_styled_modal("Update available", 500.0F)) {
+            std::string latest;
+            {
+                std::lock_guard lk(state.update_mutex);
+                if (state.update_result) latest = state.update_result->latest_tag;
+            }
+            ImGui::TextWrapped("Steam Account Manager %s is available. You're on v%s.",
+                               latest.c_str(), std::string(sam::kVersion).c_str());
+            ImGui::Spacing();
+            const ImVec2 btn{146, 28};
+            if (ImGui::Button("Open releases", btn)) {
+                open_url(std::string(sam::kRepoUrl) + "/releases");
+                state.update_modal_dismissed_this_session = true;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Skip this version", btn)) {
+                state.settings.version_check_skip_until = latest;
+                state.save_settings();
+                state.update_modal_dismissed_this_session = true;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Remind me later", btn)) {
+                state.update_modal_dismissed_this_session = true;
+                ImGui::CloseCurrentPopup();
+            }
+            end_styled_modal();
+        }
+    }
 
     return keep_running;
 }

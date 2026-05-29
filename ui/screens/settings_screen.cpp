@@ -17,6 +17,7 @@
 #include "platform/dpapi.hpp"
 #include "platform/file_dialog.hpp"
 #include "platform/fs.hpp"
+#include "platform/startup_task.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
 
@@ -25,6 +26,24 @@ namespace sam::ui::screens {
 void draw_settings(app::AppState& state) {
     ImGui::TextUnformatted("Settings");
     ImGui::Spacing();
+
+    // Writes the DPAPI-wrapped master password so the next launch (or the
+    // headless logon run) can open the vault without a prompt. Returns false if
+    // the password isn't available or the write fails.
+    auto write_master_pw_cache = [&state]() -> bool {
+        try {
+            std::span<const std::uint8_t> pw_bytes{
+                reinterpret_cast<const std::uint8_t*>(state.master_password.data()),
+                state.master_password.size()};
+            auto wrapped = sam::platform::dpapi::protect(pw_bytes);
+            sam::platform::atomic_write_file(app::master_pw_cache_path(), wrapped);
+            SAM_LOG_INFO("auto-unlock: DPAPI cache written");
+            return true;
+        } catch (const std::exception& ex) {
+            SAM_LOG_ERROR("auto-unlock: cache write failed: {}", ex.what());
+            return false;
+        }
+    };
 
     ImGui::SeparatorText("General");
     ImGui::SetNextItemWidth(200);
@@ -35,6 +54,9 @@ void draw_settings(app::AppState& state) {
     ImGui::SliderInt("Auto-lock (minutes)", &state.settings.auto_lock_minutes, 0, 240);
     hover_tooltip("Re-lock the vault after this many idle minutes. 0 disables auto-lock for the "
                   "current session.");
+    ImGui::Checkbox("Check for updates on launch", &state.settings.check_updates_on_launch);
+    hover_tooltip("On launch, checks GitHub for a newer release and shows an \"Update available\" "
+                  "prompt if one exists. No account data is sent.");
 
     ImGui::Spacing();
     ImGui::SeparatorText("Appearance");
@@ -50,6 +72,9 @@ void draw_settings(app::AppState& state) {
                       "List: two-pane layout with user-created groups on the left "
                       "and the selected account on the right.");
     }
+    ImGui::Checkbox("Hide account notes", &state.settings.hide_notes);
+    hover_tooltip("Hides account notes in grid and list views, including the selected "
+                  "account's detail panel. Notes stay editable on the add/edit screen.");
 
     ImGui::Spacing();
     ImGui::SeparatorText("Privacy");
@@ -106,19 +131,56 @@ void draw_settings(app::AppState& state) {
                   "valid steamLoginSecure cookie (use the Full Login wizard in Add Account).");
 
     ImGui::Spacing();
+    ImGui::SeparatorText("Startup");
+    {
+        const bool prev = state.settings.start_with_windows;
+        if (ImGui::Checkbox("Start with Windows (refresh in the background at logon)",
+                            &state.settings.start_with_windows)) {
+            if (state.settings.start_with_windows && !prev) {
+                // Background refresh needs the vault to auto-unlock, so enable
+                // refresh-on-launch and the DPAPI password cache alongside it.
+                state.settings.refresh_on_launch = true;
+                if (write_master_pw_cache()) state.settings.remember_master_password = true;
+                if (!state.settings.remember_master_password ||
+                    !sam::platform::startup_task::set_run_at_logon(true)) {
+                    SAM_LOG_ERROR("startup: failed to enable start-with-Windows");
+                    state.settings.start_with_windows = false;
+                }
+            } else if (!state.settings.start_with_windows && prev) {
+                sam::platform::startup_task::set_run_at_logon(false);
+            }
+            state.save_settings();
+        }
+    }
+    hover_tooltip("Registers a Scheduled Task that runs this app hidden at logon with admin "
+                  "rights, refreshes every account, shows a Windows notification for any new ban "
+                  "or cooldown, then exits. Also turns on Refresh on launch and the master-"
+                  "password cache.");
+    ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
+    ImGui::TextWrapped("Caches your master password via Windows DPAPI so the background run can "
+                       "open the vault unattended. Anyone signed in as you on this PC can then "
+                       "open the vault without the password.");
+    ImGui::PopStyleColor();
+
+    ImGui::Spacing();
     ImGui::SeparatorText("Notifications");
     ImGui::Checkbox("Detect bans and cooldown changes", &state.settings.notifications.enabled);
     hover_tooltip("When on, each refresh compares the new ban / cooldown state against the "
                   "previous snapshot and records a notification if anything changed. The "
                   "first refresh after adding an account just records the snapshot.");
     ImGui::BeginDisabled(!state.settings.notifications.enabled);
-    if (ImGui::BeginTable("##notif-surface", 2, ImGuiTableFlags_SizingStretchSame)) {
+    if (ImGui::BeginTable("##notif-surface", 3, ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableNextColumn();
         ImGui::Checkbox("Show badge on cards / rows",
                         &state.settings.notifications.surface_in_card);
         ImGui::TableNextColumn();
         ImGui::Checkbox("Show in-app toasts",
                         &state.settings.notifications.surface_toast);
+        ImGui::TableNextColumn();
+        ImGui::Checkbox("Show Windows notifications",
+                        &state.settings.notifications.surface_windows_notification);
+        hover_tooltip("Out-of-app tray balloon for new bans / cooldowns. Suppressed while this "
+                      "window is focused; mainly for the background logon refresh.");
         ImGui::EndTable();
     }
     ImGui::Spacing();
@@ -252,6 +314,10 @@ void draw_settings(app::AppState& state) {
                     &state.settings.list_view.show_unread_badge);
     hover_tooltip("Adds a red exclamation mark to the right of any list row that has "
                   "un-acknowledged ban or cooldown notifications.");
+    ImGui::Checkbox("Hide account name in list",
+                    &state.settings.list_view.hide_account_name);
+    hover_tooltip("Hides the Steam login/account name from account-list rows. The persona name "
+                  "still shows, and the selected account's detail panel is unaffected.");
 
     ImGui::Spacing();
     ImGui::SeparatorText("Confirmations");
@@ -312,18 +378,9 @@ void draw_settings(app::AppState& state) {
         if (ImGui::Checkbox("Skip master-password prompt on launch (DPAPI)",
                             &state.settings.remember_master_password)) {
             if (state.settings.remember_master_password && !prev) {
-                // Just enabled: try to write the cache now using the unlocked
-                // master password. If we can't, revert the toggle and surface
-                // the error in the log.
-                try {
-                    std::span<const std::uint8_t> pw_bytes{
-                        reinterpret_cast<const std::uint8_t*>(state.master_password.data()),
-                        state.master_password.size()};
-                    auto wrapped = sam::platform::dpapi::protect(pw_bytes);
-                    sam::platform::atomic_write_file(app::master_pw_cache_path(), wrapped);
-                    SAM_LOG_INFO("auto-unlock: DPAPI cache written");
-                } catch (const std::exception& ex) {
-                    SAM_LOG_ERROR("auto-unlock: cache write failed: {}", ex.what());
+                // Just enabled: write the cache now using the unlocked master
+                // password. If we can't, revert the toggle.
+                if (!write_master_pw_cache()) {
                     state.settings.remember_master_password = false;
                 }
             } else if (!state.settings.remember_master_password && prev) {

@@ -39,6 +39,14 @@ struct Releaser {
 template <typename T>
 using ComPtr = std::unique_ptr<T, Releaser<T>>;
 
+bool item_to_path(IShellItem* item, std::filesystem::path& out) {
+    PWSTR psz = nullptr;
+    if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &psz)) || !psz) return false;
+    out = std::filesystem::path(psz);
+    CoTaskMemFree(psz);
+    return true;
+}
+
 Result run_dialog(IFileDialog* dlg, const Options& opts) {
     Result r;
 
@@ -72,18 +80,42 @@ Result run_dialog(IFileDialog* dlg, const Options& opts) {
         return r;  // user cancelled or dialog failed; ok=false
     }
 
-    IShellItem* item_raw = nullptr;
-    if (FAILED(dlg->GetResult(&item_raw)) || !item_raw) {
-        return r;
-    }
-    ComPtr<IShellItem> item(item_raw);
+    if (opts.allow_multiselect) {
+        IFileOpenDialog* open_raw = nullptr;
+        if (FAILED(dlg->QueryInterface(IID_PPV_ARGS(&open_raw))) || !open_raw) {
+            return r;
+        }
+        ComPtr<IFileOpenDialog> open(open_raw);
 
-    PWSTR psz = nullptr;
-    if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &psz)) || !psz) {
-        return r;
+        IShellItemArray* arr_raw = nullptr;
+        if (FAILED(open->GetResults(&arr_raw)) || !arr_raw) {
+            return r;
+        }
+        ComPtr<IShellItemArray> arr(arr_raw);
+
+        DWORD count = 0;
+        if (FAILED(arr->GetCount(&count)) || count == 0) {
+            return r;
+        }
+        for (DWORD i = 0; i < count; ++i) {
+            IShellItem* item_raw = nullptr;
+            if (FAILED(arr->GetItemAt(i, &item_raw)) || !item_raw) continue;
+            ComPtr<IShellItem> item(item_raw);
+            std::filesystem::path p;
+            if (item_to_path(item.get(), p)) r.paths.push_back(std::move(p));
+        }
+    } else {
+        IShellItem* item_raw = nullptr;
+        if (FAILED(dlg->GetResult(&item_raw)) || !item_raw) {
+            return r;
+        }
+        ComPtr<IShellItem> item(item_raw);
+        std::filesystem::path p;
+        if (item_to_path(item.get(), p)) r.paths.push_back(std::move(p));
     }
-    r.path = std::filesystem::path(psz);
-    CoTaskMemFree(psz);
+
+    if (r.paths.empty()) return r;
+    r.path = r.paths.front();
     r.ok = true;
     return r;
 }
@@ -103,8 +135,10 @@ Result open_file(const Options& opts) {
 
     DWORD flags = 0;
     dlg->GetOptions(&flags);
-    dlg->SetOptions(flags | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST |
-                            FOS_FILEMUSTEXIST | FOS_NOCHANGEDIR);
+    flags |= FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST |
+             FOS_NOCHANGEDIR;
+    if (opts.allow_multiselect) flags |= FOS_ALLOWMULTISELECT;
+    dlg->SetOptions(flags);
 
     return run_dialog(dlg.get(), opts);
 }

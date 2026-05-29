@@ -26,6 +26,9 @@ struct AddSdaDialogState {
     bool acknowledged_rcode = false;
     bool resync_attempted = false;
     bool bad_code_hint = false;
+    // Set by request_add_sda; consumed in draw_add_sda_modal so the OpenPopup
+    // call shares the modal's ID-stack scope (the button can sit in a PushID).
+    bool pending_open = false;
 };
 
 struct RemoveSdaDialogState {
@@ -43,6 +46,7 @@ struct RemoveSdaDialogState {
     int scheme = 1;                 // 1 = revert to email guard, 2 = remove guard entirely
     std::array<char, 8> code_check{};
     std::string error;
+    bool pending_open = false;
 };
 
 // Open the Add wizard. If the account already has a half-linked SDA (sda set but

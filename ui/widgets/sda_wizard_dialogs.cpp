@@ -261,7 +261,7 @@ void request_add_sda(app::AppState& app, AddSdaDialogState& s, std::string accou
         s.step = AddSdaDialogState::Step::Working;
         dispatch_add(app, s);
     }
-    ImGui::OpenPopup(kAddPopupName);
+    s.pending_open = true;
 }
 
 void request_remove_sda(RemoveSdaDialogState& s, std::string account_id) {
@@ -271,7 +271,7 @@ void request_remove_sda(RemoveSdaDialogState& s, std::string account_id) {
     s.scheme = 1;
     s.step = RemoveSdaDialogState::Step::Confirm;
     s.open = true;
-    ImGui::OpenPopup(kRemovePopupName);
+    s.pending_open = true;
 }
 
 namespace {
@@ -553,6 +553,10 @@ void draw_remove_body(app::AppState& app, RemoveSdaDialogState& s) {
 }  // namespace
 
 void draw_add_sda_modal(app::AppState& app, AddSdaDialogState& s) {
+    if (s.pending_open) {
+        ImGui::OpenPopup(kAddPopupName);
+        s.pending_open = false;
+    }
     if (!s.open) return;
 
     ImGui::SetNextWindowSize(ImVec2(500.0F, 0), ImGuiCond_Always);
@@ -578,6 +582,10 @@ void draw_add_sda_modal(app::AppState& app, AddSdaDialogState& s) {
 }
 
 void draw_remove_sda_modal(app::AppState& app, RemoveSdaDialogState& s) {
+    if (s.pending_open) {
+        ImGui::OpenPopup(kRemovePopupName);
+        s.pending_open = false;
+    }
     if (!s.open) return;
 
     ImGui::SetNextWindowSize(ImVec2(500.0F, 0), ImGuiCond_Always);

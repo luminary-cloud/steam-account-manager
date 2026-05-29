@@ -21,6 +21,9 @@
 #include "core/steam_local/loginusers.hpp"
 #include "core/steam_login/mobile_auth.hpp"
 #include "core/steam_login/session.hpp"
+#include "core/update_check.hpp"
+#include "core/version.hpp"
+#include "platform/tray_icon.hpp"
 
 namespace sam::app {
 
@@ -98,6 +101,57 @@ void push_toasts_for(AppState& state, const core::Account& a,
         t.expires_at_unix = now + state.settings.notifications.toast_duration_seconds;
         state.toasts.push(std::move(t));
     }
+}
+
+bool ban_event_is_cooldown(core::BanEventKind k) {
+    return k == core::BanEventKind::CooldownStarted ||
+           k == core::BanEventKind::CooldownEnded;
+}
+
+// Immediate one-shot balloon for a single manual refresh. Gated by the
+// Windows-notification setting and suppressed while the main window is focused
+// (the in-app toast already covers that case).
+void push_native_notification(AppState& state, const std::string& message, bool warning) {
+    if (!state.settings.notifications.enabled ||
+        !state.settings.notifications.surface_windows_notification) {
+        return;
+    }
+    if (platform::tray_icon::owner_is_foreground()) return;
+    if (platform::tray_icon::show_balloon("Steam Account Manager", message, warning)) {
+        state.balloon_shown.store(true, std::memory_order_relaxed);
+    }
+}
+
+// Records events from a batch refresh so they can be coalesced into one balloon.
+void note_session_event(AppState& state, const core::Account& a,
+                        const std::vector<core::BanEvent>& events) {
+    if (events.empty()) return;
+    if (state.session_event_count == 0) {
+        state.session_event_message = toast_message_for(a, events.front());
+        state.session_event_warning = ban_event_is_cooldown(events.front().kind);
+    }
+    state.session_event_count += static_cast<int>(events.size());
+}
+
+// Shows the accumulated batch events as a single balloon, then clears the
+// accumulator. No-op if nothing accumulated or the window is focused.
+void flush_native_notification(AppState& state) {
+    if (!state.settings.notifications.enabled ||
+        !state.settings.notifications.surface_windows_notification) {
+        return;
+    }
+    const int n = state.session_event_count;
+    if (n == 0) return;
+    if (platform::tray_icon::owner_is_foreground()) return;
+    const std::string msg = (n == 1)
+        ? state.session_event_message
+        : std::to_string(n) + " new ban / cooldown changes";
+    if (platform::tray_icon::show_balloon("Steam Account Manager", msg,
+                                          n == 1 && state.session_event_warning)) {
+        state.balloon_shown.store(true, std::memory_order_relaxed);
+    }
+    state.session_event_count = 0;
+    state.session_event_message.clear();
 }
 }  // namespace
 
@@ -238,7 +292,11 @@ std::int64_t AppState::persona_change_cooldown_seconds(const std::string& id) co
 }
 
 void AppState::refresh_account_data() {
-    if (settings.web_api_key.empty()) { SAM_LOG_WARN("refresh_all: no web API key"); return; }
+    if (settings.web_api_key.empty()) {
+        SAM_LOG_WARN("refresh_all: no web API key");
+        refresh_web_phase_done.store(true, std::memory_order_relaxed);
+        return;
+    }
 
     // Batch refresh rate limit: stops the user (or rapid re-locks) from
     // repeatedly hammering Steam at startup. The per-account GCPD scrape has
@@ -250,6 +308,7 @@ void AppState::refresh_account_data() {
             now - last_batch_refresh_unix < kMinBatchRefreshSeconds) {
             SAM_LOG_INFO("refresh_all: rate-limited ({}s since last batch)",
                          now - last_batch_refresh_unix);
+            refresh_web_phase_done.store(true, std::memory_order_relaxed);
             return;
         }
         last_batch_refresh_unix = now;
@@ -276,9 +335,17 @@ void AppState::refresh_account_data() {
     for (const auto& a : vault.accounts) {
         if (a.steam_id_64 != 0) ids.push_back(a.steam_id_64);
     }
-    if (ids.empty()) { SAM_LOG_WARN("refresh_all: no accounts with steam_id"); return; }
+    if (ids.empty()) {
+        SAM_LOG_WARN("refresh_all: no accounts with steam_id");
+        refresh_web_phase_done.store(true, std::memory_order_relaxed);
+        return;
+    }
 
     SAM_LOG_INFO("refresh_all: fetching data for {} accounts", ids.size());
+
+    refresh_web_phase_done.store(false, std::memory_order_relaxed);
+    session_event_count = 0;
+    session_event_message.clear();
 
     steam_api::WebApiConfig cfg;
     cfg.api_key = settings.web_api_key;
@@ -342,17 +409,25 @@ void AppState::refresh_account_data() {
                 }
             }
 
+            // Accumulate web-side events for a single coalesced Windows balloon;
+            // flushed below if no GCPD pass runs, otherwise after the last GCPD
+            // account so the balloon also covers cooldown changes.
+            for (const auto& [acc_id, evs] : per_account_events) {
+                if (auto* a = find_account(acc_id)) note_session_event(*this, *a, evs);
+            }
+            refresh_web_phase_done.store(true, std::memory_order_relaxed);
+
             // GCPD coverage on launch: per-account scrape for any account
             // with usable session credentials, staggered ~2s apart so 30+
             // accounts don't hammer Steam in a burst.
-            if (!gcpd_enabled) return;
+            if (!gcpd_enabled) { flush_native_notification(*this); return; }
             std::vector<std::string> gcpd_ids;
             for (const auto& a : vault.accounts) {
                 if (!a.session_id.empty() && !a.steam_login_secure.empty()) {
                     gcpd_ids.push_back(a.id);
                 }
             }
-            if (gcpd_ids.empty()) return;
+            if (gcpd_ids.empty()) { flush_native_notification(*this); return; }
             refresh_all_total.store(static_cast<int>(gcpd_ids.size()),
                                     std::memory_order_relaxed);
             refresh_all_done.store(0, std::memory_order_relaxed);
@@ -767,12 +842,21 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
             const bool bans_arrived = bans.find(resolved) != bans.end();
             if (bans_arrived || cs2_touched) {
                 auto evs = apply_diff_and_snapshot(*this, *a, a->bans, a->cs2, now_unix);
-                if (!evs.empty() && !batch_refresh) {
-                    push_toasts_for(*this, *a, evs, now_unix);
+                if (!evs.empty()) {
+                    if (batch_refresh) {
+                        note_session_event(*this, *a, evs);
+                    } else {
+                        push_toasts_for(*this, *a, evs, now_unix);
+                        push_native_notification(*this, toast_message_for(*a, evs.front()),
+                                                 ban_event_is_cooldown(evs.front().kind));
+                    }
                 }
             }
             if (batch_refresh) {
-                refresh_all_done.fetch_add(1, std::memory_order_relaxed);
+                const int done = refresh_all_done.fetch_add(1, std::memory_order_relaxed) + 1;
+                if (done >= refresh_all_total.load(std::memory_order_relaxed)) {
+                    flush_native_notification(*this);
+                }
             }
 
             if (!relogin_login.empty() && !pending_relogin_login.has_value()) {
@@ -870,17 +954,39 @@ std::int64_t AppState::relogin_cooldown_seconds(const std::string& account_id) {
     return std::chrono::duration_cast<std::chrono::seconds>(window - elapsed).count();
 }
 
+void AppState::start_update_check() {
+    if (!settings.check_updates_on_launch) {
+        return;
+    }
+    update_thread = std::jthread([this](std::stop_token st) {
+        if (st.stop_requested()) {
+            return;
+        }
+        auto r = core::update_check::fetch_latest_release(
+            "luminary-cloud/steam-account-manager", sam::kVersion);
+        if (!r || !r->newer_than_current || st.stop_requested()) {
+            return;
+        }
+        std::lock_guard lk(update_mutex);
+        update_result = std::move(r);
+    });
+}
+
 void AppState::save_settings() {
     nlohmann::json j;
     j["clipboard_clear_seconds"] = settings.clipboard_clear_seconds;
     j["auto_lock_minutes"]       = settings.auto_lock_minutes;
     j["accounts_view"]           = static_cast<int>(settings.accounts_view);
     j["show_avatars"]            = settings.show_avatars;
+    j["hide_notes"]              = settings.hide_notes;
     j["refresh_on_launch"]       = settings.refresh_on_launch;
     j["gcpd_enabled"]            = settings.gcpd_enabled;
     j["remember_master_password"] = settings.remember_master_password;
+    j["start_with_windows"]      = settings.start_with_windows;
     j["privacy_mode"]            = settings.privacy_mode;
     j["web_api_key"]             = settings.web_api_key;
+    j["check_updates_on_launch"]  = settings.check_updates_on_launch;
+    j["version_check_skip_until"] = settings.version_check_skip_until;
 
     auto& info = j["info"];
     info["show_vac"]           = settings.info.show_vac;
@@ -899,6 +1005,7 @@ void AppState::save_settings() {
     notif["enabled"]               = settings.notifications.enabled;
     notif["surface_in_card"]       = settings.notifications.surface_in_card;
     notif["surface_toast"]         = settings.notifications.surface_toast;
+    notif["surface_windows_notification"] = settings.notifications.surface_windows_notification;
     notif["on_new_vac_ban"]        = settings.notifications.on_new_vac_ban;
     notif["on_new_game_ban"]       = settings.notifications.on_new_game_ban;
     notif["on_new_community_ban"]  = settings.notifications.on_new_community_ban;
@@ -914,6 +1021,7 @@ void AppState::save_settings() {
     auto& lv = j["list_view"];
     lv["show_cooldown_marker"] = settings.list_view.show_cooldown_marker;
     lv["show_unread_badge"]    = settings.list_view.show_unread_badge;
+    lv["hide_account_name"]    = settings.list_view.hide_account_name;
 
     auto& sj = j["sda"];
     sj["auto_copy_on_select"]    = settings.sda.auto_copy_on_select;
@@ -939,6 +1047,7 @@ void AppState::save_settings() {
     cj["audit_retention_days"]         = settings.confirmations.audit_retention_days;
 
     j["accounts_sort"] = settings.accounts_sort;
+    j["collapsed_groups"] = settings.collapsed_groups;
     auto& qf = j["quick_filters"];
     qf["only_banned"]   = settings.quick_filters.only_banned;
     qf["only_cooldown"] = settings.quick_filters.only_cooldown;
@@ -985,11 +1094,16 @@ void AppState::load_settings() {
         settings.accounts_view = (v == 1) ? AccountsViewMode::List : AccountsViewMode::Grid;
     }
     get("show_avatars",            settings.show_avatars);
+    get("hide_notes",              settings.hide_notes);
+    get("collapsed_groups",        settings.collapsed_groups);
     get("refresh_on_launch",       settings.refresh_on_launch);
     get("gcpd_enabled",            settings.gcpd_enabled);
     get("remember_master_password", settings.remember_master_password);
+    get("start_with_windows",      settings.start_with_windows);
     get("privacy_mode",            settings.privacy_mode);
     get("web_api_key",             settings.web_api_key);
+    get("check_updates_on_launch",  settings.check_updates_on_launch);
+    get("version_check_skip_until", settings.version_check_skip_until);
 
     if (j.contains("info")) {
         auto& ij = j["info"];
@@ -1021,6 +1135,7 @@ void AppState::load_settings() {
         get_n("enabled",               settings.notifications.enabled);
         get_n("surface_in_card",       settings.notifications.surface_in_card);
         get_n("surface_toast",         settings.notifications.surface_toast);
+        get_n("surface_windows_notification", settings.notifications.surface_windows_notification);
         get_n("on_new_vac_ban",        settings.notifications.on_new_vac_ban);
         get_n("on_new_game_ban",       settings.notifications.on_new_game_ban);
         get_n("on_new_community_ban",  settings.notifications.on_new_community_ban);
@@ -1043,6 +1158,7 @@ void AppState::load_settings() {
         };
         get_l("show_cooldown_marker", settings.list_view.show_cooldown_marker);
         get_l("show_unread_badge",    settings.list_view.show_unread_badge);
+        get_l("hide_account_name",    settings.list_view.hide_account_name);
     }
 
     if (j.contains("sda")) {

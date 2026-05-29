@@ -40,6 +40,7 @@
 
     <ClCompile Include="core\time_aligner.cpp"><Filter>core</Filter></ClCompile>
     <ClCompile Include="core\log.cpp"><Filter>core</Filter></ClCompile>
+    <ClCompile Include="core\update_check.cpp"><Filter>core</Filter></ClCompile>
 
     <ClCompile Include="core\sda\totp.cpp"><Filter>core\sda</Filter></ClCompile>
     <ClCompile Include="core\sda\confirmation.cpp"><Filter>core\sda</Filter></ClCompile>
@@ -101,6 +102,8 @@
     <ClCompile Include="platform\single_instance.cpp"><Filter>platform</Filter></ClCompile>
     <ClCompile Include="platform\global_hotkey.cpp"><Filter>platform</Filter></ClCompile>
     <ClCompile Include="platform\ui_automation.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\tray_icon.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\startup_task.cpp"><Filter>platform</Filter></ClCompile>
 
     <ClCompile Include="ui\main_window.cpp"><Filter>ui</Filter></ClCompile>
     <ClCompile Include="ui\theme.cpp"><Filter>ui</Filter></ClCompile>
@@ -336,6 +339,8 @@
     <ClInclude Include="platform\single_instance.hpp"><Filter>platform</Filter></ClInclude>
     <ClInclude Include="platform\global_hotkey.hpp"><Filter>platform</Filter></ClInclude>
     <ClInclude Include="platform\ui_automation.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\tray_icon.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\startup_task.hpp"><Filter>platform</Filter></ClInclude>
 
     <ClInclude Include="ui\main_window.hpp"><Filter>ui</Filter></ClInclude>
     <ClInclude Include="ui\theme.hpp"><Filter>ui</Filter></ClInclude>

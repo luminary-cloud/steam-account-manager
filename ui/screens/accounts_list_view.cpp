@@ -34,8 +34,10 @@ constexpr float kRowHeight       = 22.0F;
 constexpr float kDotRadius       = 5.0F;
 constexpr float kIndent          = 10.0F;
 constexpr const char* kDragPayload = "SAM_ACCOUNT_ID";
+// Shown as the list-row label when "Hide account name" is on and the account
+// has no persona name to fall back to.
+constexpr const char* kNoNamePlaceholder = "Account";
 
-std::unordered_map<std::string, bool> g_collapsed;
 std::string g_rename_target;
 bool g_rename_loaded = false;
 
@@ -83,9 +85,21 @@ ImU32 group_dot_color(std::uint32_t rgba) {
                     255);
 }
 
-bool& collapsed_for(const std::string& key) {
-    auto [it, _] = g_collapsed.try_emplace(key, true);
-    return it->second;
+bool is_group_collapsed(const app::AppState& state, const std::string& key) {
+    const auto& v = state.settings.collapsed_groups;
+    return std::find(v.begin(), v.end(), key) != v.end();
+}
+
+void set_group_collapsed(app::AppState& state, const std::string& key, bool collapsed) {
+    auto& v = state.settings.collapsed_groups;
+    const auto it = std::find(v.begin(), v.end(), key);
+    if (collapsed && it == v.end()) {
+        v.push_back(key);
+        state.save_settings();
+    } else if (!collapsed && it != v.end()) {
+        v.erase(it);
+        state.save_settings();
+    }
 }
 
 std::string truncate_to_width(const std::string& text, float max_w) {
@@ -235,9 +249,11 @@ void draw_account_row(app::AppState& state, const core::Account& a) {
         draw_dot(ImVec2(dot_x, center_y), status_dot_color(a));
     }
 
-    const std::string label_full = !a.web.persona_name.empty()
-        ? a.web.persona_name
-        : widgets::login_label(state, a);
+    const bool hide_login = state.settings.list_view.hide_account_name;
+    const std::string label_full =
+        !a.web.persona_name.empty() ? a.web.persona_name
+        : (hide_login ? std::string(kNoNamePlaceholder)
+                      : widgets::login_label(state, a));
     const ImU32 text_col = ImGui::GetColorU32(ImGuiCol_Text);
 
     const auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(
@@ -264,7 +280,7 @@ void draw_account_row(app::AppState& state, const core::Account& a) {
 
     std::string display_secondary;
     float secondary_w = 0.0F;
-    if (!a.web.persona_name.empty()) {
+    if (!a.web.persona_name.empty() && !hide_login) {
         display_secondary = widgets::login_label(state, a);
         secondary_w = ImGui::CalcTextSize(display_secondary.c_str()).x;
         if (secondary_w + kGap + kMinLabelW > total_avail) {
@@ -451,12 +467,13 @@ ListViewResult draw_list_body(app::AppState& state,
                               std::uint32_t color_rgba,
                               const std::vector<std::size_t>& indices,
                               bool can_manage) {
-        bool& open = collapsed_for(key);
+        bool open = !is_group_collapsed(state, key);
         bool right_clicked = false;
         std::string dropped_id;
         const bool dropped = draw_group_header(key, label, color_rgba,
                                                 indices.size(), open, right_clicked,
                                                 dropped_id);
+        set_group_collapsed(state, key, !open);
         if (dropped && !dropped_id.empty()) {
             for (auto& acc : state.vault.accounts) {
                 if (acc.id == dropped_id) {

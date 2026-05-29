@@ -105,10 +105,11 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     const bool any_ban_pill = opts.show_vac || opts.show_game || opts.show_trade ||
                               opts.show_community || (opts.show_vac_live && opts.vac_live);
 
-    constexpr float kBadgeH = 26.0F;
+    constexpr float kBadgeH = 21.0F;
     constexpr float kWinsGap = 3.0F;
     constexpr float kModeGap = 2.0F;
     constexpr float kRankGap = 18.0F;
+    constexpr float kRankLabelScale = 0.85F;
 
     const rank_image::TexEntry* premier_e = nullptr;
     if (state.settings.info.show_premier) {
@@ -124,8 +125,9 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     const bool draw_premier = premier_e && premier_e->srv && premier_e->h > 0;
     const bool draw_wingman = wingman_e && wingman_e->srv && wingman_e->h > 0;
     const bool show_mode_label = draw_premier && draw_wingman;
-    const float mode_block   = show_mode_label ? (text_h + kModeGap) : 0.0F;
-    const float rank_block_h = mode_block + kBadgeH + kWinsGap + text_h;
+    const float label_h      = text_h * kRankLabelScale;
+    const float mode_block   = show_mode_label ? (label_h + kModeGap) : 0.0F;
+    const float rank_block_h = mode_block + kBadgeH + kWinsGap + label_h;
     const float premier_w = draw_premier
         ? kBadgeH * (static_cast<float>(premier_e->w) / static_cast<float>(premier_e->h))
         : 0.0F;
@@ -283,7 +285,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     if (has_meta_line)      middle_h += 2.0F * sp_y + text_h;
     if (has_cooldown)       middle_h += 2.0F * sp_y + text_h;
     if (!a.tag_ids.empty()) middle_h += 2.0F * sp_y + chip_h;
-    if (!a.notes.empty())   middle_h += 2.0F * sp_y + text_h * 2.0F;
+    if (!state.settings.hide_notes && !a.notes.empty())   middle_h += 2.0F * sp_y + text_h * 2.0F;
 
     auto center_h_lead = [&](float section_w) {
         const float lead = (avail_w - section_w) * 0.5F;
@@ -296,6 +298,10 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     const ImVec2 header_origin_screen = ImGui::GetCursorScreenPos();
     const float  pane_inner_w         = ImGui::GetContentRegionAvail().x;
 
+    // The identity lines (persona, login, country) read better tightly stacked;
+    // the 12px panel spacing is meant for the stat sections lower down.
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                        ImVec2(ImGui::GetStyle().ItemSpacing.x, 3.0F));
     draw_avatar(a, kAvatarSize);
     ImGui::SameLine(0.0F, 12.0F);
     ImGui::BeginGroup();
@@ -339,6 +345,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         ImGui::PopStyleColor();
     }
     ImGui::EndGroup();
+    ImGui::PopStyleVar();
 
     {
         const ImVec2 after_header = ImGui::GetCursorScreenPos();
@@ -380,9 +387,12 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
             ImGui::Dummy(ImVec2(card_w, rank_block_h));
 
             const ImU32 dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+            ImFont* lf = ImGui::GetFont();
+            const float label_size = lf->LegacySize * kRankLabelScale;
             if (show_mode_label) {
-                const ImVec2 ts = ImGui::CalcTextSize(mode);
-                dl->AddText(ImVec2(origin.x + (card_w - ts.x) * 0.5F, origin.y),
+                const ImVec2 ts = lf->CalcTextSizeA(label_size, FLT_MAX, 0.0F, mode);
+                dl->AddText(lf, label_size,
+                            ImVec2(origin.x + (card_w - ts.x) * 0.5F, origin.y),
                             dim, mode);
             }
             const float badge_y = origin.y + mode_block;
@@ -393,7 +403,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
                 const std::string text = rating > 0
                     ? format_with_commas(rating) : std::string("---");
                 ImFont* font = fonts::badge();
-                const float fsize = font->LegacySize;
+                const float fsize = font->LegacySize * (kBadgeH / 26.0F);
                 const ImVec2 ts = font->CalcTextSizeA(fsize, FLT_MAX, 0.0F, text.c_str());
                 const float tx = origin.x + card_w * 0.58F - ts.x * 0.5F;
                 const float ty = badge_y + (kBadgeH - fsize) * 0.5F - 2.0F;
@@ -404,8 +414,9 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
             char buf[32];
             if (wins >= 0) std::snprintf(buf, sizeof(buf), "Wins: %d", wins);
             else           std::snprintf(buf, sizeof(buf), "Wins: ---");
-            const ImVec2 ws = ImGui::CalcTextSize(buf);
-            dl->AddText(ImVec2(origin.x + (card_w - ws.x) * 0.5F,
+            const ImVec2 ws = lf->CalcTextSizeA(label_size, FLT_MAX, 0.0F, buf);
+            dl->AddText(lf, label_size,
+                        ImVec2(origin.x + (card_w - ws.x) * 0.5F,
                                 badge_y + kBadgeH + kWinsGap),
                         dim, buf);
         };
@@ -472,7 +483,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         if (wrapped) ImGui::NewLine();
     }
 
-    if (!a.notes.empty()) {
+    if (!state.settings.hide_notes && !a.notes.empty()) {
         ImGui::Spacing();
         ImGui::TextColored(theme::dim_text(), "Notes");
         const std::string notes_utf8 = to_utf8(a.notes);

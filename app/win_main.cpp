@@ -33,6 +33,8 @@
 #include "platform/fs.hpp"
 #include "platform/global_hotkey.hpp"
 #include "platform/single_instance.hpp"
+#include "platform/startup_task.hpp"
+#include "platform/tray_icon.hpp"
 #include "ui/fonts.hpp"
 #include "ui/icons.hpp"
 #include "ui/main_window.hpp"
@@ -42,6 +44,13 @@
 #include "ui/widgets/rank_image.hpp"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+// Not declared in the public SDK headers. One of the messages an elevated window
+// must allow through the UIPI filter for a normal-integrity Explorer to deliver a
+// drag-drop payload.
+#ifndef WM_COPYGLOBALDATA
+#define WM_COPYGLOBALDATA 0x0049
+#endif
 
 namespace {
 
@@ -61,6 +70,16 @@ UINT                    g_resize_h = 0;
 // dropped .maFile paths into the AddAccount screen. Cleared before AppState
 // is destroyed.
 sam::app::AppState* g_state = nullptr;
+
+// True once Dear ImGui is initialised. The shared wnd_proc must not forward to
+// the ImGui Win32 handler before then; the headless --startup run never inits
+// ImGui at all.
+bool g_imgui_ready = false;
+
+// Posted to the running primary instance when a --startup launch arrives while
+// the app is already open, asking it to refresh in place instead of opening a
+// second window.
+constexpr UINT WM_APP_STARTUP_REFRESH = WM_APP + 1;
 
 void create_render_target() {
     ID3D11Texture2D* back = nullptr;
@@ -208,7 +227,7 @@ void handle_dropped_files(HDROP hdrop) {
 }
 
 LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp)) return true;
+    if (g_imgui_ready && ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp)) return true;
 
     switch (msg) {
         case WM_SIZE:
@@ -253,24 +272,143 @@ LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
 
+        case sam::platform::tray_icon::kCallbackMessage:
+            // A click on the icon or its balloon brings the main window back.
+            if (LOWORD(lp) == WM_LBUTTONUP || LOWORD(lp) == NIN_SELECT ||
+                LOWORD(lp) == NIN_BALLOONUSERCLICK) {
+                ShowWindow(hwnd, SW_RESTORE);
+                SetForegroundWindow(hwnd);
+            }
+            return 0;
+
+        case WM_APP_STARTUP_REFRESH:
+            if (g_state) g_state->refresh_account_data();
+            return 0;
+
         case WM_DESTROY:
             sam::platform::global_hotkey::unregister_hotkey(
                 hwnd, sam::platform::global_hotkey::kCopyCodeId);
+            sam::platform::tray_icon::remove();
             PostQuitMessage(0);
             return 0;
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
+// True once the background refresh has finished its Web API phase and (when GCPD
+// scraping is on) the staggered per-account pass has completed too.
+bool startup_refresh_complete(const sam::app::AppState& state) {
+    if (!state.refresh_web_phase_done.load(std::memory_order_relaxed)) return false;
+    if (!state.settings.gcpd_enabled) return true;
+    const int total = state.refresh_all_total.load(std::memory_order_relaxed);
+    if (total == 0) return true;
+    return state.refresh_all_done.load(std::memory_order_relaxed) >= total;
+}
+
+// Headless logon run (launched by the scheduled task with --startup): refresh in
+// the background with the window hidden, raise a Windows balloon for any new
+// ban/cooldown, then exit. No D3D or ImGui is created. Tears down `hwnd` itself.
+int run_startup_refresh(HINSTANCE inst, HWND hwnd) {
+    sam::time_aligner::start();
+    sam::app::job_pump::start_workers(4);
+
+    sam::app::AppState state;
+    state.load_settings();
+    state.notifications.set_path(sam::app::notifications_path());
+    state.notifications.load();
+    state.main_hwnd = hwnd;
+    g_state = &state;
+    sam::platform::tray_icon::set_owner(hwnd, IDI_APP_ICON);
+
+    bool refreshing = false;
+    if (state.settings.remember_master_password &&
+        sam::core::store::vault_exists(sam::app::vault_path())) {
+        const auto cache_path = sam::app::master_pw_cache_path();
+        std::error_code cache_ec;
+        if (std::filesystem::exists(cache_path, cache_ec)) {
+            try {
+                auto wrapped = sam::platform::read_binary_file(cache_path);
+                auto plain = sam::platform::dpapi::unprotect(wrapped);
+                auto pw = sam::crypto::make_secure(
+                    std::string(plain.begin(), plain.end()));
+                state.vault = sam::core::store::load_vault(sam::app::vault_path(), pw);
+                state.master_password = pw;
+                state.unlocked = true;
+                SAM_LOG_INFO("startup: auto-unlock ok, refreshing in background");
+                state.refresh_account_data();
+                refreshing = true;
+            } catch (const std::exception& ex) {
+                SAM_LOG_WARN("startup: auto-unlock failed ({}); exiting", ex.what());
+            }
+        }
+    }
+    if (!refreshing) {
+        SAM_LOG_INFO("startup: no auto-unlock (locked or no cache); exiting");
+    }
+
+    if (refreshing) {
+        const auto begin = std::chrono::steady_clock::now();
+        const int accounts = static_cast<int>(state.vault.accounts.size());
+        const auto cap = std::min<std::chrono::seconds>(
+            std::chrono::seconds(30) +
+                std::chrono::seconds(3) * (accounts > 0 ? accounts : 1),
+            std::chrono::minutes(10));
+
+        bool quit = false;
+        MSG msg{};
+        while (!quit) {
+            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+                if (msg.message == WM_QUIT) quit = true;
+            }
+            if (quit) break;
+            sam::app::job_pump::drain(state);
+            if (startup_refresh_complete(state)) break;
+            if (std::chrono::steady_clock::now() - begin > cap) {
+                SAM_LOG_WARN("startup: refresh timed out; exiting");
+                break;
+            }
+            Sleep(50);
+        }
+
+        // Give a fired balloon a moment on screen before the icon is removed.
+        if (state.balloon_shown.load(std::memory_order_relaxed)) {
+            Sleep(8000);
+        }
+    }
+
+    sam::platform::tray_icon::remove();
+    state.flush_pending_save();
+    g_state = nullptr;
+    sam::app::job_pump::stop_workers();
+    sam::time_aligner::stop();
+    DestroyWindow(hwnd);
+    UnregisterClassW(kWindowClass, inst);
+    SAM_LOG_INFO("startup: done");
+    sam::log::shutdown();
+    return 0;
+}
+
 }  // namespace
 
 _Use_decl_annotations_
-int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
+int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     sam::platform::dpi::enable_per_monitor_v2();
+
+    const bool startup_mode = cmd_line && wcsstr(cmd_line, L"--startup") != nullptr;
 
     sam::platform::SingleInstance one(L"luminary-sam-mutex-v1");
     if (!one.is_primary()) {
-        sam::platform::SingleInstance::raise_existing(kWindowClass);
+        // A --startup launch arriving while the app is already open just asks the
+        // running instance to refresh; it does not open a second window.
+        if (startup_mode) {
+            if (HWND existing = FindWindowW(kWindowClass, nullptr)) {
+                PostMessageW(existing, WM_APP_STARTUP_REFRESH, 0, 0);
+            }
+        } else {
+            sam::platform::SingleInstance::raise_existing(kWindowClass);
+        }
         return 0;
     }
 
@@ -293,7 +431,18 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
                                 kInitialWidth, kInitialHeight,
                                 nullptr, nullptr, inst, nullptr);
 
+    if (startup_mode) {
+        return run_startup_refresh(inst, hwnd);
+    }
+
     DragAcceptFiles(hwnd, TRUE);
+
+    // The app runs elevated, so UIPI blocks drop messages posted from a
+    // normal-integrity Explorer and the WM_DROPFILES payload never arrives. Opt
+    // the drag-drop messages through so dropping maFiles / info.dat works.
+    ChangeWindowMessageFilterEx(hwnd, WM_DROPFILES, MSGFLT_ALLOW, nullptr);
+    ChangeWindowMessageFilterEx(hwnd, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
+    ChangeWindowMessageFilterEx(hwnd, WM_COPYGLOBALDATA, MSGFLT_ALLOW, nullptr);
 
     if (!create_device(hwnd)) {
         SAM_LOG_ERROR("D3D11 create failed");
@@ -316,6 +465,7 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
 
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_device, g_context);
+    g_imgui_ready = true;
 
     sam::ui::icons::load(g_device);
     sam::ui::widgets::avatar_cache::init(g_device);
@@ -326,6 +476,15 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
 
     sam::app::AppState state;
     state.load_settings();
+    // Keep the logon task in lockstep with the setting: re-register when on (also
+    // repairs the stored exe path if the app moved), or remove an orphaned task
+    // when off.
+    if (state.settings.start_with_windows) {
+        sam::platform::startup_task::set_run_at_logon(true);
+    } else if (sam::platform::startup_task::is_run_at_logon_enabled()) {
+        sam::platform::startup_task::set_run_at_logon(false);
+    }
+    state.start_update_check();
     state.notifications.set_path(sam::app::notifications_path());
     state.notifications.load();
     state.notifications.prune_older_than(state.settings.notifications.retention_days,
@@ -452,6 +611,7 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
     sam::ui::widgets::rank_image::shutdown();
     sam::ui::widgets::avatar_cache::shutdown();
     sam::ui::icons::shutdown();
+    g_imgui_ready = false;
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();

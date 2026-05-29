@@ -166,6 +166,7 @@
 
     <ClCompile Include="core\time_aligner.cpp" />
     <ClCompile Include="core\log.cpp" />
+    <ClCompile Include="core\update_check.cpp" />
 
     <ClCompile Include="core\sda\totp.cpp" />
     <ClCompile Include="core\sda\confirmation.cpp" />
@@ -222,6 +223,8 @@
     <ClCompile Include="platform\single_instance.cpp" />
     <ClCompile Include="platform\ui_automation.cpp" />
     <ClCompile Include="platform\global_hotkey.cpp" />
+    <ClCompile Include="platform\tray_icon.cpp" />
+    <ClCompile Include="platform\startup_task.cpp" />
 
     <ClCompile Include="ui\main_window.cpp" />
     <ClCompile Include="ui\theme.cpp" />
@@ -340,6 +343,8 @@
     <ClInclude Include="platform\single_instance.hpp" />
     <ClInclude Include="platform\global_hotkey.hpp" />
     <ClInclude Include="platform\ui_automation.hpp" />
+    <ClInclude Include="platform\tray_icon.hpp" />
+    <ClInclude Include="platform\startup_task.hpp" />
 
     <ClInclude Include="ui\main_window.hpp" />
     <ClInclude Include="ui\theme.hpp" />

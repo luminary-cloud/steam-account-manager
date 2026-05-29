@@ -101,7 +101,7 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
             cc.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
         ImGui::TextDisabled("%s", cc.c_str());
     }
-    if (!a.notes.empty()) {
+    if (!state.settings.hide_notes && !a.notes.empty()) {
         ImGui::SameLine();
         ImGui::TextDisabled("·");
         ImGui::SameLine();

@@ -426,14 +426,19 @@ void draw_import_mafile(app::AppState& state) {
         platform::file_dialog::Options opts;
         opts.parent = state.main_hwnd;
         opts.title = L"Choose maFile";
+        opts.allow_multiselect = true;
         opts.filters = {
             {L"Steam mobile authenticator (*.maFile)", L"*.maFile"},
             {L"All files (*.*)", L"*.*"},
         };
         const auto picked = platform::file_dialog::open_file(opts);
         if (picked.ok) {
-            std::snprintf(path_buf.data(), path_buf.size(), "%s",
-                          picked.path.string().c_str());
+            if (picked.paths.size() <= 1) {
+                std::snprintf(path_buf.data(), path_buf.size(), "%s",
+                              picked.path.string().c_str());
+            } else {
+                for (const auto& p : picked.paths) queued.push_back(p.string());
+            }
             error.clear();
         }
     }
@@ -442,7 +447,7 @@ void draw_import_mafile(app::AppState& state) {
 
     if (!queued.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
-        ImGui::Text("%zu file(s) queued from drag-drop.", queued.size());
+        ImGui::Text("%zu file(s) queued.", queued.size());
         ImGui::PopStyleColor();
         ImGui::SameLine();
         if (ImGui::SmallButton("Clear")) queued.clear();
@@ -608,14 +613,19 @@ void draw_import_info_dat(app::AppState& state) {
         platform::file_dialog::Options opts;
         opts.parent = state.main_hwnd;
         opts.title = L"Choose info.dat";
+        opts.allow_multiselect = true;
         opts.filters = {
             {L"info.dat (*.dat)", L"*.dat"},
             {L"All files (*.*)", L"*.*"},
         };
         const auto picked = platform::file_dialog::open_file(opts);
         if (picked.ok) {
-            std::snprintf(path_buf.data(), path_buf.size(), "%s",
-                          picked.path.string().c_str());
+            if (picked.paths.size() <= 1) {
+                std::snprintf(path_buf.data(), path_buf.size(), "%s",
+                              picked.path.string().c_str());
+            } else {
+                for (const auto& p : picked.paths) queued.push_back(p.string());
+            }
             error.clear();
         }
     }
@@ -624,7 +634,7 @@ void draw_import_info_dat(app::AppState& state) {
 
     if (!queued.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
-        ImGui::Text("%zu file(s) queued from drag-drop.", queued.size());
+        ImGui::Text("%zu file(s) queued.", queued.size());
         ImGui::PopStyleColor();
         ImGui::SameLine();
         if (ImGui::SmallButton("Clear##info-dat-clear")) queued.clear();

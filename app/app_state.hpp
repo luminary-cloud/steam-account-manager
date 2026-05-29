@@ -21,6 +21,7 @@
 #include "core/crypto/secure_string.hpp"
 #include "core/notifications/notification_store.hpp"
 #include "core/sda/conf_audit.hpp"
+#include "core/update_check.hpp"
 #include "ui/widgets/toast_stack.hpp"
 
 // Forward-declare HWND so the entire app/ui doesn't transitively pull in
@@ -92,17 +93,31 @@ struct Settings {
     int auto_lock_minutes = 15;
     AccountsViewMode accounts_view = AccountsViewMode::Grid;
     bool show_avatars = true;
+    // Hides account notes everywhere they display (grid cards and the list-mode
+    // detail panel). Notes remain editable on the add/edit screen.
+    bool hide_notes = false;
     bool refresh_on_launch = false;
     bool gcpd_enabled = true;
     // Caches the master password under the current Windows user via DPAPI so
     // subsequent launches go straight to Accounts. Disabling this option
     // deletes the cached blob.
     bool remember_master_password = false;
+    // Registers a Task Scheduler logon task (highest privileges, required since
+    // the app is requireAdministrator) that relaunches with --startup to refresh
+    // in the background and then exit. Implies remember_master_password +
+    // refresh_on_launch so the headless run can auto-unlock and fetch.
+    bool start_with_windows = false;
     // When on, account logins render as "<hidden>" everywhere they are
     // displayed. Per-account reveals live in AppState::revealed_logins and
     // are cleared on lock via clear_session_secrets().
     bool privacy_mode = false;
     std::string web_api_key;
+
+    // Checks GitHub for a newer release on launch and shows the "Update
+    // available" modal. version_check_skip_until holds the tag the user chose
+    // to skip so it is not offered again.
+    bool check_updates_on_launch = true;
+    std::string version_check_skip_until;
 
     struct InfoToggles {
         bool show_vac = true;
@@ -122,6 +137,10 @@ struct Settings {
         bool enabled = true;
         bool surface_in_card = true;
         bool surface_toast = true;
+        // Out-of-app tray balloon (Shell_NotifyIcon) for new ban/cooldown
+        // events; mainly for the headless logon refresh. Suppressed while the
+        // main window is focused, where the in-app toast already covers it.
+        bool surface_windows_notification = false;
         bool on_new_vac_ban = true;
         bool on_new_game_ban = true;
         bool on_new_community_ban = true;
@@ -138,6 +157,9 @@ struct Settings {
     struct ListViewToggles {
         bool show_cooldown_marker = true;
         bool show_unread_badge = true;
+        // Hides the login/account name from list-mode rows (persona name and the
+        // selected-account detail panel are unaffected).
+        bool hide_account_name = false;
     } list_view;
 
     struct SdaToggles {
@@ -174,6 +196,10 @@ struct Settings {
 
     // Sort key index into the dropdown options; matches core::SortKey order.
     int accounts_sort = 0;
+
+    // List-mode group ids the user has collapsed. Ids not listed are expanded,
+    // so new groups default to open; the empty string is the ungrouped section.
+    std::vector<std::string> collapsed_groups;
 
     struct QuickFilters {
         bool only_banned = false;
@@ -229,6 +255,14 @@ struct AppState {
     Settings settings;
     bool vault_dirty = false;
 
+    // Background GitHub release check kicked off at launch. The worker stores a
+    // newer-than-current Result here and draw() pops the "Update available"
+    // modal. The jthread requests stop and joins when AppState is destroyed.
+    std::mutex update_mutex;
+    std::optional<core::update_check::Result> update_result;
+    bool update_modal_dismissed_this_session = false;
+    std::jthread update_thread;
+
     // Cross-launch index of detected ban/cooldown events. Persisted to
     // notifications.json (non-sensitive, plain JSON).
     core::notifications::NotificationStore notifications;
@@ -268,6 +302,17 @@ struct AppState {
     // increments done when its UI callback runs.
     std::atomic<int> refresh_all_total{0};
     std::atomic<int> refresh_all_done{0};
+    // Headless --startup logon run: refresh_web_phase_done flips when the Web
+    // API batch (or an early return) finishes so the run loop knows when to
+    // start watching refresh_all_*; balloon_shown lets it linger long enough
+    // for a fired notification to stay on screen before exit.
+    std::atomic<bool> refresh_web_phase_done{false};
+    std::atomic<bool> balloon_shown{false};
+    // Accumulates new ban/cooldown events across one batch refresh so they can
+    // be coalesced into a single Windows balloon (one balloon shows at a time).
+    int session_event_count = 0;
+    std::string session_event_message;
+    bool session_event_warning = false;
 
     // Background-thread vault writer (cross-cutting infra: keeps PBKDF2 + AES-
     // GCM off the UI thread so trust label clicks and other rapid mutations
@@ -317,6 +362,9 @@ struct AppState {
     void flush_pending_save();
     void save_settings();
     void load_settings();
+    // Spawns the background GitHub release check when check_updates_on_launch is
+    // set. No-op otherwise. Result lands in update_result under update_mutex.
+    void start_update_check();
     // Drops per-session secrets that should not survive a vault re-lock.
     // Today this is just revealed_logins; extend as new ephemeral reveals land.
     void clear_session_secrets();
