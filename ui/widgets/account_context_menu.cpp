@@ -9,6 +9,7 @@
 #include <imgui.h>
 
 #include "app/app_paths.hpp"
+#include "core/cs2/friend_code.hpp"
 #include "core/sda/totp.hpp"
 #include "platform/clipboard.hpp"
 
@@ -48,6 +49,11 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         std::snprintf(url, sizeof(url), "https://steamcommunity.com/profiles/%llu",
                       static_cast<unsigned long long>(a.steam_id_64));
         platform::clipboard::set_text(url);
+    }
+
+    if (ImGui::MenuItem("Copy CS2 friend code", nullptr, false, has_sid)) {
+        const std::string code = cs2::friend_code(a.steam_id_64);
+        if (!code.empty()) platform::clipboard::set_text(code);
     }
 
     ImGui::Separator();

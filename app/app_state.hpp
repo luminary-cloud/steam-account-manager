@@ -369,6 +369,17 @@ struct AppState {
     // Today this is just revealed_logins; extend as new ephemeral reveals land.
     void clear_session_secrets();
 
+    // Securely zero the SteamGuard secrets and session id in the decrypted
+    // vault before their storage is freed, so they don't linger in heap memory
+    // after a lock or app close. (password/tokens are SecureString already.)
+    void scrub_vault_secrets();
+
+    // Remove accounts by id: scrub their secrets, drop them from the vault, and
+    // erase their per-account bookkeeping (refresh/persona cooldowns,
+    // confirmation state, relogin backoff, selection/reveal sets). Taken by
+    // value so callers can pass selected_account_ids directly.
+    void remove_accounts(std::unordered_set<std::string> ids);
+
     // Tear down the unlocked session: zero the master password, drop the
     // decrypted vault, clear session secrets, and route the UI back to the
     // Unlock screen. Called by the idle auto-lock check in win_main; a future

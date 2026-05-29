@@ -26,7 +26,7 @@ namespace sam::ui::widgets {
 
 namespace {
 
-constexpr float kCardHeight = 290.0F;
+constexpr float kCardHeight = kAccountCardHeight;
 constexpr float kButtonRowH = 40.0F;
 constexpr float kButtonRowReserve = 50.0F;   // button height + gap above
 
@@ -47,6 +47,33 @@ std::string format_with_commas(int value) {
         out.push_back(',');
         out.append(s, i, 3);
     }
+    return out;
+}
+
+// Notes are shown inline on the card's subtitle line. Flatten newlines to
+// spaces and clip to the available width with an ellipsis so a long or
+// multi-line note can't push the rest of the card's layout down.
+std::string fit_notes_single_line(const std::string& notes, float max_w) {
+    if (max_w <= 0.0F) return {};
+    std::string flat;
+    flat.reserve(notes.size());
+    for (char c : notes) {
+        flat.push_back((c == '\n' || c == '\r' || c == '\t') ? ' ' : c);
+    }
+    if (ImGui::CalcTextSize(flat.c_str()).x <= max_w) return flat;
+    const float ellipsis_w = ImGui::CalcTextSize("...").x;
+    std::string out = flat;
+    while (!out.empty()) {
+        while (!out.empty()) {
+            const unsigned char uc = static_cast<unsigned char>(out.back());
+            out.pop_back();
+            if ((uc & 0xC0) != 0x80) break;
+        }
+        if (out.empty()) break;
+        if (ImGui::CalcTextSize(out.c_str()).x + ellipsis_w <= max_w) break;
+    }
+    while (!out.empty() && out.back() == ' ') out.pop_back();
+    out += "...";
     return out;
 }
 
@@ -106,7 +133,9 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         ImGui::TextDisabled("·");
         ImGui::SameLine();
         const std::string notes_utf8 = to_utf8(a.notes);
-        ImGui::TextDisabled("%s", notes_utf8.c_str());
+        const std::string notes_line =
+            fit_notes_single_line(notes_utf8, ImGui::GetContentRegionAvail().x);
+        ImGui::TextDisabled("%s", notes_line.c_str());
     }
     ImGui::PopStyleColor();
     ImGui::EndGroup();

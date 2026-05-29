@@ -189,6 +189,8 @@
 
     <ClCompile Include="core\cs2_config\video_config.cpp" />
 
+    <ClCompile Include="core\cs2\friend_code.cpp" />
+
     <ClCompile Include="core\account_store\store.cpp" />
     <ClCompile Include="core\account_store\filter.cpp" />
     <ClCompile Include="core\account_store\ban_diff.cpp" />
@@ -301,6 +303,8 @@
     <ClInclude Include="core\profile\edit.hpp" />
 
     <ClInclude Include="core\cs2_config\video_config.hpp" />
+
+    <ClInclude Include="core\cs2\friend_code.hpp" />
 
     <ClInclude Include="core\account_store\account.hpp" />
     <ClInclude Include="core\account_store\group.hpp" />

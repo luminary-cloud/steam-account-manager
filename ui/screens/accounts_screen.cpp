@@ -93,16 +93,34 @@ void draw_grid_body(app::AppState& state,
     const float card_w = (avail - kGap * static_cast<float>(columns - 1)) /
                          static_cast<float>(columns);
 
-    int col = 0;
-    for (std::size_t idx : visible) {
-        if (col > 0) ImGui::SameLine(0.0F, kGap);
-        auto& a = state.vault.accounts[idx];
-        const auto act = widgets::draw_account_card(state, a, card_w);
-        if (act != widgets::CardAction::None) {
-            handle_card_action(state, a, act);
+    // Cards are a fixed height, so virtualize: only the rows currently on
+    // screen get built. The clipper seeks past the rest, keeping per-frame
+    // work proportional to what's visible rather than to the account count.
+    const int rows = (static_cast<int>(visible.size()) + columns - 1) / columns;
+    const float row_pitch =
+        widgets::kAccountCardHeight + ImGui::GetStyle().ItemSpacing.y;
+
+    ImGuiListClipper clipper;
+    clipper.Begin(rows, row_pitch);
+    while (clipper.Step()) {
+        for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+            ImGui::SetCursorPosX(left_inset);
+            for (int c = 0; c < columns; ++c) {
+                const std::size_t vi =
+                    static_cast<std::size_t>(row) * static_cast<std::size_t>(columns) +
+                    static_cast<std::size_t>(c);
+                if (vi >= visible.size()) break;
+                if (c > 0) ImGui::SameLine(0.0F, kGap);
+                auto& a = state.vault.accounts[visible[vi]];
+                const auto act = widgets::draw_account_card(state, a, card_w);
+                if (act != widgets::CardAction::None) {
+                    handle_card_action(state, a, act);
+                }
+            }
         }
-        col = (col + 1) % columns;
     }
+    clipper.End();
+
     ImGui::Unindent(kGridInset);
 }
 
@@ -390,10 +408,7 @@ void draw_accounts(app::AppState& state) {
         ImGui::TextWrapped("Remove this account from the vault? This cannot be undone.");
         ImGui::Spacing();
         if (action_button("Remove", ImVec2(100, 0))) {
-            auto& accs = state.vault.accounts;
-            accs.erase(std::remove_if(accs.begin(), accs.end(),
-                [&](const core::Account& x) { return x.id == state.selected_account_id; }),
-                accs.end());
+            state.remove_accounts({state.selected_account_id});
             state.selected_account_id.clear();
             state.vault_dirty = true;
             state.save_vault_if_dirty();
@@ -433,12 +448,7 @@ void draw_accounts(app::AppState& state) {
 
         ImGui::Spacing();
         if (action_button("Remove", ImVec2(100, 0))) {
-            auto& accs = state.vault.accounts;
-            accs.erase(std::remove_if(accs.begin(), accs.end(),
-                [&](const core::Account& x) {
-                    return state.selected_account_ids.count(x.id) != 0;
-                }),
-                accs.end());
+            state.remove_accounts(state.selected_account_ids);
             state.selected_account_ids.clear();
             state.vault_dirty = true;
             state.save_vault_if_dirty();

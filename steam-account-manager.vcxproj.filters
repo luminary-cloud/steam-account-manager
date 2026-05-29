@@ -12,6 +12,7 @@
     <Filter Include="core\steam_gcpd"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000007}</UniqueIdentifier></Filter>
     <Filter Include="core\profile"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000030}</UniqueIdentifier></Filter>
     <Filter Include="core\cs2_config"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000031}</UniqueIdentifier></Filter>
+    <Filter Include="core\cs2"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000032}</UniqueIdentifier></Filter>
     <Filter Include="core\account_store"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000008}</UniqueIdentifier></Filter>
     <Filter Include="core\notifications"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000001a}</UniqueIdentifier></Filter>
     <Filter Include="core\crypto"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000009}</UniqueIdentifier></Filter>
@@ -62,6 +63,7 @@
     <ClCompile Include="core\steam_gcpd\gcpd_parser.cpp"><Filter>core\steam_gcpd</Filter></ClCompile>
     <ClCompile Include="core\profile\edit.cpp"><Filter>core\profile</Filter></ClCompile>
     <ClCompile Include="core\cs2_config\video_config.cpp"><Filter>core\cs2_config</Filter></ClCompile>
+    <ClCompile Include="core\cs2\friend_code.cpp"><Filter>core\cs2</Filter></ClCompile>
 
     <ClCompile Include="core\account_store\store.cpp"><Filter>core\account_store</Filter></ClCompile>
     <ClCompile Include="core\account_store\filter.cpp"><Filter>core\account_store</Filter></ClCompile>
@@ -292,6 +294,7 @@
     <ClInclude Include="core\steam_gcpd\gcpd_parser.hpp"><Filter>core\steam_gcpd</Filter></ClInclude>
     <ClInclude Include="core\profile\edit.hpp"><Filter>core\profile</Filter></ClInclude>
     <ClInclude Include="core\cs2_config\video_config.hpp"><Filter>core\cs2_config</Filter></ClInclude>
+    <ClInclude Include="core\cs2\friend_code.hpp"><Filter>core\cs2</Filter></ClInclude>
 
     <ClInclude Include="core\account_store\account.hpp"><Filter>core\account_store</Filter></ClInclude>
     <ClInclude Include="core\account_store\group.hpp"><Filter>core\account_store</Filter></ClInclude>

@@ -105,11 +105,11 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     const bool any_ban_pill = opts.show_vac || opts.show_game || opts.show_trade ||
                               opts.show_community || (opts.show_vac_live && opts.vac_live);
 
-    constexpr float kBadgeH = 21.0F;
+    constexpr float kBadgeH = 26.0F;
     constexpr float kWinsGap = 3.0F;
     constexpr float kModeGap = 2.0F;
     constexpr float kRankGap = 18.0F;
-    constexpr float kRankLabelScale = 0.85F;
+    constexpr float kRankLabelScale = 1.0F;
 
     const rank_image::TexEntry* premier_e = nullptr;
     if (state.settings.info.show_premier) {

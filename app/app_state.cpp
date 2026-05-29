@@ -1,5 +1,6 @@
 #include "app/app_state.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <optional>
@@ -41,6 +42,28 @@ constexpr std::int64_t kMinGcpdRefreshSeconds = 90;
 // for rapid persona renames, so a successful change locks the action out for
 // this long.
 constexpr std::int64_t kPersonaChangeCooldownSeconds = 300;
+
+// Overwrite the secret bytes a removed or locked account leaves in the heap.
+// The password and token fields are crypto::SecureString and wipe themselves;
+// the SteamGuard secrets and session id are plain std::string, so wipe them
+// here before their storage is freed.
+void scrub_account_secrets(core::Account& a) {
+    const auto wipe = [](std::string& s) {
+        if (!s.empty()) crypto::zero_buffer(&s[0], s.size());
+    };
+    wipe(a.session_id);
+    if (a.sda) {
+        wipe(a.sda->shared_secret);
+        wipe(a.sda->identity_secret);
+        wipe(a.sda->revocation_code);
+        wipe(a.sda->secret_1);
+        wipe(a.sda->uri);
+        wipe(a.sda->serial_number);
+        wipe(a.sda->token_gid);
+        wipe(a.sda->account_name);
+        wipe(a.sda->device_id);
+    }
+}
 
 bool event_enabled(const Settings::NotificationToggles& t, core::BanEventKind k) {
     using K = core::BanEventKind;
@@ -1253,10 +1276,39 @@ void AppState::clear_session_secrets() {
 void AppState::lock_vault() {
     clear_session_secrets();
     master_password = crypto::SecureString();
+    scrub_vault_secrets();
     vault = core::Vault();
     vault_dirty = false;
     unlocked = false;
     current_screen = Screen::Unlock;
+}
+
+void AppState::scrub_vault_secrets() {
+    for (auto& a : vault.accounts) scrub_account_secrets(a);
+}
+
+void AppState::remove_accounts(std::unordered_set<std::string> ids) {
+    if (ids.empty()) return;
+    auto& accs = vault.accounts;
+    for (auto& a : accs) {
+        if (ids.count(a.id) != 0) scrub_account_secrets(a);
+    }
+    accs.erase(std::remove_if(accs.begin(), accs.end(),
+                   [&](const core::Account& x) { return ids.count(x.id) != 0; }),
+               accs.end());
+    for (const auto& id : ids) {
+        last_refresh_unix.erase(id);
+        last_gcpd_refresh_unix.erase(id);
+        last_persona_change_unix.erase(id);
+        conf_last_refresh_unix.erase(id);
+        conf_consecutive_failures.erase(id);
+        conf_permanent_failure.erase(id);
+        refreshing_ids.erase(id);
+        revealed_logins.erase(id);
+        selected_account_ids.erase(id);
+    }
+    std::lock_guard<std::mutex> lk(relogin_mutex);
+    for (const auto& id : ids) last_relogin_attempt.erase(id);
 }
 
 void AppState::enter_selection_mode() {

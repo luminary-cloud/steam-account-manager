@@ -5,6 +5,10 @@
 
 namespace sam::ui::widgets {
 
+// Fixed height of one account card, in pixels. Exposed so the grid's
+// ImGuiListClipper in accounts_screen.cpp can seek by row.
+constexpr float kAccountCardHeight = 290.0F;
+
 enum class CardAction {
     None,
     Launch,

@@ -65,6 +65,9 @@ IDXGISwapChain*         g_swap_chain = nullptr;
 ID3D11RenderTargetView* g_rtv = nullptr;
 UINT                    g_resize_w = 0;
 UINT                    g_resize_h = 0;
+// Set when Present reports the window is occluded/minimized; the main loop
+// throttles instead of spinning at full speed while hidden in the tray.
+bool                    g_occluded = false;
 
 // Set after AppState is constructed so the WM_DROPFILES handler can route
 // dropped .maFile paths into the AddAccount screen. Cleared before AppState
@@ -331,6 +334,8 @@ int run_startup_refresh(HINSTANCE inst, HWND hwnd) {
                 auto plain = sam::platform::dpapi::unprotect(wrapped);
                 auto pw = sam::crypto::make_secure(
                     std::string(plain.begin(), plain.end()));
+                if (!plain.empty())
+                    sam::crypto::zero_buffer(plain.data(), plain.size());
                 state.vault = sam::core::store::load_vault(sam::app::vault_path(), pw);
                 state.master_password = pw;
                 state.unlocked = true;
@@ -380,6 +385,7 @@ int run_startup_refresh(HINSTANCE inst, HWND hwnd) {
 
     sam::platform::tray_icon::remove();
     state.flush_pending_save();
+    state.scrub_vault_secrets();
     g_state = nullptr;
     sam::app::job_pump::stop_workers();
     sam::time_aligner::stop();
@@ -518,6 +524,8 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
                 auto plain = sam::platform::dpapi::unprotect(wrapped);
                 auto pw = sam::crypto::make_secure(
                     std::string(plain.begin(), plain.end()));
+                if (!plain.empty())
+                    sam::crypto::zero_buffer(plain.data(), plain.size());
                 state.vault = sam::core::store::load_vault(
                     sam::app::vault_path(), pw);
                 state.master_password = pw;
@@ -554,6 +562,13 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
             if (msg.message == WM_QUIT) quit = true;
         }
         if (quit) break;
+
+        // Minimized or fully occluded: Present stops blocking on vsync, so cap
+        // the loop instead of burning a core. Wakes immediately on any message
+        // (tray restore, hotkey) and still drains background jobs ~10x/sec.
+        if (g_occluded || IsIconic(hwnd)) {
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, 100, QS_ALLINPUT);
+        }
 
         if (g_resize_w != 0 && g_resize_h != 0) {
             release_render_target();
@@ -595,12 +610,14 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         g_context->OMSetRenderTargets(1, &g_rtv, nullptr);
         g_context->ClearRenderTargetView(g_rtv, bg);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-        g_swap_chain->Present(1, 0);
+        const HRESULT pr = g_swap_chain->Present(1, 0);
+        g_occluded = (pr == DXGI_STATUS_OCCLUDED);
     }
 
     // Flush any debounced vault save before tearing down the worker so the
     // last edit isn't lost (e.g. trust-label change right before quit).
     state.flush_pending_save();
+    state.scrub_vault_secrets();
     g_state = nullptr;
 
     SAM_LOG_INFO("shutting down");
