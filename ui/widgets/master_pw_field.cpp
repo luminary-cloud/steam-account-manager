@@ -14,6 +14,10 @@ namespace sam::ui::widgets {
 
 namespace {
 
+// Show/hide state per field, keyed by label. Lives here rather than as a
+// function-local static so reset_password_visibility() can clear it.
+std::unordered_map<std::string, bool> g_visible_map;
+
 int score(const std::string& s) {
     if (s.empty()) return 0;
     int classes = 0;
@@ -40,9 +44,7 @@ bool draw_password_field(const char* label, std::string& password,
 
     if (width > 0.0F) ImGui::SetNextItemWidth(width);
 
-    static std::unordered_map<std::string, bool> visible_map;
-    std::string id = std::string(label);
-    bool& visible = visible_map[id];
+    bool& visible = g_visible_map[std::string(label)];
 
     std::array<char, 256> buf{};
     std::snprintf(buf.data(), buf.size(), "%s", password.c_str());
@@ -74,6 +76,10 @@ bool draw_password_field(const char* label, std::string& password,
 
     ImGui::PopID();
     return changed;
+}
+
+void reset_password_visibility(const char* label) {
+    g_visible_map[std::string(label)] = false;
 }
 
 }  // namespace sam::ui::widgets

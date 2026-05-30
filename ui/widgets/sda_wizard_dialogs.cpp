@@ -184,6 +184,82 @@ void dispatch_finalize(app::AppState& app, AddSdaDialogState& s) {
     });
 }
 
+void dispatch_verify_active(app::AppState& app, AddSdaDialogState& s) {
+    const std::string aid = s.account_id;
+    app::job_pump::submit([aid, &app, &s] {
+        sda::TwoFactorStatus status;
+        bool token_ok = true;
+        std::string mafile_token_gid;
+        {
+            auto* a = app.find_account(aid);
+            if (!a || !a->sda.has_value()) {
+                app.post_ui_callback([&s] {
+                    s.step = AddSdaDialogState::Step::Failed;
+                    s.error = "Account no longer exists in the vault.";
+                });
+                return;
+            }
+            mafile_token_gid = a->sda->token_gid;
+            if (steam_login::needs_refresh(*a, 300)) {
+                token_ok = !a->refresh_token.empty() &&
+                           steam_login::refresh_access_token(*a);
+            }
+            if (token_ok) {
+                status = sda::query_two_factor_status(*a);
+            }
+        }
+
+        app.post_ui_callback([&app, &s, aid, token_ok, mafile_token_gid,
+                              status = std::move(status)] {
+            if (s.account_id != aid) return;
+
+            if (!token_ok) {
+                s.step = AddSdaDialogState::Step::Failed;
+                s.error = "Session expired. Re-login from the Add Account "
+                          "screen and try again.";
+                return;
+            }
+
+            if (!status.ok) {
+                s.step = AddSdaDialogState::Step::Failed;
+                s.error = !status.error.empty()
+                    ? "Could not verify with Steam: " + status.error
+                    : "Could not reach Steam to verify the authenticator.";
+                return;
+            }
+
+            // token_gid uniquely identifies the authenticator token. When the maFile
+            // has one it must match what Steam reports as live; otherwise fall back to
+            // "a Valve mobile authenticator is active".
+            const bool has_gid = !mafile_token_gid.empty();
+            const bool steam_has_authenticator =
+                status.authenticator_type == 1 || !status.token_gid.empty();
+            const bool confirmed = has_gid
+                ? (!status.token_gid.empty() && status.token_gid == mafile_token_gid)
+                : status.authenticator_type == 1;
+
+            if (confirmed) {
+                if (auto* a = app.find_account(aid); a && a->sda.has_value()) {
+                    a->sda->fully_enrolled = true;
+                    app.vault_dirty = true;
+                    app.save_vault_if_dirty();
+                }
+                s.step = AddSdaDialogState::Step::Done;
+                return;
+            }
+
+            s.step = AddSdaDialogState::Step::Failed;
+            s.error = (has_gid && steam_has_authenticator)
+                ? "A different authenticator is active on this account, so the codes "
+                  "in this maFile won't match it. Remove the other authenticator or "
+                  "re-import the correct maFile."
+                : "Steam reports no mobile authenticator is active on this account, "
+                  "so this maFile can't be marked complete. It may have been removed "
+                  "or was never finalized.";
+        });
+    });
+}
+
 void dispatch_remove(app::AppState& app, RemoveSdaDialogState& s) {
     const std::string aid = s.account_id;
     const int scheme = s.scheme;
@@ -262,6 +338,20 @@ void request_add_sda(app::AppState& app, AddSdaDialogState& s, std::string accou
         dispatch_add(app, s);
     }
     s.pending_open = true;
+}
+
+void request_verify_sda(app::AppState& app, AddSdaDialogState& s, std::string account_id) {
+    s.account_id = std::move(account_id);
+    s.activation_buf.fill(0);
+    s.error.clear();
+    s.working_text = "Checking the authenticator with Steam...";
+    s.acknowledged_rcode = true;
+    s.resync_attempted = false;
+    s.bad_code_hint = false;
+    s.open = true;
+    s.step = AddSdaDialogState::Step::Working;
+    s.pending_open = true;
+    dispatch_verify_active(app, s);
 }
 
 void request_remove_sda(RemoveSdaDialogState& s, std::string account_id) {
@@ -391,6 +481,15 @@ void draw_add_body(app::AppState& app, AddSdaDialogState& s) {
                 s.working_text = "Verifying...";
                 s.step = AddSdaDialogState::Step::Working;
                 dispatch_finalize(app, s);
+            }
+
+            ImGui::Spacing();
+            ImGui::TextDisabled("Already activated this authenticator elsewhere?");
+            if (action_button("My authenticator already works")) {
+                s.bad_code_hint = false;
+                s.working_text = "Checking the authenticator with Steam...";
+                s.step = AddSdaDialogState::Step::Working;
+                dispatch_verify_active(app, s);
             }
             break;
         }

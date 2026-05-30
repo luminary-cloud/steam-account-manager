@@ -54,6 +54,13 @@ struct RemoveSdaDialogState {
 // the user can finish what they started.
 void request_add_sda(app::AppState& app, AddSdaDialogState& state, std::string account_id);
 
+// Open the Add wizard directly in "verify with Steam" mode: instead of prompting for
+// an activation code, it calls ITwoFactorService/QueryStatus and, if Steam confirms
+// the authenticator in this maFile is the one live on the account, marks it
+// fully_enrolled. For maFiles (e.g. some SDA exports) that carry a stale
+// fully_enrolled == false even though Steam Guard already works.
+void request_verify_sda(app::AppState& app, AddSdaDialogState& state, std::string account_id);
+
 void request_remove_sda(RemoveSdaDialogState& state, std::string account_id);
 
 void draw_add_sda_modal(app::AppState& app, AddSdaDialogState& state);

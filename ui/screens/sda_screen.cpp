@@ -290,6 +290,14 @@ void draw_sda(app::AppState& state) {
         if (action_button("Finish activation")) {
             widgets::request_add_sda(state, add_sda_state, a->id);
         }
+        ImGui::SameLine();
+        if (action_button("Already activated")) {
+            widgets::request_verify_sda(state, add_sda_state, a->id);
+        }
+        hover_tooltip("Use this if Steam Guard already works on this account (for "
+                      "example an SDA maFile that imported as incomplete). It asks "
+                      "Steam to confirm the authenticator is active and clears the "
+                      "warning, without sending an activation code.");
     }
 
     ImGui::Spacing();

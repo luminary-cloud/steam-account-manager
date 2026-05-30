@@ -45,6 +45,9 @@ void handle_card_action(app::AppState& state,
                 ImGui::OpenPopup("Launch failed");
                 break;
             }
+            a.last_login_unix = now_seconds();
+            state.vault_dirty = true;
+            state.save_vault_if_dirty();
             if (state.settings.cs2_video.auto_apply_on_login &&
                 std::filesystem::exists(app::cs2_video_template_path())) {
                 state.apply_cs2_video_config(a);

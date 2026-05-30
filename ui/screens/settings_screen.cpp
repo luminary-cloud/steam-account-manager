@@ -47,9 +47,9 @@ void draw_settings(app::AppState& state) {
 
     ImGui::SeparatorText("General");
     ImGui::SetNextItemWidth(200);
-    ImGui::SliderInt("Clipboard auto-clear (s)", &state.settings.clipboard_clear_seconds, 0, 60);
-    hover_tooltip("Codes copied via the Authenticator screen are wiped from the clipboard after "
-                  "this many seconds. 0 disables the auto-wipe.");
+    ImGui::SliderInt("Clipboard auto-clear (s)", &state.settings.clipboard_clear_seconds, 10, 120);
+    hover_tooltip("Passwords and Steam Guard codes copied from the app are wiped from the "
+                  "clipboard after this many seconds.");
     ImGui::SetNextItemWidth(200);
     ImGui::SliderInt("Auto-lock (minutes)", &state.settings.auto_lock_minutes, 0, 240);
     hover_tooltip("Re-lock the vault after this many idle minutes. 0 disables auto-lock for the "

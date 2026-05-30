@@ -211,4 +211,46 @@ RemoveResult remove_authenticator(const core::Account& a, int scheme) {
     return out;
 }
 
+TwoFactorStatus query_two_factor_status(const core::Account& a) {
+    TwoFactorStatus out;
+
+    const std::string token = access_token(a);
+    if (token.empty() || a.steam_id_64 == 0) {
+        out.error = "no access token";
+        return out;
+    }
+
+    std::map<std::string, std::string> fields{
+        {"steamid", std::to_string(a.steam_id_64)},
+    };
+
+    auto resp = post_two_factor("QueryStatus", token, fields);
+    out.raw_response = resp.body;
+    if (resp.status != 200) {
+        SAM_LOG_WARN("QueryStatus: http {}", resp.status);
+        out.error = "http " + std::to_string(resp.status);
+        return out;
+    }
+
+    try {
+        const auto j = json::parse(resp.body);
+        if (!j.contains("response")) {
+            out.error = "no response field";
+            return out;
+        }
+        const auto& r = j["response"];
+        out.status_code        = r.value("status", 0);
+        out.authenticator_type = r.value("authenticator_type", 0);
+        out.steamguard_scheme  = r.value("steamguard_scheme", 0);
+        out.state              = r.value("state", 0);
+        out.token_gid          = r.value("token_gid", std::string{});
+        out.device_identifier  = r.value("device_identifier", std::string{});
+        out.ok = true;
+    } catch (const std::exception& ex) {
+        SAM_LOG_WARN("QueryStatus: parse failed: {}", ex.what());
+        out.error = ex.what();
+    }
+    return out;
+}
+
 }  // namespace sam::sda

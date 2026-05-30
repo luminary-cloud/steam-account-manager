@@ -1111,6 +1111,8 @@ void AppState::load_settings() {
     };
 
     get("clipboard_clear_seconds", settings.clipboard_clear_seconds);
+    settings.clipboard_clear_seconds =
+        std::clamp(settings.clipboard_clear_seconds, 10, 120);
     get("auto_lock_minutes",       settings.auto_lock_minutes);
     if (j.contains("accounts_view")) {
         const int v = j["accounts_view"].get<int>();

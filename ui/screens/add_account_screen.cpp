@@ -54,18 +54,25 @@ void draw_manual(app::AppState& state, core::Account* editing) {
     static std::string notes;
     static std::string loaded_id;
 
+    constexpr const char* kPwLabel = "Password";
+    constexpr const char* kSsLabel = "Shared secret (optional)##sda";
+
     if (editing && loaded_id != editing->id) {
         std::snprintf(login.data(), login.size(), "%s", editing->login.c_str());
         password = std::string(editing->password.begin(), editing->password.end());
         shared_secret = editing->sda.has_value() ? editing->sda->shared_secret : std::string{};
         notes = to_utf8(editing->notes);
         loaded_id = editing->id;
+        widgets::reset_password_visibility(kPwLabel);
+        widgets::reset_password_visibility(kSsLabel);
     } else if (!editing && !loaded_id.empty()) {
         login = {};
         password.clear();
         shared_secret.clear();
         notes.clear();
         loaded_id.clear();
+        widgets::reset_password_visibility(kPwLabel);
+        widgets::reset_password_visibility(kSsLabel);
     }
 
     ImGui::SeparatorText("Account credentials");
@@ -92,12 +99,11 @@ void draw_manual(app::AppState& state, core::Account* editing) {
         }
     }
 
-    widgets::draw_password_field("Password", password, false, 280.0F);
+    widgets::draw_password_field(kPwLabel, password, false, 280.0F);
     hover_tooltip("Stored encrypted with the vault master password. Used by the Launch button "
                   "to fill the Steam client prompt; never sent to a third party.");
 
-    widgets::draw_password_field("Shared secret (optional)##sda",
-                                  shared_secret, false, 280.0F);
+    widgets::draw_password_field(kSsLabel, shared_secret, false, 280.0F);
     hover_tooltip("Base64 shared_secret from your maFile. Optional. When set, the Code button "
                   "generates Steam Guard codes and silent re-login can refresh expired sessions "
                   "without prompting. Leave blank if you don't have it.");
