@@ -12,11 +12,12 @@ On first launch Windows SmartScreen may show "Windows protected your PC" because
 
 **Accounts.** Your vault, as a card grid or a list view with coloured groups (toggle in Settings).
 
-- Add manually, by `.maFile`, by `info.dat`, or by walking the full mobile login flow.
+- Add manually, by `.maFile`, by `info.dat`, by walking the full mobile login flow, or by pasting an NFA refresh token.
 - Drag a `.maFile`, `info.dat`, or a folder of either onto the window to queue them.
 - Per-account password, notes, tags, trust labels, trade-hold timers. Search, filter, multi-select.
 - Privacy mode hides every login until you click to reveal one.
 - Right-click an account to copy its login, password, 2FA code, SteamID64, profile URL, or CS2 friend code; apply the CS2 video config; or change its Steam display name (honouring Steam's 5-minute persona cooldown).
+- **NFA (Non-Full-Access) accounts.** Paste a Steam JWT refresh token (`username----token`) for an account you only have token access to. It drops into an *NFA* group with a badge beside the trust dot, tracks how long the token stays valid, and warns you when it expires. Public stats (bans, level, games) still populate from the Web API key; the CS2 stats that need a full web session don't, so you can set a competitive cooldown by hand from the right-click menu.
 
 **Authenticator.** Steam Guard codes for any imported authenticator.
 
@@ -41,6 +42,7 @@ On first launch Windows SmartScreen may show "Windows protected your PC" because
 **Launch.** One-click launch into any saved account through the standard registry login flow.
 
 - Best-effort auto-typing of the Steam Guard code into the Steam login popup via UI Automation; falls back to the clipboard with auto-clear.
+- NFA accounts sign in by injecting their refresh token into the Steam client, so they launch with no password and no code typing.
 - Optional per-launch CS2 video config: pick a `video.txt` in Settings and each launch copies it into that account's CS2 cfg folder, backing up any existing file first.
 
 **Export / import.** A passphrase-protected `.sambundle` you can carry between machines (passphrase separate from your master password). Import shows a merge preview before writing. Plain `login:password` export is gated behind a typed confirmation phrase.
