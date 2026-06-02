@@ -324,6 +324,11 @@ struct AppState {
     std::deque<Job> completed_jobs;
     std::unordered_set<std::string> refreshing_ids;
 
+    // Account ids for which we've already fired the "NFA token expired/invalid"
+    // notification, so it fires once per dead token. UI-thread only (touched in
+    // completed-job callbacks and on import). Cleared on re-import.
+    std::unordered_set<std::string> nfa_dead_notified;
+
     // Refresh rate limiting (per-account-id; populated when a refresh completes).
     // The UI reads these to grey out the Refresh button mid-cooldown.
     std::unordered_map<std::string, std::int64_t> last_refresh_unix;

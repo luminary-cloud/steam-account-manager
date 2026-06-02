@@ -211,8 +211,10 @@
     <ClCompile Include="core\launch\steam_launcher.cpp" />
     <ClCompile Include="core\launch\login_driver.cpp" />
     <ClCompile Include="core\launch\code_clipboard.cpp" />
+    <ClCompile Include="core\launch\token_launcher.cpp" />
 
     <ClCompile Include="core\steam_local\loginusers.cpp" />
+    <ClCompile Include="core\steam_local\connect_cache.cpp" />
 
     <ClCompile Include="platform\fs.cpp" />
     <ClCompile Include="platform\file_dialog.cpp" />
@@ -245,6 +247,7 @@
     <ClCompile Include="ui\screens\settings_screen.cpp" />
 
     <ClCompile Include="ui\widgets\rail_nav.cpp" />
+    <ClCompile Include="ui\widgets\title_bar.cpp" />
     <ClCompile Include="ui\widgets\account_card.cpp" />
     <ClCompile Include="ui\widgets\account_context_menu.cpp" />
     <ClCompile Include="ui\widgets\account_panel.cpp" />
@@ -331,10 +334,13 @@
     <ClInclude Include="core\http\response.hpp" />
 
     <ClInclude Include="core\launch\steam_launcher.hpp" />
+    <ClInclude Include="core\launch\token_launcher.hpp" />
     <ClInclude Include="core\launch\login_driver.hpp" />
     <ClInclude Include="core\launch\code_clipboard.hpp" />
 
     <ClInclude Include="core\steam_local\loginusers.hpp" />
+    <ClInclude Include="core\steam_local\connect_cache.hpp" />
+    <ClInclude Include="core\steam_local\crc32.hpp" />
 
     <ClInclude Include="platform\fs.hpp" />
     <ClInclude Include="platform\file_dialog.hpp" />
@@ -365,6 +371,7 @@
     <ClInclude Include="ui\screens\settings_screen.hpp" />
 
     <ClInclude Include="ui\widgets\rail_nav.hpp" />
+    <ClInclude Include="ui\widgets\title_bar.hpp" />
     <ClInclude Include="ui\widgets\account_card.hpp" />
     <ClInclude Include="ui\widgets\account_context_menu.hpp" />
     <ClInclude Include="ui\widgets\account_panel.hpp" />

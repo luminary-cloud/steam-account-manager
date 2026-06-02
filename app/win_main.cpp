@@ -13,6 +13,9 @@
 #include <tchar.h>
 #include <d3d11.h>
 #include <dxgi.h>
+#include <dwmapi.h>
+#include <uxtheme.h>
+#include <windowsx.h>
 
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
@@ -24,6 +27,7 @@
 #include "app/job_pump.hpp"
 #include "app/resource.h"
 #include "core/account_store/store.hpp"
+#include "core/http/client.hpp"
 #include "core/log.hpp"
 #include "core/time_aligner.hpp"
 #include "core/sda/totp.hpp"
@@ -42,6 +46,7 @@
 #include "ui/util.hpp"
 #include "ui/widgets/avatar_cache.hpp"
 #include "ui/widgets/rank_image.hpp"
+#include "ui/widgets/title_bar.hpp"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -238,6 +243,72 @@ LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g_resize_w = LOWORD(lp);
             g_resize_h = HIWORD(lp);
             return 0;
+
+        case WM_NCCALCSIZE:
+            // Collapse the standard frame so the client covers the whole window;
+            // when maximized, inset by the (DPI-aware) frame so content isn't clipped.
+            if (wp == TRUE) {
+                auto* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lp);
+                if (IsZoomed(hwnd)) {
+                    const UINT dpi = GetDpiForWindow(hwnd);
+                    const int fx = GetSystemMetricsForDpi(SM_CXFRAME, dpi) +
+                                   GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+                    const int fy = GetSystemMetricsForDpi(SM_CYFRAME, dpi) +
+                                   GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+                    params->rgrc[0].left   += fx;
+                    params->rgrc[0].right  -= fx;
+                    params->rgrc[0].top    += fy;
+                    params->rgrc[0].bottom -= fy;
+                }
+                return 0;
+            }
+            break;
+
+        case WM_NCHITTEST: {
+            // Resize borders and the caption strip are non-client so Windows drives
+            // drag/snap/maximize; the title-bar button block stays client for ImGui.
+            POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            RECT wr;
+            GetWindowRect(hwnd, &wr);
+            const bool zoomed = IsZoomed(hwnd);
+            const float scale = static_cast<float>(GetDpiForWindow(hwnd)) / 96.0F;
+            const int border = zoomed ? 0
+                : static_cast<int>(sam::ui::widgets::kResizeBorder * scale);
+
+            const bool left   = pt.x <  wr.left  + border;
+            const bool right  = pt.x >= wr.right - border;
+            const bool top    = pt.y <  wr.top   + border;
+            const bool bottom = pt.y >= wr.bottom - border;
+
+            if (!zoomed) {
+                if (top && left)     return HTTOPLEFT;
+                if (top && right)    return HTTOPRIGHT;
+                if (bottom && left)  return HTBOTTOMLEFT;
+                if (bottom && right) return HTBOTTOMRIGHT;
+                if (left)   return HTLEFT;
+                if (right)  return HTRIGHT;
+                if (top)    return HTTOP;
+                if (bottom) return HTBOTTOM;
+            }
+
+            const int title_h = static_cast<int>(sam::ui::widgets::kTitleBarHeight * scale);
+            if (pt.y < wr.top + title_h) {
+                const int strip = static_cast<int>(sam::ui::widgets::kCaptionBtnWidth *
+                                                   sam::ui::widgets::kCaptionBtnCount * scale);
+                if (pt.x >= wr.right - strip) return HTCLIENT;
+                return HTCAPTION;
+            }
+            return HTCLIENT;
+        }
+
+        case WM_GETMINMAXINFO: {
+            // A frameless window would otherwise shrink to nothing.
+            auto* mmi = reinterpret_cast<MINMAXINFO*>(lp);
+            const float scale = static_cast<float>(GetDpiForWindow(hwnd)) / 96.0F;
+            mmi->ptMinTrackSize.x = static_cast<LONG>(640 * scale);
+            mmi->ptMinTrackSize.y = static_cast<LONG>(480 * scale);
+            return 0;
+        }
 
         case WM_DROPFILES:
             handle_dropped_files(reinterpret_cast<HDROP>(wp));
@@ -457,8 +528,22 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         return 1;
     }
 
-    ShowWindow(hwnd, SW_SHOWDEFAULT);
-    UpdateWindow(hwnd);
+    // We collapse the standard frame in WM_NCCALCSIZE; a thin DWM frame
+    // extension keeps the system drop shadow and rounded corners.
+    const MARGINS frame_margins{0, 0, 1, 0};
+    DwmExtendFrameIntoClientArea(hwnd, &frame_margins);
+
+    // Force a non-client recompute through wnd_proc so the collapsed frame
+    // (WM_NCCALCSIZE) takes effect before the window is first shown.
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                 SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+    // Cloak the window, then show it: DWM plays the open animation off-screen
+    // during heavy init. We uncloak after the first frame (instant, no flash).
+    BOOL cloak = TRUE;
+    DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &cloak, sizeof(cloak));
+    ShowWindow(hwnd, SW_SHOW);
+    ShowWindow(hwnd, SW_SHOWNORMAL);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -544,6 +629,7 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
 
     MSG msg{};
     bool quit = false;
+    bool window_shown = false;
     while (!quit) {
         if (state.needs_hotkey_reregister) {
             sam::platform::global_hotkey::unregister_hotkey(
@@ -612,7 +698,18 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         const HRESULT pr = g_swap_chain->Present(1, 0);
         g_occluded = (pr == DXGI_STATUS_OCCLUDED);
+
+        // First frame is on screen; uncloak so the window appears already painted.
+        if (!window_shown) {
+            BOOL uncloak = FALSE;
+            DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &uncloak, sizeof(uncloak));
+            window_shown = true;
+        }
     }
+
+    // Abort in-flight HTTP so the worker, time-aligner, and update-check threads
+    // joined below return immediately instead of blocking on a WinHTTP timeout.
+    sam::http::cancel_all();
 
     // Flush any debounced vault save before tearing down the worker so the
     // last edit isn't lost (e.g. trust-label change right before quit).

@@ -52,4 +52,29 @@ std::vector<std::uint8_t> unprotect(std::span<const std::uint8_t> wrapped) {
     return std::vector<std::uint8_t>(out.pbData, out.pbData + out.cbData);
 }
 
+std::vector<std::uint8_t> protect(std::span<const std::uint8_t> plaintext,
+                                  std::span<const std::uint8_t> entropy) {
+    DATA_BLOB in{};
+    in.cbData = static_cast<DWORD>(plaintext.size());
+    in.pbData = const_cast<BYTE*>(plaintext.data());
+
+    DATA_BLOB ent{};
+    DATA_BLOB* pent = nullptr;
+    if (!entropy.empty()) {
+        ent.cbData = static_cast<DWORD>(entropy.size());
+        ent.pbData = const_cast<BYTE*>(entropy.data());
+        pent = &ent;
+    }
+
+    DATA_BLOB out{};
+    // No description: CryptUnprotectData ignores it on read, so the Steam client
+    // can still decrypt regardless of what string we pass here.
+    if (!::CryptProtectData(&in, nullptr, pent, nullptr, nullptr,
+                            CRYPTPROTECT_UI_FORBIDDEN, &out)) {
+        throw DpapiError("CryptProtectData (entropy) failed");
+    }
+    LocalFreeGuard guard{out.pbData};
+    return std::vector<std::uint8_t>(out.pbData, out.pbData + out.cbData);
+}
+
 }  // namespace sam::platform::dpapi

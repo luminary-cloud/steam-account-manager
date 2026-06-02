@@ -61,6 +61,11 @@ void submit(std::function<void()> task) {
     g_cv.notify_one();
 }
 
+bool interruptible_sleep(std::chrono::milliseconds total) {
+    std::unique_lock lk(g_mtx);
+    return !g_cv.wait_for(lk, total, [] { return !g_running.load(); });
+}
+
 void drain(AppState& state) {
     std::deque<Job> ready;
     {

@@ -1,5 +1,7 @@
 #include "ui/util.hpp"
 
+#include <cstdarg>
+
 #include <windows.h>
 #include <shellapi.h>
 
@@ -35,12 +37,23 @@ void open_url(const std::string& url) {
 
 void hover_tooltip(const char* text) {
     if (ImGui::IsItemHovered() && text && *text) {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
         ImGui::BeginTooltip();
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0F);
         ImGui::TextUnformatted(text);
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
+        ImGui::PopStyleVar();
     }
+}
+
+void set_tooltip(const char* fmt, ...) {
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
+    va_list args;
+    va_start(args, fmt);
+    ImGui::SetTooltipV(fmt, args);
+    va_end(args);
+    ImGui::PopStyleVar();
 }
 
 bool begin_styled_modal(const char* name, float width) {

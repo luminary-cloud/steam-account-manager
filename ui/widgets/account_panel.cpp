@@ -122,8 +122,8 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         const int rank = a.cs2.wingman_rank > 0 ? a.cs2.wingman_rank : 0;
         wingman_e = rank_image::wingman(rank);
     }
-    const bool draw_premier = premier_e && premier_e->srv && premier_e->h > 0;
-    const bool draw_wingman = wingman_e && wingman_e->srv && wingman_e->h > 0;
+    const bool draw_premier = !a.is_nfa && premier_e && premier_e->srv && premier_e->h > 0;
+    const bool draw_wingman = !a.is_nfa && wingman_e && wingman_e->srv && wingman_e->h > 0;
     const bool show_mode_label = draw_premier && draw_wingman;
     const float label_h      = text_h * kRankLabelScale;
     const float mode_block   = show_mode_label ? (label_h + kModeGap) : 0.0F;
@@ -174,16 +174,16 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
             }
             push_chip("Games", buf);
         }
-        if (state.settings.info.show_prime) {
+        if (!a.is_nfa && state.settings.info.show_prime) {
             const ImVec4 col = a.cs2.prime_status
                 ? theme::success() : theme::dim_text();
             push_chip("Prime", a.cs2.prime_status ? "yes" : "no", &col);
         }
-        if (a.cs2.cs2_player_level >= 0) {
+        if (!a.is_nfa && a.cs2.cs2_player_level >= 0) {
             std::snprintf(buf, sizeof(buf), "%d", a.cs2.cs2_player_level);
             push_chip("CS2 Lv", buf);
         }
-        if (a.cs2.cs2_player_xp >= 0) {
+        if (!a.is_nfa && a.cs2.cs2_player_xp >= 0) {
             const std::string xp = format_with_commas(a.cs2.cs2_player_xp);
             push_chip("XP", xp.c_str());
         }
@@ -192,6 +192,23 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
             std::snprintf(sid, sizeof(sid), "%llu",
                           static_cast<unsigned long long>(a.steam_id_64));
             push_chip("Steam ID", sid);
+        }
+        if (a.is_nfa && a.refresh_token_expires > 0) {
+            const std::int64_t remaining = a.refresh_token_expires - now_seconds();
+            char tbuf[24];
+            if (remaining <= 0) {
+                std::snprintf(tbuf, sizeof(tbuf), "expired");
+            } else if (remaining < 86400) {
+                std::snprintf(tbuf, sizeof(tbuf), "%lldh",
+                              static_cast<long long>(remaining / 3600));
+            } else {
+                std::snprintf(tbuf, sizeof(tbuf), "%lldd",
+                              static_cast<long long>(remaining / 86400));
+            }
+            const ImVec4 col = remaining <= 0           ? theme::danger()
+                             : remaining < 7 * 86400     ? theme::warning()
+                                                         : theme::success();
+            push_chip("NFA token", tbuf, &col);
         }
     }
 
@@ -349,8 +366,10 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
 
     {
         const ImVec2 after_header = ImGui::GetCursorScreenPos();
-        ImGui::SetCursorScreenPos(ImVec2(header_origin_screen.x + pane_inner_w - 16.0F,
-                                          header_origin_screen.y + 4.0F));
+        const float trust_x = header_origin_screen.x + pane_inner_w - 16.0F;
+        const float trust_y = header_origin_screen.y + 4.0F;
+        if (a.is_nfa) draw_nfa_pill(trust_x - 6.0F, trust_y + 7.0F);
+        ImGui::SetCursorScreenPos(ImVec2(trust_x, trust_y));
         if (draw_trust_badge(a.trust, true)) {
             state.vault_dirty = true;
             state.save_vault_if_dirty();
@@ -555,9 +574,9 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             if (refresh_busy) {
-                ImGui::SetTooltip("Refresh in progress...");
+                set_tooltip("Refresh in progress...");
             } else if (cooldown > 0) {
-                ImGui::SetTooltip("Wait %llds before refreshing again.",
+                set_tooltip("Wait %llds before refreshing again.",
                                   static_cast<long long>(cooldown));
             }
         }

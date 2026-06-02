@@ -86,4 +86,9 @@ Account* find_existing_account(Vault& vault,
                                std::uint64_t steam_id_64,
                                std::string_view login);
 
+// Returns the id of the reserved "NFA" group, creating it in `vault` if it isn't
+// there yet. Used by the JWT-token import path to bucket Non-Full-Access
+// accounts. Idempotent across repeated imports.
+std::string ensure_nfa_group(Vault& vault);
+
 }  // namespace sam::core::store

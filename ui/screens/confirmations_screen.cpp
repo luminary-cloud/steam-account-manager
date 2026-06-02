@@ -870,9 +870,9 @@ void draw_account_section(app::AppState& state, core::Account& a, const PendingL
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             if (snapshot.refreshing) {
-                ImGui::SetTooltip("Refresh in progress...");
+                set_tooltip("Refresh in progress...");
             } else if (remaining > 0) {
-                ImGui::SetTooltip("Wait %llds before refreshing again.",
+                set_tooltip("Wait %llds before refreshing again.",
                                   static_cast<long long>(remaining));
             }
         }

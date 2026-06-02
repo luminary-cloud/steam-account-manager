@@ -293,12 +293,12 @@ void draw_accounts(app::AppState& state) {
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             if (no_api_key) {
-                ImGui::SetTooltip("Add a Steam Web API key in Settings to enable batch refresh.");
+                set_tooltip("Add a Steam Web API key in Settings to enable batch refresh.");
             } else if (cooldown > 0) {
-                ImGui::SetTooltip("Wait %llds before refreshing again.",
+                set_tooltip("Wait %llds before refreshing again.",
                                   static_cast<long long>(cooldown));
             } else {
-                ImGui::SetTooltip("Refresh every account's public Steam data "
+                set_tooltip("Refresh every account's public Steam data "
                                   "and (if enabled) GCPD page.");
             }
         }

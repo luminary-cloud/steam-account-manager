@@ -223,6 +223,8 @@ void to_json(json& j, const Account& a) {
     j["access_token_expires"] = a.access_token_expires;
     j["session_id"]           = a.session_id;
     j["steam_login_secure"]   = secure_to_string(a.steam_login_secure);
+    j["is_nfa"]               = a.is_nfa;
+    j["refresh_token_expires"] = a.refresh_token_expires;
     j["display_name"]         = ws_to_u8(a.display_name);
     j["notes"]                = ws_to_u8(a.notes);
     j["tag_ids"]              = a.tag_ids;
@@ -250,6 +252,8 @@ void from_json(const json& j, Account& a) {
     a.access_token_expires = j.value("access_token_expires", static_cast<std::int64_t>(0));
     a.session_id           = j.value("session_id", std::string{});
     a.steam_login_secure   = string_to_secure(j.value("steam_login_secure", std::string{}));
+    a.is_nfa               = j.value("is_nfa", false);
+    a.refresh_token_expires = j.value("refresh_token_expires", static_cast<std::int64_t>(0));
     a.display_name         = u8_to_ws(j.value("display_name", std::string{}));
     a.notes                = u8_to_ws(j.value("notes", std::string{}));
     if (j.contains("tag_ids") && j["tag_ids"].is_array()) {
@@ -507,6 +511,22 @@ Account* find_existing_account(Vault& vault,
         }
     }
     return nullptr;
+}
+
+namespace {
+constexpr std::uint32_t kNfaColorRgba = 0xF5A623FFu;  // amber
+}
+
+std::string ensure_nfa_group(Vault& vault) {
+    for (const auto& g : vault.groups) {
+        if (g.id == "grp-nfa" || iequals_ascii(g.name, "NFA")) return g.id;
+    }
+    Group g;
+    g.id = "grp-nfa";
+    g.name = "NFA";
+    g.color_rgba = kNfaColorRgba;
+    vault.groups.push_back(g);
+    return g.id;
 }
 
 Vault subset_vault(const Vault& source, std::span<const std::string> ids) {

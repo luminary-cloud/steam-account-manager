@@ -20,6 +20,10 @@ inline std::int64_t now_seconds() {
 void open_url(const std::string& url);
 void hover_tooltip(const char* text);
 
+// Drop-in for ImGui::SetTooltip that restores the inner WindowPadding the
+// global (0, 0) theme strips, so tooltip text isn't flush against the border.
+void set_tooltip(const char* fmt, ...) IM_FMTARGS(1);
+
 bool begin_styled_modal(const char* name, float width = 420.0F);
 void end_styled_modal();
 

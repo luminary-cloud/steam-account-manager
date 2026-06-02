@@ -15,6 +15,7 @@
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
 #include "ui/widgets/rail_nav.hpp"
+#include "ui/widgets/title_bar.hpp"
 
 namespace sam::ui {
 
@@ -52,6 +53,11 @@ bool draw(app::AppState& state) {
 
     bool keep_running = true;
     if (ImGui::Begin("sam-root", nullptr, root_flags)) {
+        widgets::draw_title_bar(state);
+        // Sit the content flush under the bar; the child would otherwise leave
+        // an ItemSpacing gap that shows a strip of the darker root background.
+        ImGui::SetCursorPosY(widgets::kTitleBarHeight);
+
         if (state.unlocked) {
             // A background refresh discovered we need to re-login for an
             // account: switch to the Add Account screen so the Full Login

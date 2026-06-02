@@ -464,7 +464,7 @@ void AppState::refresh_account_data() {
                             refresh_single_account(aid, /*batch_refresh=*/true);
                         }});
                     }
-                    std::this_thread::sleep_for(std::chrono::seconds(2));
+                    if (!job_pump::interruptible_sleep(std::chrono::seconds(2))) break;
                 }
             });
         }});
@@ -489,7 +489,7 @@ void AppState::refresh_accounts_staggered(std::vector<std::string> ids,
                     refresh_single_account(aid, /*batch_refresh=*/true);
                 }});
             }
-            std::this_thread::sleep_for(stagger);
+            if (!job_pump::interruptible_sleep(stagger)) break;
         }
     });
 }
@@ -558,6 +558,7 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
     // refuses to do anything without a usable TOTP source.
     crypto::SecureString relogin_password = acc->password;
     std::optional<core::SteamGuardAccount> relogin_sda = acc->sda;
+    const bool is_nfa = acc->is_nfa;
 
     bool gcpd_enabled = settings.gcpd_enabled;
     if (gcpd_enabled) {
@@ -577,7 +578,7 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
     }
 
     job_pump::submit([cfg, resolved, aid, creds, relogin_password, relogin_sda,
-                      gcpd_enabled, batch_refresh, this]() mutable {
+                      gcpd_enabled, batch_refresh, is_nfa, this]() mutable {
         SAM_LOG_INFO("refresh: fetching bans/summaries/level/games for {}", resolved);
         std::vector<std::uint64_t> ids{resolved};
         auto bans = steam_api::fetch_bans(cfg, ids);
@@ -597,7 +598,23 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
         //     re-login prompt as the last resort.
         bool token_refreshed = false;
         bool need_relogin = false;
+        bool nfa_token_dead = false;
+        std::optional<steam_gcpd::MatchmakingData> mm_parsed;
+        std::optional<steam_gcpd::AccountMainData> am_parsed;
 
+        // NFA accounts authenticate by a client-scoped refresh token, which Steam
+        // refuses to exchange for a web session over HTTP (AccessDenied). Skip
+        // token refresh + GCPD entirely and read liveness from the JWT itself.
+        if (is_nfa) {
+            const std::int64_t now_s = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            nfa_token_dead = creds.refresh_token.empty() ||
+                steam_login::jwt_expiry(creds.refresh_token) <= now_s ||
+                steam_login::jwt_audience(creds.refresh_token).find("client")
+                    == std::string::npos;
+        }
+
+        if (!is_nfa) {
         // Silent auto-relogin. Returns true iff we now hold a fresh
         // refresh_token + access_token from a successful credentials login.
         // Rate-limited to one attempt / 5 min / account so a bad stored
@@ -711,8 +728,6 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
         // GCPD HTML scraper: populates premier_rating, wingman_rank,
         // cooldown_* from matchmaking; CS2 player level + XP from
         // accountmain (prime_status is inferred from these, see merge).
-        std::optional<steam_gcpd::MatchmakingData> mm_parsed;
-        std::optional<steam_gcpd::AccountMainData> am_parsed;
         const bool gcpd_creds_ok = !creds.session_id.empty() && !creds.steam_login_secure.empty();
         if (gcpd_enabled && gcpd_creds_ok) {
             // Session-expired detection is content-based, not status-based:
@@ -751,6 +766,7 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
                          resolved, !creds.session_id.empty(),
                          !creds.steam_login_secure.empty());
         }
+        }  // if (!is_nfa)
 
         // Snapshot any refreshed-token values so the UI thread can update the
         // vault Account. Copy SecureStrings out: they're cheap.
@@ -790,7 +806,7 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
                                        level, games,
                                        mm_parsed = std::move(mm_parsed),
                                        am_parsed = std::move(am_parsed),
-                                       token_refreshed,
+                                       token_refreshed, nfa_token_dead,
                                        refreshed_at = std::move(refreshed_at),
                                        refreshed_rt = std::move(refreshed_rt),
                                        refreshed_ls = std::move(refreshed_ls),
@@ -885,6 +901,24 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
             if (!relogin_login.empty() && !pending_relogin_login.has_value()) {
                 SAM_LOG_INFO("refresh: queuing UI re-login prompt for '{}'", relogin_login);
                 pending_relogin_login = relogin_login;
+            }
+
+            // NFA token expired/invalid: notify once per dead token. Detection is
+            // from the JWT (not an API result), so it can't false-positive on the
+            // expected AccessDenied. Cleared on re-import so a fresh token re-arms.
+            if (nfa_token_dead && nfa_dead_notified.insert(aid).second) {
+                const std::string who = a->web.persona_name.empty()
+                                            ? a->login : a->web.persona_name;
+                const std::string msg = "NFA token expired - " + who +
+                                        " (re-import a refresh token)";
+                ui::widgets::ToastItem t;
+                t.id = "nfa-dead-" + aid;
+                t.message = msg;
+                t.account_id = aid;
+                t.is_warning = true;
+                t.expires_at_unix = now_unix + settings.notifications.toast_duration_seconds;
+                toasts.push(std::move(t));
+                push_native_notification(*this, msg, true);
             }
 
             SAM_LOG_INFO("refresh: done for '{}', bans={} summaries={} cs2_touched={}",

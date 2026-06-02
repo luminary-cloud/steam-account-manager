@@ -43,6 +43,10 @@ std::filesystem::path local_appdata_dir() {
     return base / L"steam-account-manager";
 }
 
+std::filesystem::path local_appdata_root() {
+    return known_folder(FOLDERID_LocalAppData);
+}
+
 std::filesystem::path data_dir() {
     auto exe = module_directory();
     if (!exe.empty() && std::filesystem::exists(exe / L"portable.flag")) {

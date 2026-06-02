@@ -22,4 +22,10 @@ std::vector<std::uint8_t> protect(std::span<const std::uint8_t> plaintext);
 // it for any other reason.
 std::vector<std::uint8_t> unprotect(std::span<const std::uint8_t> wrapped);
 
+// Wraps `plaintext` bound to `entropy` (DPAPI's OptionalEntropy). Steam's
+// local.vdf ConnectCache uses the account name as entropy, so this lets us write
+// a token the Steam client can decrypt.
+std::vector<std::uint8_t> protect(std::span<const std::uint8_t> plaintext,
+                                  std::span<const std::uint8_t> entropy);
+
 }  // namespace sam::platform::dpapi

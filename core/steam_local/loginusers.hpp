@@ -36,4 +36,28 @@ std::uint64_t lookup_steam_id(std::string_view login);
 // file, or the write fails.
 bool set_remembered_account(std::uint64_t steam_id_64);
 
+// Ensures loginusers.vdf has an entry for `steam_id_64` with `account_name`
+// (and `persona_name`, if non-empty), flags it RememberPassword / AllowAutoLogin
+// / MostRecent, and clears those flags on every other entry. Creates the file,
+// the "users" block, or the entry if missing. Used by the NFA token-login path
+// so Steam treats the injected account as remembered. Returns true on success.
+bool ensure_loginusers_entry(std::uint64_t steam_id_64,
+                             const std::string& account_name,
+                             const std::string& persona_name);
+
+// Generic text-VDF tree, shared with the connect_cache / config writers. Only
+// the subset we need: parse, look up / upsert scalars, and re-serialize.
+// Round-trips unknown keys so a write preserves fields Valve may add.
+struct VdfNode {
+    std::string key;
+    std::string value;             // populated iff !is_block
+    std::vector<VdfNode> children;
+    bool is_block = false;
+};
+
+VdfNode parse_vdf(std::string_view text);
+void serialize_node(const VdfNode& node, std::string& out, int depth);
+VdfNode* find_child(VdfNode& parent, std::string_view key);
+void upsert_scalar(VdfNode& parent, std::string_view key, std::string_view value);
+
 }  // namespace sam::steam_local

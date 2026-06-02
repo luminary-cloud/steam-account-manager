@@ -388,6 +388,98 @@ InfoDatImportResult import_one_info_dat(app::AppState& state,
     return r;
 }
 
+// NFA (JWT refresh token) import.
+
+struct JwtImportResult {
+    bool ok = false;
+    bool merged = false;
+    bool client_audience = false;
+    bool expired = false;
+    std::int64_t expires = 0;
+    std::uint64_t steam_id = 0;
+    std::string error;            // populated when !ok
+    std::string account_id;
+    std::string login;
+};
+
+struct LoginToken {
+    std::string login;
+    std::string token;
+};
+
+// Splits "<login>----<token>" (the form NFA exports use) or a bare token.
+LoginToken split_login_token(std::string raw) {
+    auto trim = [](std::string s) {
+        while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
+            s.erase(s.begin());
+        while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
+            s.pop_back();
+        return s;
+    };
+    raw = trim(std::move(raw));
+    const auto sep = raw.find("----");
+    if (sep == std::string::npos) return {std::string{}, raw};
+    return {trim(raw.substr(0, sep)), trim(raw.substr(sep + 4))};
+}
+
+JwtImportResult import_one_jwt_token(app::AppState& state, const std::string& raw) {
+    JwtImportResult r;
+    LoginToken lt = split_login_token(raw);
+    std::string login_hint = lt.login;
+    if (lt.token.empty()) { r.error = "No token provided."; return r; }
+
+    auto rt = crypto::make_secure(lt.token);
+    const std::int64_t exp = steam_login::jwt_expiry(rt);
+    if (exp == 0) {
+        r.error = "That doesn't look like a valid JWT (couldn't read its expiry).";
+        return r;
+    }
+    const std::string aud = steam_login::jwt_audience(rt);
+    r.client_audience = aud.find("client") != std::string::npos;
+    r.expires = exp;
+    r.expired = exp <= now_seconds();
+
+    std::uint64_t sid = steam_login::jwt_steam_id(rt);
+    if (sid == 0 && !login_hint.empty()) sid = steam_local::lookup_steam_id(login_hint);
+    r.steam_id = sid;
+
+    const std::string group_id = core::store::ensure_nfa_group(state.vault);
+
+    auto apply = [&](core::Account& a, bool fresh) {
+        a.refresh_token = rt;
+        a.refresh_token_expires = exp;
+        if (sid != 0) a.steam_id_64 = sid;
+        if (!login_hint.empty()) a.login = login_hint;
+        if (a.session_id.empty()) a.session_id = crypto::random_session_id();
+        if (fresh) a.created_unix = now_seconds();
+
+        // A token-only account (no stored password) is NFA: it launches via
+        // token injection and goes into the NFA group. Importing a token onto an
+        // existing full-access account just stores the token without changing
+        // its type.
+        const bool nfa = a.password.empty();
+        a.is_nfa = nfa;
+        if (nfa) a.group_id = group_id;
+    };
+
+    core::Account* existing = core::store::find_existing_account(state.vault, sid, login_hint);
+    if (existing) {
+        apply(*existing, false);
+        r.account_id = existing->id;
+        r.login = existing->login;
+        r.merged = true;
+    } else {
+        core::Account a;
+        a.id = generate_ulid();
+        apply(a, true);
+        r.account_id = a.id;
+        r.login = a.login;
+        state.vault.accounts.push_back(std::move(a));
+    }
+    r.ok = true;
+    return r;
+}
+
 // Import maFile tab.
 
 struct MafileBatchSummary {
@@ -756,6 +848,90 @@ void draw_import_info_dat(app::AppState& state) {
             ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
             for (const auto& f : summary.failures)
                 ImGui::BulletText("%s", f.c_str());
+            ImGui::PopStyleColor();
+        }
+    }
+}
+
+// NFA token import tab.
+
+void draw_import_jwt_token(app::AppState& state) {
+    static std::array<char, 4096> token_buf{};
+    static JwtImportResult result;
+    static bool has_result = false;
+    static std::string error;
+
+    ImGui::SeparatorText("NFA token import");
+    ImGui::TextDisabled("Paste a Steam refresh token as username----token (a bare token works too, "
+                        "but then Login can't resolve the account name).");
+
+    ImGui::TextUnformatted("Token");
+    ImGui::InputTextMultiline("##nfa-token", token_buf.data(), token_buf.size(),
+                              ImVec2(440.0F, 80.0F));
+    hover_tooltip("Format: username----eyA...  The username before the dashes is the Steam account "
+                  "name (needed for Login); the rest is the JWT refresh token, stored encrypted. An "
+                  "NFA account has no password; this token is its only credential.");
+
+    if (state.settings.web_api_key.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
+        ImGui::TextWrapped("No Steam Web API key set. Stats (level, games, bans) won't populate "
+                           "until you add one in Settings.");
+        ImGui::PopStyleColor();
+    }
+
+    ImGui::Spacing();
+    ImGui::BeginDisabled(token_buf[0] == 0);
+    if (action_button("Import##nfa-import")) {
+        error.clear();
+        has_result = false;
+        result = import_one_jwt_token(state, token_buf.data());
+        if (!result.ok) {
+            error = result.error;
+        } else {
+            state.vault_dirty = true;
+            state.save_vault_if_dirty();
+            state.nfa_dead_notified.erase(result.account_id);
+            state.refresh_single_account(result.account_id);
+            has_result = true;
+            token_buf = {};
+        }
+    }
+    ImGui::EndDisabled();
+
+    if (!error.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
+        ImGui::TextWrapped("%s", error.c_str());
+        ImGui::PopStyleColor();
+    }
+    if (has_result) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::success());
+        ImGui::Text("%s %s (Steam ID %llu).",
+                    result.merged ? "Updated" : "Imported",
+                    result.login.empty() ? "(login unknown)" : result.login.c_str(),
+                    static_cast<unsigned long long>(result.steam_id));
+        ImGui::PopStyleColor();
+
+        if (result.expired) {
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
+            ImGui::TextWrapped("This token is expired. The account was added but Login won't work "
+                               "until you import a fresh token.");
+            ImGui::PopStyleColor();
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
+            ImGui::Text("Token valid for %lld day(s).",
+                        static_cast<long long>((result.expires - now_seconds()) / 86400));
+            ImGui::PopStyleColor();
+        }
+        if (!result.client_audience) {
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
+            ImGui::TextWrapped("Heads up: this token's audience doesn't include \"client\", so the "
+                               "Steam client may reject it at Login.");
+            ImGui::PopStyleColor();
+        }
+        if (result.login.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
+            ImGui::TextWrapped("No account name resolved. Set one (edit the account, or re-import "
+                               "as username----token) so Login can sign in.");
             ImGui::PopStyleColor();
         }
     }
@@ -1258,6 +1434,10 @@ void draw_add_account(app::AppState& state) {
             if (force_info_dat) info_dat_flags |= ImGuiTabItemFlags_SetSelected;
             if (ImGui::BeginTabItem("Import info.dat", nullptr, info_dat_flags)) {
                 draw_import_info_dat(state);
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("NFA token")) {
+                draw_import_jwt_token(state);
                 ImGui::EndTabItem();
             }
             ImGuiTabItemFlags full_flags = ImGuiTabItemFlags_None;

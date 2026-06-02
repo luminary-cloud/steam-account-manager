@@ -10,5 +10,6 @@ void load(ID3D11Device* device);
 void shutdown();
 
 ImTextureID github();
+ImTextureID app_icon();
 
 }  // namespace sam::ui::icons

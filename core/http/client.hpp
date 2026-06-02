@@ -45,6 +45,10 @@ struct Request {
 // `max_retries` with jittered exponential backoff. Never throws.
 Response request(const Request& req);
 
+// Aborts all in-flight requests and makes subsequent ones fail immediately.
+// Call once at shutdown so blocked worker threads don't wait out the timeout.
+void cancel_all();
+
 // Encodes a flat map as application/x-www-form-urlencoded.
 std::string form_encode(const std::map<std::string, std::string>& fields);
 

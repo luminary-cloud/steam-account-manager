@@ -1,8 +1,10 @@
 #include "core/http/client.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <chrono>
+#include <mutex>
 #include <random>
 #include <thread>
 #include <vector>
@@ -55,19 +57,31 @@ int jitter_ms(int base_ms) {
     return base_ms + d(rng);
 }
 
-struct HSession {
-    HINTERNET h = nullptr;
-    HSession()  { h = WinHttpOpen(L"sam/0.1",
-                                   WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-                                   WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS,
-                                   0); }
-    ~HSession() { if (h) WinHttpCloseHandle(h); }
-};
+std::atomic<bool> g_cancelled{false};
+std::mutex g_session_mtx;
+HINTERNET g_session = nullptr;
 
 HINTERNET shared_session() {
-    static HSession s;
-    return s.h;
+    std::lock_guard lk(g_session_mtx);
+    if (g_cancelled.load(std::memory_order_acquire)) return nullptr;
+    if (!g_session) {
+        g_session = WinHttpOpen(L"sam/0.1",
+                                WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+                                WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS,
+                                0);
+    }
+    return g_session;
 }
+
+// Closes the session at process exit if cancel_all() wasn't called (e.g. the
+// headless --startup refresh path).
+struct SessionCleanup {
+    ~SessionCleanup() {
+        std::lock_guard lk(g_session_mtx);
+        if (g_session) { WinHttpCloseHandle(g_session); g_session = nullptr; }
+    }
+};
+SessionCleanup g_session_cleanup;
 
 void parse_headers(const std::wstring& raw,
                    std::map<std::string, std::string>& out,
@@ -149,6 +163,12 @@ bool split_url(const std::string& url, std::wstring& host, INTERNET_PORT& port,
 
 Response perform_once(const Request& req) {
     Response out;
+
+    if (g_cancelled.load(std::memory_order_acquire)) {
+        out.transport_error = true;
+        out.error_message = "cancelled";
+        return out;
+    }
 
     HINTERNET session = shared_session();
     if (!session) {
@@ -295,6 +315,7 @@ Response request(const Request& req) {
     for (int attempt = 0; attempt <= req.max_retries; ++attempt) {
         const auto t_start = std::chrono::steady_clock::now();
         last = perform_once(req);
+        if (g_cancelled.load(std::memory_order_acquire)) return last;
         const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - t_start).count();
 
@@ -336,6 +357,15 @@ Response request(const Request& req) {
         delay_ms *= 2;
     }
     return last;
+}
+
+void cancel_all() {
+    g_cancelled.store(true, std::memory_order_release);
+    std::lock_guard lk(g_session_mtx);
+    if (g_session) {
+        WinHttpCloseHandle(g_session);
+        g_session = nullptr;
+    }
 }
 
 std::string form_encode(const std::map<std::string, std::string>& fields) {

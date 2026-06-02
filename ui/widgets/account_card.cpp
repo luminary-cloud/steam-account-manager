@@ -145,6 +145,10 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         const float right_pad = 16.0F;
         const float badge_w = 14.0F;
         ImGui::SetCursorPosX(ImGui::GetWindowSize().x - badge_w - right_pad);
+        if (a.is_nfa) {
+            const ImVec2 sp = ImGui::GetCursorScreenPos();
+            draw_nfa_pill(sp.x - 6.0F, sp.y + 7.0F);
+        }
         if (draw_trust_badge(a.trust, true)) {
             state.vault_dirty = true;
             state.save_vault_if_dirty();
@@ -189,7 +193,7 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
             ImGui::SameLine();
             ImGui::Text("%d", a.web.owned_games_count);
         }
-        if (a.cs2.cs2_player_level >= 0) {
+        if (!a.is_nfa && a.cs2.cs2_player_level >= 0) {
             sep();
             ImGui::TextDisabled("CS2 Rank");
             ImGui::SameLine();
@@ -202,7 +206,7 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
             ImGui::Text("%lld h",
                 static_cast<long long>(a.web.total_playtime_minutes / 60));
         }
-        if (state.settings.info.show_prime && a.cs2.prime_status) {
+        if (!a.is_nfa && state.settings.info.show_prime && a.cs2.prime_status) {
             sep();
             ImGui::PushStyleColor(ImGuiCol_Text, theme::success());
             ImGui::TextUnformatted("Prime");
@@ -252,8 +256,8 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
             wingman_e = rank_image::wingman(rank);
         }
 
-        const bool draw_premier = premier_e && premier_e->srv && premier_e->h > 0;
-        const bool draw_wingman = wingman_e && wingman_e->srv && wingman_e->h > 0;
+        const bool draw_premier = !a.is_nfa && premier_e && premier_e->srv && premier_e->h > 0;
+        const bool draw_wingman = !a.is_nfa && wingman_e && wingman_e->srv && wingman_e->h > 0;
 
         if (draw_premier || draw_wingman) {
             const float premier_w = draw_premier
@@ -425,9 +429,9 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         // is still visible.
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             if (refresh_busy) {
-                ImGui::SetTooltip("Refresh in progress...");
+                set_tooltip("Refresh in progress...");
             } else if (cooldown > 0) {
-                ImGui::SetTooltip("Wait %llds before refreshing again.",
+                set_tooltip("Wait %llds before refreshing again.",
                                   static_cast<long long>(cooldown));
             }
         }

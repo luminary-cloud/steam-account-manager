@@ -1,6 +1,7 @@
 #include "core/steam_local/loginusers.hpp"
 
 #include <cctype>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -235,13 +236,6 @@ std::uint64_t lookup_steam_id(std::string_view login) {
 
 namespace {
 
-struct VdfNode {
-    std::string key;          // owning key; empty for the synthetic root
-    std::string value;        // populated iff !is_block
-    std::vector<VdfNode> children;
-    bool is_block = false;
-};
-
 // Parses { key value-or-block }* up to a closing brace or end-of-stream.
 void parse_object_body(Tokenizer& tk, VdfNode& parent) {
     while (true) {
@@ -268,6 +262,8 @@ void parse_object_body(Tokenizer& tk, VdfNode& parent) {
         parent.children.push_back(std::move(child));
     }
 }
+
+}  // namespace
 
 VdfNode parse_vdf(std::string_view text) {
     VdfNode root;
@@ -328,8 +324,6 @@ void upsert_scalar(VdfNode& parent, std::string_view key, std::string_view value
     parent.children.push_back(std::move(node));
 }
 
-}  // namespace
-
 bool set_remembered_account(std::uint64_t steam_id_64) {
     if (steam_id_64 == 0) return false;
     auto path = loginusers_path();
@@ -386,6 +380,75 @@ bool set_remembered_account(std::uint64_t steam_id_64) {
 
     SAM_LOG_INFO("set_remembered_account: flagged {} as auto-login in {}",
                  target_sid, path->string());
+    return true;
+}
+
+bool ensure_loginusers_entry(std::uint64_t steam_id_64,
+                             const std::string& account_name,
+                             const std::string& persona_name) {
+    if (steam_id_64 == 0 || account_name.empty()) return false;
+    auto dir = platform::registry::read_steam_install_dir();
+    if (!dir) {
+        SAM_LOG_WARN("ensure_loginusers_entry: Steam install dir not found");
+        return false;
+    }
+    const auto path = *dir / "config" / "loginusers.vdf";
+
+    // read_file_to_string returns "" if the file doesn't exist yet; parse_vdf("")
+    // yields an empty root and we build the tree from scratch.
+    VdfNode root = parse_vdf(read_file_to_string(path));
+
+    VdfNode* users = find_child(root, "users");
+    if (!users) {
+        VdfNode u;
+        u.key = "users";
+        u.is_block = true;
+        root.children.push_back(std::move(u));
+        users = find_child(root, "users");
+    }
+    users->is_block = true;
+
+    const std::string target_sid = std::to_string(steam_id_64);
+    VdfNode* entry = find_child(*users, target_sid);
+    if (!entry) {
+        VdfNode e;
+        e.key = target_sid;
+        e.is_block = true;
+        users->children.push_back(std::move(e));
+        entry = find_child(*users, target_sid);
+    }
+    entry->is_block = true;
+
+    upsert_scalar(*entry, "AccountName", account_name);
+    if (!persona_name.empty()) upsert_scalar(*entry, "PersonaName", persona_name);
+    upsert_scalar(*entry, "RememberPassword", "1");
+    upsert_scalar(*entry, "AllowAutoLogin", "1");
+    upsert_scalar(*entry, "MostRecent", "1");
+    upsert_scalar(*entry, "Timestamp",
+                  std::to_string(static_cast<long long>(std::time(nullptr))));
+
+    // Steam auto-logs into exactly one account: clear the flags on the rest.
+    for (auto& child : users->children) {
+        if (!child.is_block || child.key == target_sid) continue;
+        upsert_scalar(child, "RememberPassword", "0");
+        upsert_scalar(child, "AllowAutoLogin", "0");
+        upsert_scalar(child, "MostRecent", "0");
+    }
+
+    std::string serialized;
+    for (const auto& c : root.children) serialize_node(c, serialized, 0);
+
+    try {
+        platform::atomic_write_file(path,
+            std::span<const std::uint8_t>(
+                reinterpret_cast<const std::uint8_t*>(serialized.data()),
+                serialized.size()));
+    } catch (const std::exception& ex) {
+        SAM_LOG_ERROR("ensure_loginusers_entry: write failed: {}", ex.what());
+        return false;
+    }
+    SAM_LOG_INFO("ensure_loginusers_entry: wrote entry for {} ({}) in {}",
+                 target_sid, account_name, path.string());
     return true;
 }
 

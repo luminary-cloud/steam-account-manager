@@ -102,6 +102,12 @@ struct Account {
     std::string session_id;
     crypto::SecureString steam_login_secure;
 
+    // NFA (Non-Full-Access): authenticates by a JWT refresh token only, with no
+    // password. Set by the JWT-token import path. refresh_token_expires caches
+    // jwt_expiry(refresh_token) so the UI doesn't decode the token every frame.
+    bool is_nfa = false;
+    std::int64_t refresh_token_expires = 0;
+
     // User-curated.
     std::wstring display_name;
     std::wstring notes;

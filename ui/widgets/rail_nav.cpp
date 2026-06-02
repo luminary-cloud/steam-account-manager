@@ -7,7 +7,6 @@
 #include <imgui.h>
 
 #include "core/version.hpp"
-#include "ui/fonts.hpp"
 #include "ui/icons.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
@@ -29,11 +28,10 @@ int pending_confirmations_badge(const app::AppState& state) {
 
 constexpr float kSidebarWidth    = 188.0F;
 constexpr float kSidebarPaddingX = 16.0F;
-constexpr float kSidebarPaddingY = 18.0F;
 constexpr float kNavItemHeight   = 32.0F;
 constexpr float kNavItemSpacing  = 4.0F;
 constexpr float kSectionGap      = 18.0F;
-constexpr float kSidebarFooterH  = 56.0F;
+constexpr float kSidebarFooterH  = 72.0F;
 
 bool sidebar_item(const char* label, bool selected, float width, int badge_count) {
     const ImVec2 size{width, kNavItemHeight};
@@ -95,28 +93,6 @@ void draw_rail_nav(app::AppState& state) {
     draw->AddLine(ImVec2(win_pos.x + win_size.x - 1, win_pos.y),
                   ImVec2(win_pos.x + win_size.x - 1, win_pos.y + win_size.y),
                   ImColor(0.659F, 0.635F, 0.620F, 0.10F));
-
-    ImGui::Dummy(ImVec2(0, kSidebarPaddingY));
-
-    if (auto* tf = fonts::title()) {
-        ImGui::PushFont(tf, 0.0F);
-    }
-    auto centered_line = [](const char* s) {
-        float w = ImGui::CalcTextSize(s).x;
-        ImGui::SetCursorPosX((kSidebarWidth - w) * 0.5F);
-        ImGui::TextUnformatted(s);
-    };
-    centered_line("Steam Account");
-    centered_line("Manager");
-    if (fonts::title()) {
-        ImGui::PopFont();
-    }
-
-    ImGui::Dummy(ImVec2(0, 10));
-    ImVec2 sep_a = ImGui::GetCursorScreenPos();
-    sep_a.x = win_pos.x + kSidebarPaddingX;
-    draw->AddLine(sep_a, ImVec2(win_pos.x + win_size.x - kSidebarPaddingX, sep_a.y),
-                  ImColor(0.659F, 0.635F, 0.620F, 0.12F));
 
     auto draw_section = [&](const char* heading, const auto& items) {
         ImGui::Dummy(ImVec2(0, kSectionGap));
@@ -181,7 +157,7 @@ void draw_rail_nav(app::AppState& state) {
         }
         ImGui::PopStyleColor(3);
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Open repository on GitHub");
+            set_tooltip("Open repository on GitHub");
         }
     } else {
         if (ImGui::SmallButton("GitHub")) {
