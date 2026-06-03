@@ -275,8 +275,15 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
                     std::chrono::system_clock::now().time_since_epoch()).count();
                 cd_active = a.cs2.cooldown_expires_unix > now_s;
             }
+            bool wd_active = false;
+            if (!cd_active && state.settings.info.show_weekly_drop &&
+                a.cs2.weekly_drop_reset_unix > 0) {
+                const auto now_s = std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                wd_active = a.cs2.weekly_drop_reset_unix > now_s;
+            }
             const float bottom_y = ImGui::GetWindowSize().y - kButtonRowReserve -
-                                   (cd_active ? ImGui::GetTextLineHeightWithSpacing() : 0.0F);
+                                   ((cd_active || wd_active) ? ImGui::GetTextLineHeightWithSpacing() : 0.0F);
             // The trailing NewLine after the stats row leaves the cursor a full
             // text-line (plus item spacing) below the visible content; subtract
             // that so the center is computed against the *actual* bottom of
@@ -372,6 +379,33 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
             } else {
                 ImGui::Text("%s · %lldm left",
                             reason, static_cast<long long>(remaining / 60));
+            }
+            ImGui::PopStyleColor();
+        }
+    }
+
+    // Weekly XP drop indicator: shares the cooldown's single pinned row, so it
+    // only shows when no cooldown is active (cooldown takes priority).
+    if (state.settings.info.show_weekly_drop && a.cs2.weekly_drop_reset_unix > 0) {
+        const auto now_s = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        const bool cd_showing = state.settings.info.show_cooldown &&
+                                a.cs2.cooldown_expires_unix > now_s;
+        if (!cd_showing && a.cs2.weekly_drop_reset_unix > now_s) {
+            const auto remaining = a.cs2.weekly_drop_reset_unix - now_s;
+            const float wd_y = ImGui::GetWindowSize().y - kButtonRowReserve -
+                               ImGui::GetTextLineHeightWithSpacing();
+            ImGui::SetCursorPosY(wd_y);
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::success());
+            if (remaining >= 86400) {
+                ImGui::Text("Weekly drop · resets in %lldd",
+                            static_cast<long long>(remaining / 86400));
+            } else if (remaining >= 3600) {
+                ImGui::Text("Weekly drop · resets in %lldh",
+                            static_cast<long long>(remaining / 3600));
+            } else {
+                ImGui::Text("Weekly drop · resets in %lldm",
+                            static_cast<long long>(remaining / 60));
             }
             ImGui::PopStyleColor();
         }

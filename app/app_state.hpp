@@ -131,6 +131,7 @@ struct Settings {
         bool show_prime = true;
         bool show_vac_live = true;
         bool show_cooldown = true;
+        bool show_weekly_drop = true;
     } info;
 
     struct NotificationToggles {

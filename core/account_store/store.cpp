@@ -173,6 +173,7 @@ void to_json(json& j, const CS2Status& c) {
         {"vac_live",             c.vac_live},
         {"cooldown_expires_unix", c.cooldown_expires_unix},
         {"cooldown_reason",      c.cooldown_reason},
+        {"weekly_drop_reset_unix", c.weekly_drop_reset_unix},
         {"last_refreshed_unix",  c.last_refreshed_unix},
     };
 }
@@ -208,6 +209,7 @@ void from_json(const json& j, CS2Status& c) {
     c.vac_live              = j.value("vac_live", false);
     c.cooldown_expires_unix = j.value("cooldown_expires_unix", static_cast<std::int64_t>(0));
     c.cooldown_reason       = j.value("cooldown_reason", std::string{});
+    c.weekly_drop_reset_unix = j.value("weekly_drop_reset_unix", static_cast<std::int64_t>(0));
     c.last_refreshed_unix   = j.value("last_refreshed_unix", static_cast<std::int64_t>(0));
 }
 

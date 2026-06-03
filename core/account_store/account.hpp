@@ -85,6 +85,10 @@ struct CS2Status {
     bool vac_live = false;                 // mirrors BanStatus.vac_banned
     std::int64_t cooldown_expires_unix = 0;
     std::string cooldown_reason;           // "Griefing", "Untrusted", "Team Damage", "Abandon"
+    // Unix time (UTC, s) of the next weekly XP-drop reset. Set when the user marks the
+    // drop claimed; reads as "claimed" while now < this value and auto-clears once now
+    // reaches it. 0 = not claimed.
+    std::int64_t weekly_drop_reset_unix = 0;
     std::int64_t last_refreshed_unix = 0;
 };
 

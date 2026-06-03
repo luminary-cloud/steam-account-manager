@@ -285,6 +285,25 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         cooldown_line = buf;
     }
 
+    const bool has_weekly_drop = state.settings.info.show_weekly_drop
+                                 && a.cs2.weekly_drop_reset_unix > now_s;
+    std::string weekly_drop_line;
+    if (has_weekly_drop) {
+        const auto remaining = a.cs2.weekly_drop_reset_unix - now_s;
+        char buf[96];
+        if (remaining >= 86400) {
+            std::snprintf(buf, sizeof(buf), "Weekly drop claimed \xC2\xB7 resets in %lldd",
+                          static_cast<long long>(remaining / 86400));
+        } else if (remaining >= 3600) {
+            std::snprintf(buf, sizeof(buf), "Weekly drop claimed \xC2\xB7 resets in %lldh",
+                          static_cast<long long>(remaining / 3600));
+        } else {
+            std::snprintf(buf, sizeof(buf), "Weekly drop claimed \xC2\xB7 resets in %lldm",
+                          static_cast<long long>(remaining / 60));
+        }
+        weekly_drop_line = buf;
+    }
+
     const float chip_h = text_h + 6.0F;
     float middle_h = 0.0F;
     if (draw_premier || draw_wingman) middle_h += rank_block_h;
@@ -301,6 +320,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     }
     if (has_meta_line)      middle_h += 2.0F * sp_y + text_h;
     if (has_cooldown)       middle_h += 2.0F * sp_y + text_h;
+    if (has_weekly_drop)    middle_h += 2.0F * sp_y + text_h;
     if (!a.tag_ids.empty()) middle_h += 2.0F * sp_y + chip_h;
     if (!state.settings.hide_notes && !a.notes.empty())   middle_h += 2.0F * sp_y + text_h * 2.0F;
 
@@ -483,6 +503,15 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         center_h_lead(ts.x);
         ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
         ImGui::TextUnformatted(cooldown_line.c_str());
+        ImGui::PopStyleColor();
+    }
+
+    if (has_weekly_drop) {
+        ImGui::Spacing();
+        const ImVec2 ts = ImGui::CalcTextSize(weekly_drop_line.c_str());
+        center_h_lead(ts.x);
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::success());
+        ImGui::TextUnformatted(weekly_drop_line.c_str());
         ImGui::PopStyleColor();
     }
 

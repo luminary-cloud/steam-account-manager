@@ -12,6 +12,7 @@
 #include "core/cs2/friend_code.hpp"
 #include "core/sda/totp.hpp"
 #include "platform/clipboard.hpp"
+#include "ui/util.hpp"
 
 namespace sam::ui::widgets {
 
@@ -103,6 +104,29 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
             }
             ImGui::EndMenu();
         }
+    }
+
+    // Weekly XP drop is set purely by hand (there's no scrape source), so offer it
+    // for every account. Marking it claimed stores the next weekly reset time; the
+    // marker auto-clears once that moment passes.
+    ImGui::Separator();
+    if (ImGui::BeginMenu("Weekly XP drop")) {
+        auto set_drop = [&](std::int64_t reset_unix) {
+            if (auto* acc = state.find_account(a.id)) {
+                acc->cs2.weekly_drop_reset_unix = reset_unix;
+                state.vault_dirty = true;
+                state.save_vault_if_dirty();
+            }
+        };
+        const std::int64_t now = now_seconds();
+        const bool claimed = a.cs2.weekly_drop_reset_unix > now;
+        if (ImGui::MenuItem("Mark claimed", nullptr, false, !claimed)) {
+            set_drop(next_weekly_reset(now));
+        }
+        if (a.cs2.weekly_drop_reset_unix != 0) {
+            if (ImGui::MenuItem("Clear")) set_drop(0);
+        }
+        ImGui::EndMenu();
     }
 }
 

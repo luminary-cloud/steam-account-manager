@@ -1057,6 +1057,7 @@ void AppState::save_settings() {
     info["show_prime"]         = settings.info.show_prime;
     info["show_vac_live"]      = settings.info.show_vac_live;
     info["show_cooldown"]      = settings.info.show_cooldown;
+    info["show_weekly_drop"]   = settings.info.show_weekly_drop;
 
     auto& notif = j["notifications"];
     notif["enabled"]               = settings.notifications.enabled;
@@ -1182,6 +1183,7 @@ void AppState::load_settings() {
         get_info("show_prime",         settings.info.show_prime);
         get_info("show_vac_live",      settings.info.show_vac_live);
         get_info("show_cooldown",      settings.info.show_cooldown);
+        get_info("show_weekly_drop",   settings.info.show_weekly_drop);
     }
 
     if (j.contains("notifications")) {
