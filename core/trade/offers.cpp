@@ -145,7 +145,9 @@ TradeOffersResult get_trade_offers(core::Account& a, bool active_only) {
         {"get_descriptions", "1"},
         {"language", "english"},
         {"active_only", active_only ? "1" : "0"},
-        {"time_historical_cutoff", "0"},
+        // Far-future cutoff so active_only=1 returns only currently-active offers,
+        // not every offer that has ever changed state (which cutoff 0 would).
+        {"time_historical_cutoff", "4000000000"},
     };
 
     const auto resp = steam_api::get(cfg, "IEconService", "GetTradeOffers", "v1", params, false);

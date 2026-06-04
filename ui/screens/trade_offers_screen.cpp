@@ -35,7 +35,7 @@ namespace {
 namespace trade = core::trade;
 
 constexpr float kCardMinWidth = 360.0F;
-constexpr float kCardHeight   = 210.0F;
+constexpr float kCardHeight   = 234.0F;
 constexpr float kGap          = 14.0F;
 constexpr float kButtonRowH   = 36.0F;
 constexpr float kItemIcon     = 40.0F;
@@ -213,9 +213,16 @@ std::int64_t refresh_cooldown_remaining(const app::AppState& state, const std::s
     return cooldown_remaining(last, state.settings.trade.per_account_cooldown_seconds);
 }
 
-// Returns false (account hidden) unless it has offers, is refreshing, or has an
-// error worth showing - mirroring the Confirmations page. Uses find() so the
-// 100-account draw loop never inserts entries for never-refreshed accounts.
+// Outgoing offers worth showing: still cancellable. Terminal states (accepted,
+// declined, canceled, expired, invalid items, escrow) are hidden.
+bool is_outgoing_actionable(trade::TradeOfferState s) {
+    return s == trade::TradeOfferState::Active ||
+           s == trade::TradeOfferState::CreatedNeedsConfirmation;
+}
+
+// Returns false (account hidden) unless it has actionable offers, is refreshing,
+// or has an error worth showing - mirroring the Confirmations page. Uses find()
+// so the 100-account draw loop never inserts entries for never-refreshed accounts.
 bool snapshot_for_draw(const std::string& aid, DrawSnap& out) {
     std::lock_guard lk(g_mtx);
     const auto it = g_states.find(aid);
@@ -226,7 +233,11 @@ bool snapshot_for_draw(const std::string& aid, DrawSnap& out) {
     for (const auto& o : st.received) {
         if (o.state == trade::TradeOfferState::Active) { has_active_in = true; break; }
     }
-    const bool has_any = has_active_in || !st.sent.empty();
+    bool has_active_out = false;
+    for (const auto& o : st.sent) {
+        if (is_outgoing_actionable(o.state)) { has_active_out = true; break; }
+    }
+    const bool has_any = has_active_in || has_active_out;
     if (!has_any && !st.refreshing && st.last_error.empty()) return false;
 
     out.sent = st.sent;
@@ -654,7 +665,9 @@ void draw_account_section(app::AppState& state, core::Account& a,
     for (const auto& o : snap.received) {
         if (o.state == trade::TradeOfferState::Active) incoming.push_back(&o);
     }
-    for (const auto& o : snap.sent) outgoing.push_back(&o);
+    for (const auto& o : snap.sent) {
+        if (is_outgoing_actionable(o.state)) outgoing.push_back(&o);
+    }
 
     ImGui::Spacing();
     if (!incoming.empty()) {
