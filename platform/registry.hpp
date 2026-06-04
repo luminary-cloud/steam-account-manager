@@ -31,4 +31,10 @@ std::optional<std::filesystem::path> read_steam_install_dir();
 bool set_auto_login_user(const std::wstring& account_name);
 bool set_remember_password(bool remember);
 
+// HKCU\Software\Valve\Steam\ActiveProcess\ActiveUser: the account id (low 32
+// bits of the SteamID) of the currently signed-in user, or 0 when nobody is
+// logged in. The reliable, client-version-independent way to detect that a
+// Steam login finished.
+std::optional<std::uint32_t> read_active_user();
+
 }  // namespace sam::platform::registry

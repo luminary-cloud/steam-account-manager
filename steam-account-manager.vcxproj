@@ -161,6 +161,7 @@
     <ClCompile Include="app\win_main.cpp" />
     <ClCompile Include="app\app_state.cpp" />
     <ClCompile Include="app\app_paths.cpp" />
+    <ClCompile Include="app\gamesense_loader.cpp" />
     <ClCompile Include="app\job_pump.cpp" />
     <ClCompile Include="app\conf_poller.cpp" />
 
@@ -209,6 +210,7 @@
     <ClCompile Include="core\http\url.cpp" />
 
     <ClCompile Include="core\launch\steam_launcher.cpp" />
+    <ClCompile Include="core\launch\cs2_autostart.cpp" />
     <ClCompile Include="core\launch\login_driver.cpp" />
     <ClCompile Include="core\launch\code_clipboard.cpp" />
     <ClCompile Include="core\launch\token_launcher.cpp" />
@@ -252,6 +254,7 @@
     <ClCompile Include="ui\widgets\account_context_menu.cpp" />
     <ClCompile Include="ui\widgets\account_panel.cpp" />
     <ClCompile Include="ui\widgets\avatar.cpp" />
+    <ClCompile Include="ui\widgets\login_method_control.cpp" />
     <ClCompile Include="ui\widgets\tag_chip.cpp" />
     <ClCompile Include="ui\widgets\trust_badge.cpp" />
     <ClCompile Include="ui\widgets\code_display.cpp" />
@@ -276,6 +279,7 @@
     <ClInclude Include="app\resource.h" />
     <ClInclude Include="app\app_state.hpp" />
     <ClInclude Include="app\app_paths.hpp" />
+    <ClInclude Include="app\gamesense_loader.hpp" />
     <ClInclude Include="app\job_pump.hpp" />
     <ClInclude Include="app\conf_poller.hpp" />
 
@@ -334,6 +338,7 @@
     <ClInclude Include="core\http\response.hpp" />
 
     <ClInclude Include="core\launch\steam_launcher.hpp" />
+    <ClInclude Include="core\launch\cs2_autostart.hpp" />
     <ClInclude Include="core\launch\token_launcher.hpp" />
     <ClInclude Include="core\launch\login_driver.hpp" />
     <ClInclude Include="core\launch\code_clipboard.hpp" />
@@ -376,6 +381,7 @@
     <ClInclude Include="ui\widgets\account_context_menu.hpp" />
     <ClInclude Include="ui\widgets\account_panel.hpp" />
     <ClInclude Include="ui\widgets\avatar.hpp" />
+    <ClInclude Include="ui\widgets\login_method_control.hpp" />
     <ClInclude Include="ui\widgets\tag_chip.hpp" />
     <ClInclude Include="ui\widgets\trust_badge.hpp" />
     <ClInclude Include="ui\widgets\code_display.hpp" />

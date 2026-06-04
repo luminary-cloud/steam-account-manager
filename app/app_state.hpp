@@ -158,6 +158,7 @@ struct Settings {
     struct ListViewToggles {
         bool show_cooldown_marker = true;
         bool show_unread_badge = true;
+        bool show_weekly_drop_marker = true;
         // Hides the login/account name from list-mode rows (persona name and the
         // selected-account detail panel are unaffected).
         bool hide_account_name = false;
@@ -240,6 +241,13 @@ struct AppState {
     // Set by the account context menu to request the "Change username" modal for
     // selected_account_id; consumed (reset) by the Accounts screen next frame.
     bool persona_change_requested = false;
+    // Set by the account-card login-method menu to request a gamesense loader
+    // file pick (the per-card popup can't safely host the Win32 dialog).
+    // Consumed by the Accounts screen, which runs the dialog at a stable scope.
+    // Value is the account id to switch to "CS2 + gamesense" on a successful
+    // pick, or an empty string to only (re)install the loader without changing
+    // any account's method. nullopt = no pick pending.
+    std::optional<std::string> gamesense_pick_request;
     // Account IDs whose login is currently revealed in privacy_mode.
     std::unordered_set<std::string> revealed_logins;
 

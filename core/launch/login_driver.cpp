@@ -19,6 +19,7 @@
 #include "core/sda/totp.hpp"
 #include "core/time_aligner.hpp"
 #include "platform/process.hpp"
+#include "platform/registry.hpp"
 #include "platform/ui_automation.hpp"
 
 namespace sam::launch::login_driver {
@@ -125,23 +126,6 @@ HWND find_login_window(std::uint32_t main_pid) {
         const std::wstring title = get_window_title(h);
         if ((title.find(L"Steam") != std::wstring::npos && title.size() > 5)
             || title == L"蒸汽平台登录") {
-            return h;
-        }
-    }
-    return nullptr;
-}
-
-// Accept any visible "Steam"-titled window owned by any steam.exe process.
-// We can't pin this to the spawned PID because Steam routinely re-execs its
-// main process during startup; the resulting client window may belong to a
-// different PID than the one CreateProcess returned.
-HWND find_main_client_window() {
-    const auto pids = sam::platform::process::find_by_image_name(L"steam.exe");
-    if (pids.empty()) return nullptr;
-    const auto windows = enumerate_windows_for_pids(pids);
-    for (HWND h : windows) {
-        const std::wstring title = get_window_title(h);
-        if (title == L"Steam" || title == L"蒸汽平台") {
             return h;
         }
     }
@@ -323,15 +307,11 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
         return g_current_gen.load(std::memory_order_acquire) != gen;
     };
 
-    // Wait for either the login window or a fully-logged-in client.
+    // Wait for the login window to appear.
     HWND login_hwnd = nullptr;
     while (clk::now() < deadline) {
         if (superseded()) {
             SAM_LOG_INFO("login_driver: superseded by newer run; exiting");
-            return;
-        }
-        if (find_main_client_window()) {
-            SAM_LOG_INFO("login_driver: client window already present; nothing to do");
             return;
         }
         if (auto h = find_login_window(pid)) { login_hwnd = h; break; }
@@ -354,9 +334,17 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
             SAM_LOG_INFO("login_driver: superseded by newer run; exiting");
             return;
         }
-        if (find_main_client_window()) {
-            SAM_LOG_INFO("login_driver: main client window confirmed");
-            return;
+        // Confirm success via the registry, but only once we've actually
+        // submitted credentials — gating on entered_creds prevents a stale
+        // ActiveUser (e.g. after a hard-kill of the previous session) from
+        // ending the run before we've typed anything.
+        if (entered_creds) {
+            const auto au = sam::platform::registry::read_active_user();
+            if (au && *au != 0 &&
+                (creds.expected_account_id == 0 || *au == creds.expected_account_id)) {
+                SAM_LOG_INFO("login_driver: login confirmed (ActiveUser={})", *au);
+                return;
+            }
         }
 
         if (!IsWindow(login_hwnd)) {

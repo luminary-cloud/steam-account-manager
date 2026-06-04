@@ -1,0 +1,162 @@
+#include "core/launch/cs2_autostart.hpp"
+
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
+
+#include "core/launch/steam_launcher.hpp"
+#include "core/log.hpp"
+#include "platform/process.hpp"
+#include "platform/registry.hpp"
+
+namespace sam::launch::cs2_autostart {
+
+namespace {
+
+using namespace std::chrono_literals;
+
+// Bumped on each start_async; a worker bails as soon as a newer run begins, so
+// logging into a different account cancels a still-pending autostart.
+std::atomic<std::uint64_t> g_gen{0};
+
+// Status messages queued by the worker, drained on the UI thread as toasts.
+std::mutex g_msg_mutex;
+std::vector<StatusMessage> g_msgs;
+
+void notify(std::string text, bool warning = false) {
+    std::lock_guard lk(g_msg_mutex);
+    g_msgs.push_back({std::move(text), warning});
+}
+
+constexpr auto kLoginTimeout = 180s;   // wait for sign-in (Steam may update on launch)
+constexpr auto kLoginPoll    = 500ms;
+constexpr auto kCs2Timeout   = 180s;   // wait for cs2.exe after the launch request
+constexpr auto kCs2Poll      = 1s;
+constexpr auto kInjectSettle = 2s;     // let cs2.exe initialize before injecting
+constexpr int  kLoaderAttempts = 3;
+
+void run_loader(std::uint32_t cs2_pid, const std::filesystem::path& loader) {
+    const std::wstring args = L"--pid=" + std::to_wstring(cs2_pid) + L" --load=128";
+    for (int attempt = 0; attempt < kLoaderAttempts; ++attempt) {
+        if (platform::process::launch(loader, args, loader.parent_path())) {
+            SAM_LOG_INFO("cs2_autostart: ran gamesense loader for cs2 pid={}", cs2_pid);
+            return;
+        }
+        SAM_LOG_WARN("cs2_autostart: loader launch failed (attempt {}); retrying",
+                     attempt + 1);
+        std::this_thread::sleep_for(3s);
+    }
+    SAM_LOG_ERROR("cs2_autostart: gamesense loader failed after {} attempts",
+                  kLoaderAttempts);
+    notify("Gamesense loader failed to start.", true);
+}
+
+void worker_body(std::uint64_t gen, core::LoginMethod method,
+                 std::uint64_t steam_id_64, std::filesystem::path loader) {
+    auto superseded = [gen]() {
+        return g_gen.load(std::memory_order_acquire) != gen;
+    };
+
+    LaunchResult tmp;
+    auto steam_exe = resolve_steam_exe(tmp);
+    if (!steam_exe) {
+        SAM_LOG_WARN("cs2_autostart: steam.exe not found; skipping");
+        notify("Steam install not found; cannot launch CS2.", true);
+        return;
+    }
+
+    using clk = std::chrono::steady_clock;
+
+    // 1. Wait for sign-in to complete: Steam sets ActiveUser to the account id
+    //    (low 32 bits of the SteamID) once logged in, 0 while on the login
+    //    screen. Match our account when known so another login can't trigger us.
+    const auto target = static_cast<std::uint32_t>(steam_id_64 & 0xFFFFFFFFull);
+    const auto login_deadline = clk::now() + kLoginTimeout;
+    bool logged_in = false;
+    while (clk::now() < login_deadline) {
+        if (superseded()) {
+            SAM_LOG_INFO("cs2_autostart: superseded by newer login; exiting");
+            return;
+        }
+        const auto au = platform::registry::read_active_user();
+        if (au && *au != 0 && (target == 0 || *au == target)) {
+            SAM_LOG_INFO("cs2_autostart: logged in (ActiveUser={})", *au);
+            logged_in = true;
+            break;
+        }
+        std::this_thread::sleep_for(kLoginPoll);
+    }
+    if (!logged_in) {
+        SAM_LOG_WARN("cs2_autostart: login did not complete in time; not launching CS2");
+        notify("Login timed out - CS2 not launched.", true);
+        return;
+    }
+
+    // 2. Launch CS2 through the running client (queued by Steam if needed).
+    if (!platform::process::launch(*steam_exe, L"-- steam://rungameid/730")) {
+        SAM_LOG_ERROR("cs2_autostart: failed to launch steam://rungameid/730");
+        notify("Failed to launch CS2.", true);
+        return;
+    }
+    SAM_LOG_INFO("cs2_autostart: requested CS2 launch (appid 730)");
+    notify("Launching CS2...", false);
+
+    if (method != core::LoginMethod::LaunchCs2Gamesense) return;
+
+    if (loader.empty()) {
+        SAM_LOG_WARN("cs2_autostart: gamesense selected but no loader configured; CS2 only");
+        notify("No gamesense loader configured.", true);
+        return;
+    }
+
+    // 3. Wait for cs2.exe, then run the loader once.
+    const auto cs2_deadline = clk::now() + kCs2Timeout;
+    std::uint32_t cs2_pid = 0;
+    while (clk::now() < cs2_deadline) {
+        if (superseded()) {
+            SAM_LOG_INFO("cs2_autostart: superseded before cs2.exe appeared; exiting");
+            return;
+        }
+        const auto pids = platform::process::find_by_image_name(L"cs2.exe");
+        if (!pids.empty()) { cs2_pid = pids.front(); break; }
+        std::this_thread::sleep_for(kCs2Poll);
+    }
+    if (cs2_pid == 0) {
+        SAM_LOG_WARN("cs2_autostart: cs2.exe did not appear; skipping gamesense");
+        notify("CS2 didn't start - gamesense not injected.", true);
+        return;
+    }
+
+    std::this_thread::sleep_for(kInjectSettle);
+    SAM_LOG_INFO("cs2_autostart: injecting gamesense into cs2 pid={}", cs2_pid);
+    notify("Launching gamesense...", false);
+    run_loader(cs2_pid, loader);
+}
+
+}  // namespace
+
+void start_async(core::LoginMethod method, std::uint64_t steam_id_64,
+                 std::filesystem::path gamesense_loader) {
+    if (method == core::LoginMethod::Normal) return;
+    const std::uint64_t gen = g_gen.fetch_add(1, std::memory_order_acq_rel) + 1;
+    std::thread([gen, method, steam_id_64,
+                 loader = std::move(gamesense_loader)]() mutable {
+        try {
+            worker_body(gen, method, steam_id_64, std::move(loader));
+        } catch (...) {
+            SAM_LOG_ERROR("cs2_autostart: worker threw");
+        }
+    }).detach();
+}
+
+std::vector<StatusMessage> take_status_messages() {
+    std::lock_guard lk(g_msg_mutex);
+    return std::exchange(g_msgs, {});
+}
+
+}  // namespace sam::launch::cs2_autostart

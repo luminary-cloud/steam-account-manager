@@ -15,6 +15,10 @@ struct Credentials {
     crypto::SecureString password;
     std::string shared_secret;            // empty if no Steam Guard mobile auth
     bool remember_password = true;
+    // Account id (low 32 bits of the SteamID) used to confirm a successful
+    // sign-in via the registry ActiveUser value. 0 if unknown, in which case the
+    // driver falls back to "any non-zero ActiveUser after credentials submitted".
+    std::uint32_t expected_account_id = 0;
 };
 
 // Spawns a detached worker that drives the freshly-launched Steam login UI

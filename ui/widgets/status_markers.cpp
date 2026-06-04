@@ -9,7 +9,12 @@ namespace sam::ui::widgets {
 namespace {
 
 ImU32 marker_color(MarkerKind k) {
-    const ImVec4 c = (k == MarkerKind::UnreadEvent) ? theme::danger() : theme::warning();
+    ImVec4 c;
+    switch (k) {
+        case MarkerKind::UnreadEvent: c = theme::danger();  break;
+        case MarkerKind::Cooldown:    c = theme::warning(); break;
+        case MarkerKind::WeeklyDrop:  c = theme::success(); break;
+    }
     return IM_COL32(static_cast<int>(c.x * 255),
                     static_cast<int>(c.y * 255),
                     static_cast<int>(c.z * 255), 235);
@@ -23,6 +28,15 @@ void draw_marker(ImDrawList* dl, ImVec2 center, MarkerKind kind, std::size_t cou
     const ImU32 fill = marker_color(kind);
     dl->AddCircleFilled(center, r, fill, 18);
     dl->AddCircle(center, r, IM_COL32(0, 0, 0, 120), 18, 1.0F);
+
+    if (kind == MarkerKind::WeeklyDrop) {
+        // The default font has no checkmark glyph, so stroke one in.
+        dl->AddLine(ImVec2(center.x - 3.0F, center.y + 0.2F),
+                    ImVec2(center.x - 0.8F, center.y + 2.6F), IM_COL32_WHITE, 1.7F);
+        dl->AddLine(ImVec2(center.x - 0.8F, center.y + 2.6F),
+                    ImVec2(center.x + 3.4F, center.y - 2.8F), IM_COL32_WHITE, 1.7F);
+        return;
+    }
 
     const char* glyph = "!";
     const ImVec2 ts = ImGui::CalcTextSize(glyph);

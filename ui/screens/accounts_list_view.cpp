@@ -265,11 +265,15 @@ void draw_account_row(app::AppState& state, const core::Account& a) {
                                  state.settings.notifications.surface_in_card &&
                                  state.settings.list_view.show_unread_badge)
         ? state.notifications.unacked_count_for(a.id) : 0;
+    const bool show_weekly_drop_marker =
+        state.settings.list_view.show_weekly_drop_marker &&
+        a.cs2.weekly_drop_reset_unix > now_unix;
 
     const float marker_gap = 8.0F;
     float marker_reserve = 0.0F;
-    if (show_cooldown_marker) marker_reserve += widgets::kMarkerSize + marker_gap;
-    if (unread > 0)           marker_reserve += widgets::kMarkerSize + marker_gap;
+    if (show_cooldown_marker)    marker_reserve += widgets::kMarkerSize + marker_gap;
+    if (show_weekly_drop_marker) marker_reserve += widgets::kMarkerSize + marker_gap;
+    if (unread > 0)              marker_reserve += widgets::kMarkerSize + marker_gap;
 
     const float label_x      = cursor.x + kIndent + 20.0F;
     const float row_right_x  = cursor.x + box.x - 10.0F - marker_reserve;
@@ -308,6 +312,11 @@ void draw_account_row(app::AppState& state, const core::Account& a) {
     if (show_cooldown_marker) {
         widgets::draw_marker(dl, ImVec2(marker_x, center_y),
                               widgets::MarkerKind::Cooldown);
+        marker_x -= widgets::kMarkerSize + marker_gap;
+    }
+    if (show_weekly_drop_marker) {
+        widgets::draw_marker(dl, ImVec2(marker_x, center_y),
+                              widgets::MarkerKind::WeeklyDrop);
         marker_x -= widgets::kMarkerSize + marker_gap;
     }
     if (unread > 0) {

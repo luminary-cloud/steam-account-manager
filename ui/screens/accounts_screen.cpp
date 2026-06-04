@@ -12,12 +12,15 @@
 #include <imgui.h>
 
 #include "app/app_paths.hpp"
+#include "app/gamesense_loader.hpp"
 #include "app/job_pump.hpp"
 #include "core/account_store/filter.hpp"
+#include "core/launch/cs2_autostart.hpp"
 #include "core/launch/steam_launcher.hpp"
 #include "core/profile/edit.hpp"
 #include "core/sda/totp.hpp"
 #include "platform/clipboard.hpp"
+#include "platform/file_dialog.hpp"
 #include "ui/screens/accounts_list_view.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
@@ -51,6 +54,14 @@ void handle_card_action(app::AppState& state,
             if (state.settings.cs2_video.auto_apply_on_login &&
                 std::filesystem::exists(app::cs2_video_template_path())) {
                 state.apply_cs2_video_config(a);
+            }
+            if (a.login_method != core::LoginMethod::Normal) {
+                std::filesystem::path loader;
+                if (a.login_method == core::LoginMethod::LaunchCs2Gamesense) {
+                    if (auto p = app::gamesense_loader_path()) loader = *p;
+                }
+                sam::launch::cs2_autostart::start_async(a.login_method, a.steam_id_64,
+                                                        std::move(loader));
             }
             break;
         }
@@ -405,6 +416,41 @@ void draw_accounts(app::AppState& state) {
         }
     } else {
         draw_grid_body(state, visible);
+    }
+
+    // A login-method menu asked to (re)install the gamesense loader. Run the file
+    // dialog here, at a stable scope: a Win32 modal can't be opened from inside
+    // the per-card ImGui popup. On success, flip the requesting account (if any)
+    // to "CS2 + gamesense"; on failure, surface the reason in the launch modal.
+    if (state.gamesense_pick_request.has_value()) {
+        const std::string acc_id = *state.gamesense_pick_request;
+        state.gamesense_pick_request.reset();
+
+        platform::file_dialog::Options opts;
+        opts.parent = state.main_hwnd;
+        opts.title = L"Choose gamesense loader";
+        opts.filters = {
+            {L"Executable (*.exe)", L"*.exe"},
+            {L"All files (*.*)", L"*.*"},
+        };
+        const auto picked = platform::file_dialog::open_file(opts);
+        if (picked.ok) {
+            std::string err;
+            if (app::install_gamesense_loader(picked.path, &err)) {
+                if (!acc_id.empty()) {
+                    if (auto* acc = state.find_account(acc_id)) {
+                        acc->login_method = core::LoginMethod::LaunchCs2Gamesense;
+                        state.vault_dirty = true;
+                        state.save_vault_if_dirty();
+                    }
+                }
+            } else {
+                state.launch_error = err.empty()
+                    ? std::string("Could not install the gamesense loader.")
+                    : err;
+                ImGui::OpenPopup("Launch failed");
+            }
+        }
     }
 
     if (begin_styled_modal("Confirm removal")) {

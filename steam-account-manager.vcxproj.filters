@@ -36,6 +36,7 @@
     <ClCompile Include="app\win_main.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\app_state.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\app_paths.cpp"><Filter>app</Filter></ClCompile>
+    <ClCompile Include="app\gamesense_loader.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\job_pump.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\conf_poller.cpp"><Filter>app</Filter></ClCompile>
 
@@ -84,6 +85,7 @@
 
     <ClCompile Include="core\launch\steam_launcher.cpp"><Filter>core\launch</Filter></ClCompile>
     <ClCompile Include="core\launch\login_driver.cpp"><Filter>core\launch</Filter></ClCompile>
+    <ClCompile Include="core\launch\cs2_autostart.cpp"><Filter>core\launch</Filter></ClCompile>
     <ClCompile Include="core\launch\code_clipboard.cpp"><Filter>core\launch</Filter></ClCompile>
     <ClCompile Include="core\launch\token_launcher.cpp"><Filter>core\launch</Filter></ClCompile>
 
@@ -129,6 +131,7 @@
     <ClCompile Include="ui\widgets\account_card.cpp"><Filter>ui\widgets</Filter></ClCompile>
     <ClCompile Include="ui\widgets\account_context_menu.cpp"><Filter>ui\widgets</Filter></ClCompile>
     <ClCompile Include="ui\widgets\account_panel.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\login_method_control.cpp"><Filter>ui\widgets</Filter></ClCompile>
     <ClCompile Include="ui\widgets\avatar.cpp"><Filter>ui\widgets</Filter></ClCompile>
     <ClCompile Include="ui\widgets\tag_chip.cpp"><Filter>ui\widgets</Filter></ClCompile>
     <ClCompile Include="ui\widgets\trust_badge.cpp"><Filter>ui\widgets</Filter></ClCompile>
@@ -268,6 +271,7 @@
     <ClInclude Include="app\resource.h"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\app_state.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\app_paths.hpp"><Filter>app</Filter></ClInclude>
+    <ClInclude Include="app\gamesense_loader.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\job_pump.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\conf_poller.hpp"><Filter>app</Filter></ClInclude>
 
@@ -324,6 +328,7 @@
 
     <ClInclude Include="core\launch\steam_launcher.hpp"><Filter>core\launch</Filter></ClInclude>
     <ClInclude Include="core\launch\login_driver.hpp"><Filter>core\launch</Filter></ClInclude>
+    <ClInclude Include="core\launch\cs2_autostart.hpp"><Filter>core\launch</Filter></ClInclude>
     <ClInclude Include="core\launch\code_clipboard.hpp"><Filter>core\launch</Filter></ClInclude>
     <ClInclude Include="core\launch\token_launcher.hpp"><Filter>core\launch</Filter></ClInclude>
 
@@ -368,6 +373,7 @@
     <ClInclude Include="ui\widgets\account_card.hpp"><Filter>ui\widgets</Filter></ClInclude>
     <ClInclude Include="ui\widgets\account_context_menu.hpp"><Filter>ui\widgets</Filter></ClInclude>
     <ClInclude Include="ui\widgets\account_panel.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\login_method_control.hpp"><Filter>ui\widgets</Filter></ClInclude>
     <ClInclude Include="ui\widgets\avatar.hpp"><Filter>ui\widgets</Filter></ClInclude>
     <ClInclude Include="ui\widgets\tag_chip.hpp"><Filter>ui\widgets</Filter></ClInclude>
     <ClInclude Include="ui\widgets\trust_badge.hpp"><Filter>ui\widgets</Filter></ClInclude>

@@ -232,6 +232,7 @@ void to_json(json& j, const Account& a) {
     j["tag_ids"]              = a.tag_ids;
     j["group_id"]             = a.group_id;
     j["trust"]                = static_cast<int>(a.trust);
+    j["login_method"]         = static_cast<int>(a.login_method);
     if (a.trade_url.has_value()) j["trade_url"] = *a.trade_url;
     j["web"]                  = a.web;
     j["bans"]                 = a.bans;
@@ -263,6 +264,7 @@ void from_json(const json& j, Account& a) {
     }
     a.group_id = j.value("group_id", std::string{});
     a.trust = static_cast<TrustLabel>(j.value("trust", 0));
+    a.login_method = static_cast<LoginMethod>(j.value("login_method", 0));
     if (j.contains("trade_url") && j["trade_url"].is_string()) {
         a.trade_url = j["trade_url"].get<std::string>();
     }

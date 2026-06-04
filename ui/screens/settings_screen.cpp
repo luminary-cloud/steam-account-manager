@@ -13,6 +13,7 @@
 #include <imgui.h>
 
 #include "app/app_paths.hpp"
+#include "app/gamesense_loader.hpp"
 #include "core/log.hpp"
 #include "platform/dpapi.hpp"
 #include "platform/file_dialog.hpp"
@@ -315,6 +316,10 @@ void draw_settings(app::AppState& state) {
                     &state.settings.list_view.show_unread_badge);
     hover_tooltip("Adds a red exclamation mark to the right of any list row that has "
                   "un-acknowledged ban or cooldown notifications.");
+    ImGui::Checkbox("Show weekly-drop marker on rows",
+                    &state.settings.list_view.show_weekly_drop_marker);
+    hover_tooltip("Adds a green checkmark to the right of any list row whose account is "
+                  "marked as having claimed its weekly CS2 XP drop.");
     ImGui::Checkbox("Hide account name in list",
                     &state.settings.list_view.hide_account_name);
     hover_tooltip("Hides the Steam login/account name from account-list rows. The persona name "
@@ -446,6 +451,50 @@ void draw_settings(app::AppState& state) {
     }
     hover_tooltip("The chosen file is copied to the app data folder and used as the single "
                   "default for every account.");
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Gamesense");
+    {
+        static std::string g_gamesense_err;
+        const auto loader = app::gamesense_loader_path();
+        ImGui::TextUnformatted("Loader:");
+        ImGui::SameLine();
+        if (loader) {
+            ImGui::TextDisabled("%s", loader->filename().string().c_str());
+        } else {
+            ImGui::TextDisabled("none configured");
+        }
+        if (action_button(loader ? "Update loader..." : "Choose loader...",
+                          ImVec2(160, 0))) {
+            platform::file_dialog::Options opts;
+            opts.parent = state.main_hwnd;
+            opts.title = L"Choose gamesense loader";
+            opts.filters = {{L"Executable (*.exe)", L"*.exe"},
+                            {L"All files (*.*)", L"*.*"}};
+            const auto res = platform::file_dialog::open_file(opts);
+            if (res.ok) {
+                g_gamesense_err.clear();
+                if (!app::install_gamesense_loader(res.path, &g_gamesense_err)) {
+                    SAM_LOG_ERROR("gamesense loader install failed: {}", g_gamesense_err);
+                }
+            }
+        }
+        if (loader) {
+            ImGui::SameLine();
+            if (action_button("Clear", ImVec2(80, 0))) {
+                std::error_code ec;
+                std::filesystem::remove(*loader, ec);
+            }
+        }
+        if (!g_gamesense_err.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
+            ImGui::TextWrapped("%s", g_gamesense_err.c_str());
+            ImGui::PopStyleColor();
+        }
+    }
+    hover_tooltip("The loader .exe is copied into the app data folder (data\\gamesense). "
+                  "Accounts set to \"Launch CS2 + gamesense\" run it after CS2 starts. "
+                  "Pick again to update the loader.");
 
     ImGui::Spacing();
     if (action_button("Save settings", ImVec2(160, 0))) {

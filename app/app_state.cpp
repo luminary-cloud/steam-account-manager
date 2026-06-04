@@ -1077,9 +1077,10 @@ void AppState::save_settings() {
     notif["retention_days"]        = settings.notifications.retention_days;
 
     auto& lv = j["list_view"];
-    lv["show_cooldown_marker"] = settings.list_view.show_cooldown_marker;
-    lv["show_unread_badge"]    = settings.list_view.show_unread_badge;
-    lv["hide_account_name"]    = settings.list_view.hide_account_name;
+    lv["show_cooldown_marker"]    = settings.list_view.show_cooldown_marker;
+    lv["show_unread_badge"]       = settings.list_view.show_unread_badge;
+    lv["show_weekly_drop_marker"] = settings.list_view.show_weekly_drop_marker;
+    lv["hide_account_name"]       = settings.list_view.hide_account_name;
 
     auto& sj = j["sda"];
     sj["auto_copy_on_select"]    = settings.sda.auto_copy_on_select;
@@ -1217,9 +1218,10 @@ void AppState::load_settings() {
                 dst = lj[key].get<std::remove_reference_t<decltype(dst)>>();
             }
         };
-        get_l("show_cooldown_marker", settings.list_view.show_cooldown_marker);
-        get_l("show_unread_badge",    settings.list_view.show_unread_badge);
-        get_l("hide_account_name",    settings.list_view.hide_account_name);
+        get_l("show_cooldown_marker",    settings.list_view.show_cooldown_marker);
+        get_l("show_unread_badge",       settings.list_view.show_unread_badge);
+        get_l("show_weekly_drop_marker", settings.list_view.show_weekly_drop_marker);
+        get_l("hide_account_name",       settings.list_view.hide_account_name);
     }
 
     if (j.contains("sda")) {

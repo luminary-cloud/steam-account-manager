@@ -28,6 +28,7 @@
 #include "app/resource.h"
 #include "core/account_store/store.hpp"
 #include "core/http/client.hpp"
+#include "core/launch/cs2_autostart.hpp"
 #include "core/log.hpp"
 #include "core/time_aligner.hpp"
 #include "core/sda/totp.hpp"
@@ -689,6 +690,22 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         }
 
         sam::app::job_pump::drain(state);
+        {
+            static unsigned long long cs2_toast_seq = 0;
+            auto msgs = sam::launch::cs2_autostart::take_status_messages();
+            if (!msgs.empty()) {
+                const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                for (auto& m : msgs) {
+                    sam::ui::widgets::ToastItem t;
+                    t.id = "cs2-autostart-" + std::to_string(cs2_toast_seq++);
+                    t.message = std::move(m.text);
+                    t.is_warning = m.warning;
+                    t.expires_at_unix = now + state.settings.notifications.toast_duration_seconds;
+                    state.toasts.push(std::move(t));
+                }
+            }
+        }
         sam::ui::draw(state);
 
         ImGui::Render();

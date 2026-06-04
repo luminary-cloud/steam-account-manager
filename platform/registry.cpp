@@ -119,4 +119,8 @@ bool set_remember_password(bool remember) {
     return write_dword_hkcu(kSteamSubkey, L"RememberPassword", remember ? 1u : 0u);
 }
 
+std::optional<std::uint32_t> read_active_user() {
+    return read_dword_hkcu(L"Software\\Valve\\Steam\\ActiveProcess", L"ActiveUser");
+}
+
 }  // namespace sam::platform::registry

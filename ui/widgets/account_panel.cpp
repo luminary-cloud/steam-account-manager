@@ -16,6 +16,7 @@
 #include "ui/util.hpp"
 #include "ui/widgets/avatar.hpp"
 #include "ui/widgets/ban_pills.hpp"
+#include "ui/widgets/login_method_control.hpp"
 #include "ui/widgets/rank_image.hpp"
 #include "ui/widgets/redacted_text.hpp"
 #include "ui/widgets/status_markers.hpp"
@@ -352,6 +353,10 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         }
         if (tf) ImGui::PopFont();
     }
+    if (a.login_method != core::LoginMethod::Normal) {
+        ImGui::SameLine();
+        draw_login_method_chip(a.login_method);
+    }
     if (!a.web.persona_name.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
         draw_login_text(state, a);
@@ -580,10 +585,15 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     const int n_buttons = a.sda.has_value() ? 5 : 4;
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     const float content_w = ImGui::GetContentRegionAvail().x;
-    const float btn_w = (content_w - spacing * static_cast<float>(n_buttons - 1)) /
-                        static_cast<float>(n_buttons);
+    // The Login button carries an attached method caret; reserve its width so
+    // the remaining buttons stay equal-width and aligned.
+    const float btn_w =
+        (content_w - kLoginCaretWidth - spacing * static_cast<float>(n_buttons - 1)) /
+        static_cast<float>(n_buttons);
 
-    if (action_button("Login", ImVec2(btn_w, 0))) action = CardAction::Launch;
+    if (draw_login_split_button(state, a, btn_w + kLoginCaretWidth)) {
+        action = CardAction::Launch;
+    }
     ImGui::SameLine();
     if (a.sda.has_value()) {
         if (action_button("Code", ImVec2(btn_w, 0))) {

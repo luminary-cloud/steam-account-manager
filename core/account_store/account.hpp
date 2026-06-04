@@ -18,6 +18,13 @@ enum class TrustLabel : std::uint8_t {
     Red = 3,
 };
 
+// What pressing Login on this account does after the Steam client signs in.
+enum class LoginMethod : std::uint8_t {
+    Normal = 0,              // just log in
+    LaunchCs2 = 1,           // log in, then launch CS2
+    LaunchCs2Gamesense = 2,  // log in, launch CS2, inject the gamesense loader
+};
+
 // Mirror of a Steam Guard mobile authenticator maFile. Everything here is sensitive.
 struct SteamGuardAccount {
     std::string shared_secret;     // base64
@@ -118,6 +125,7 @@ struct Account {
     std::vector<std::string> tag_ids;
     std::string group_id;
     TrustLabel trust = TrustLabel::Unset;
+    LoginMethod login_method = LoginMethod::Normal;
     std::optional<std::string> trade_url;
 
     // Cached info.

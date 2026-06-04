@@ -79,6 +79,7 @@ LaunchResult launch_account(const core::Account& a) {
     creds.password = a.password;
     if (a.sda) creds.shared_secret = a.sda->shared_secret;
     creds.remember_password = true;
+    creds.expected_account_id = static_cast<std::uint32_t>(a.steam_id_64 & 0xFFFFFFFFull);
     out.guard_code_was_typed = login_driver::run_async(*pid, std::move(creds));
 
     SAM_LOG_INFO("launch: started steam.exe pid={} as login={}", *pid, a.login);
