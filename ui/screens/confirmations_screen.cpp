@@ -1235,7 +1235,7 @@ void draw_confirmations(app::AppState& state) {
         const std::string persona = a.web.persona_name.empty()
                                         ? widgets::login_label(state, a)
                                         : a.web.persona_name;
-        ImGui::SeparatorText(persona.c_str());
+        separator_text(persona.c_str());
         draw_account_section(state, a, snapshot, g_conf_type_filter);
         ++sections_drawn;
     }

@@ -106,7 +106,7 @@ std::string trim_copy(const char* s) {
 void draw_revocation_section(app::AppState& state, core::Account& a) {
     static std::unordered_map<std::string, std::int64_t> g_rcode_reveal_until_unix;
 
-    ImGui::SeparatorText("Revocation code");
+    separator_text("Revocation code");
     ImGui::Spacing();
 
     if (!a.sda->revocation_code.empty()) {
@@ -276,7 +276,7 @@ void draw_sda(app::AppState& state) {
     ImGui::PushID(a->id.c_str());
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Account");
+    separator_text("Account");
     ImGui::Spacing();
     draw_account_header(state, *a);
 
@@ -301,7 +301,7 @@ void draw_sda(app::AppState& state) {
     }
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Current code");
+    separator_text("Current code");
     ImGui::Spacing();
 
     if (!time_aligner::synced()) {

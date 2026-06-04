@@ -75,7 +75,7 @@ void draw_manual(app::AppState& state, core::Account* editing) {
         widgets::reset_password_visibility(kSsLabel);
     }
 
-    ImGui::SeparatorText("Account credentials");
+    separator_text("Account credentials");
 
     const bool editing_redacted =
         editing && state.settings.privacy_mode &&
@@ -512,7 +512,7 @@ void draw_import_mafile(app::AppState& state) {
         }
     }
 
-    ImGui::SeparatorText("Steam Mobile Authenticator file");
+    separator_text("Steam Mobile Authenticator file");
     ImGui::TextDisabled("Type a single .maFile path, type a folder to bulk-import every "
                         ".maFile in it, or drag files/folders onto this window.");
     ImGui::SetNextItemWidth(420.0F);
@@ -698,7 +698,7 @@ void draw_import_info_dat(app::AppState& state) {
         }
     }
 
-    ImGui::SeparatorText("info.dat import");
+    separator_text("info.dat import");
     ImGui::TextDisabled("Type an info.dat path, type a folder to import every .dat in it, "
                         "or drag the file(s) onto this window.");
     ImGui::SetNextItemWidth(420.0F);
@@ -861,7 +861,7 @@ void draw_import_jwt_token(app::AppState& state) {
     static bool has_result = false;
     static std::string error;
 
-    ImGui::SeparatorText("NFA token import");
+    separator_text("NFA token import");
     ImGui::TextDisabled("Paste a Steam refresh token as username----token (a bare token works too, "
                         "but then Login can't resolve the account name).");
 

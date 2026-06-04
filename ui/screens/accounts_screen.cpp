@@ -404,7 +404,7 @@ void draw_accounts(app::AppState& state) {
     }
 
     ImGui::Spacing();
-    ImGui::Separator();
+    separator();
     ImGui::Dummy(ImVec2(0.0F, kGridInset));
 
     if (state.settings.accounts_view == app::AccountsViewMode::List) {

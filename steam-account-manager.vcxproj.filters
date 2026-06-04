@@ -11,6 +11,7 @@
     <Filter Include="core\steam_auth\gen"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000015}</UniqueIdentifier></Filter>
     <Filter Include="core\steam_gcpd"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000007}</UniqueIdentifier></Filter>
     <Filter Include="core\profile"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000030}</UniqueIdentifier></Filter>
+    <Filter Include="core\trade"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000033}</UniqueIdentifier></Filter>
     <Filter Include="core\cs2_config"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000031}</UniqueIdentifier></Filter>
     <Filter Include="core\cs2"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000032}</UniqueIdentifier></Filter>
     <Filter Include="core\account_store"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000008}</UniqueIdentifier></Filter>
@@ -59,10 +60,15 @@
     <ClCompile Include="core\steam_login\mobile_auth.cpp"><Filter>core\steam_login</Filter></ClCompile>
     <ClCompile Include="core\steam_login\rsa_password.cpp"><Filter>core\steam_login</Filter></ClCompile>
     <ClCompile Include="core\steam_login\session.cpp"><Filter>core\steam_login</Filter></ClCompile>
+    <ClCompile Include="core\steam_login\web_session.cpp"><Filter>core\steam_login</Filter></ClCompile>
 
     <ClCompile Include="core\steam_gcpd\gcpd_scraper.cpp"><Filter>core\steam_gcpd</Filter></ClCompile>
     <ClCompile Include="core\steam_gcpd\gcpd_parser.cpp"><Filter>core\steam_gcpd</Filter></ClCompile>
     <ClCompile Include="core\profile\edit.cpp"><Filter>core\profile</Filter></ClCompile>
+    <ClCompile Include="core\trade\trade_url.cpp"><Filter>core\trade</Filter></ClCompile>
+    <ClCompile Include="core\trade\inventory.cpp"><Filter>core\trade</Filter></ClCompile>
+    <ClCompile Include="core\trade\offers.cpp"><Filter>core\trade</Filter></ClCompile>
+    <ClCompile Include="core\trade\actions.cpp"><Filter>core\trade</Filter></ClCompile>
     <ClCompile Include="core\cs2_config\video_config.cpp"><Filter>core\cs2_config</Filter></ClCompile>
     <ClCompile Include="core\cs2\friend_code.cpp"><Filter>core\cs2</Filter></ClCompile>
 
@@ -126,6 +132,7 @@
     <ClCompile Include="ui\screens\add_account_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\confirmations_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\settings_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\trade_offers_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
 
     <ClCompile Include="ui\widgets\rail_nav.cpp"><Filter>ui\widgets</Filter></ClCompile>
     <ClCompile Include="ui\widgets\account_card.cpp"><Filter>ui\widgets</Filter></ClCompile>
@@ -295,10 +302,16 @@
     <ClInclude Include="core\steam_login\mobile_auth.hpp"><Filter>core\steam_login</Filter></ClInclude>
     <ClInclude Include="core\steam_login\rsa_password.hpp"><Filter>core\steam_login</Filter></ClInclude>
     <ClInclude Include="core\steam_login\session.hpp"><Filter>core\steam_login</Filter></ClInclude>
+    <ClInclude Include="core\steam_login\web_session.hpp"><Filter>core\steam_login</Filter></ClInclude>
 
     <ClInclude Include="core\steam_gcpd\gcpd_scraper.hpp"><Filter>core\steam_gcpd</Filter></ClInclude>
     <ClInclude Include="core\steam_gcpd\gcpd_parser.hpp"><Filter>core\steam_gcpd</Filter></ClInclude>
     <ClInclude Include="core\profile\edit.hpp"><Filter>core\profile</Filter></ClInclude>
+    <ClInclude Include="core\trade\models.hpp"><Filter>core\trade</Filter></ClInclude>
+    <ClInclude Include="core\trade\trade_url.hpp"><Filter>core\trade</Filter></ClInclude>
+    <ClInclude Include="core\trade\inventory.hpp"><Filter>core\trade</Filter></ClInclude>
+    <ClInclude Include="core\trade\offers.hpp"><Filter>core\trade</Filter></ClInclude>
+    <ClInclude Include="core\trade\actions.hpp"><Filter>core\trade</Filter></ClInclude>
     <ClInclude Include="core\cs2_config\video_config.hpp"><Filter>core\cs2_config</Filter></ClInclude>
     <ClInclude Include="core\cs2\friend_code.hpp"><Filter>core\cs2</Filter></ClInclude>
 
@@ -368,6 +381,7 @@
     <ClInclude Include="ui\screens\add_account_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\confirmations_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\settings_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\trade_offers_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
 
     <ClInclude Include="ui\widgets\rail_nav.hpp"><Filter>ui\widgets</Filter></ClInclude>
     <ClInclude Include="ui\widgets\account_card.hpp"><Filter>ui\widgets</Filter></ClInclude>

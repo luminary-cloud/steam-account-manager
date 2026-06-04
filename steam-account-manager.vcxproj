@@ -182,11 +182,17 @@
     <ClCompile Include="core\steam_login\mobile_auth.cpp" />
     <ClCompile Include="core\steam_login\rsa_password.cpp" />
     <ClCompile Include="core\steam_login\session.cpp" />
+    <ClCompile Include="core\steam_login\web_session.cpp" />
 
     <ClCompile Include="core\steam_gcpd\gcpd_scraper.cpp" />
     <ClCompile Include="core\steam_gcpd\gcpd_parser.cpp" />
 
     <ClCompile Include="core\profile\edit.cpp" />
+
+    <ClCompile Include="core\trade\trade_url.cpp" />
+    <ClCompile Include="core\trade\inventory.cpp" />
+    <ClCompile Include="core\trade\offers.cpp" />
+    <ClCompile Include="core\trade\actions.cpp" />
 
     <ClCompile Include="core\cs2_config\video_config.cpp" />
 
@@ -247,6 +253,7 @@
     <ClCompile Include="ui\screens\add_account_screen.cpp" />
     <ClCompile Include="ui\screens\confirmations_screen.cpp" />
     <ClCompile Include="ui\screens\settings_screen.cpp" />
+    <ClCompile Include="ui\screens\trade_offers_screen.cpp" />
 
     <ClCompile Include="ui\widgets\rail_nav.cpp" />
     <ClCompile Include="ui\widgets\title_bar.cpp" />
@@ -303,11 +310,18 @@
     <ClInclude Include="core\steam_login\mobile_auth.hpp" />
     <ClInclude Include="core\steam_login\rsa_password.hpp" />
     <ClInclude Include="core\steam_login\session.hpp" />
+    <ClInclude Include="core\steam_login\web_session.hpp" />
 
     <ClInclude Include="core\steam_gcpd\gcpd_scraper.hpp" />
     <ClInclude Include="core\steam_gcpd\gcpd_parser.hpp" />
 
     <ClInclude Include="core\profile\edit.hpp" />
+
+    <ClInclude Include="core\trade\models.hpp" />
+    <ClInclude Include="core\trade\trade_url.hpp" />
+    <ClInclude Include="core\trade\inventory.hpp" />
+    <ClInclude Include="core\trade\offers.hpp" />
+    <ClInclude Include="core\trade\actions.hpp" />
 
     <ClInclude Include="core\cs2_config\video_config.hpp" />
 
@@ -374,6 +388,7 @@
     <ClInclude Include="ui\screens\add_account_screen.hpp" />
     <ClInclude Include="ui\screens\confirmations_screen.hpp" />
     <ClInclude Include="ui\screens\settings_screen.hpp" />
+    <ClInclude Include="ui\screens\trade_offers_screen.hpp" />
 
     <ClInclude Include="ui\widgets\rail_nav.hpp" />
     <ClInclude Include="ui\widgets\title_bar.hpp" />

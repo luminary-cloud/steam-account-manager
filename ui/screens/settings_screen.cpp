@@ -46,7 +46,7 @@ void draw_settings(app::AppState& state) {
         }
     };
 
-    ImGui::SeparatorText("General");
+    separator_text("General");
     ImGui::SetNextItemWidth(200);
     ImGui::SliderInt("Clipboard auto-clear (s)", &state.settings.clipboard_clear_seconds, 10, 120);
     hover_tooltip("Passwords and Steam Guard codes copied from the app are wiped from the "
@@ -60,7 +60,7 @@ void draw_settings(app::AppState& state) {
                   "prompt if one exists. No account data is sent.");
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Appearance");
+    separator_text("Appearance");
     {
         int view_idx = static_cast<int>(state.settings.accounts_view);
         ImGui::SetNextItemWidth(200);
@@ -78,7 +78,7 @@ void draw_settings(app::AppState& state) {
                   "account's detail panel. Notes stay editable on the add/edit screen.");
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Privacy");
+    separator_text("Privacy");
     if (ImGui::Checkbox("Privacy mode - hide login names", &state.settings.privacy_mode)) {
         // Switching the toggle - either direction - resets any per-account
         // reveals so the new mode starts from a clean state.
@@ -89,7 +89,7 @@ void draw_settings(app::AppState& state) {
                   "again to re-hide. Reveals are cleared when the vault locks.");
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Account info to display");
+    separator_text("Account info to display");
     if (ImGui::BeginTable("##info-grid", 3, ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableNextColumn(); ImGui::Checkbox("VAC ban",            &state.settings.info.show_vac);
         ImGui::TableNextColumn(); ImGui::Checkbox("Game ban",           &state.settings.info.show_game_ban);
@@ -114,7 +114,7 @@ void draw_settings(app::AppState& state) {
     }
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Integration");
+    separator_text("Integration");
     std::array<char, 64> key_buf{};
     std::snprintf(key_buf.data(), key_buf.size(), "%s", state.settings.web_api_key.c_str());
     ImGui::SetNextItemWidth(300);
@@ -133,7 +133,7 @@ void draw_settings(app::AppState& state) {
                   "valid steamLoginSecure cookie (use the Full Login wizard in Add Account).");
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Startup");
+    separator_text("Startup");
     {
         const bool prev = state.settings.start_with_windows;
         if (ImGui::Checkbox("Start with Windows (refresh in the background at logon)",
@@ -165,7 +165,7 @@ void draw_settings(app::AppState& state) {
     ImGui::PopStyleColor();
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Notifications");
+    separator_text("Notifications");
     ImGui::Checkbox("Detect bans and cooldown changes", &state.settings.notifications.enabled);
     hover_tooltip("When on, each refresh compares the new ban / cooldown state against the "
                   "previous snapshot and records a notification if anything changed. The "
@@ -213,7 +213,7 @@ void draw_settings(app::AppState& state) {
     ImGui::EndDisabled();
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Authenticator");
+    separator_text("Authenticator");
     ImGui::Checkbox("Auto-copy code on account select",
                     &state.settings.sda.auto_copy_on_select);
     hover_tooltip("Copies the current Steam Guard code to the clipboard whenever you "
@@ -307,7 +307,7 @@ void draw_settings(app::AppState& state) {
     }
 
     ImGui::Spacing();
-    ImGui::SeparatorText("List view");
+    separator_text("List view");
     ImGui::Checkbox("Show cooldown marker on rows",
                     &state.settings.list_view.show_cooldown_marker);
     hover_tooltip("Adds an orange exclamation mark to the right of any list row whose "
@@ -326,7 +326,7 @@ void draw_settings(app::AppState& state) {
                   "still shows, and the selected account's detail panel is unaffected.");
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Confirmations");
+    separator_text("Confirmations");
     ImGui::SetNextItemWidth(180);
     ImGui::SliderInt("Per-account refresh cooldown (s)",
                      &state.settings.confirmations.per_account_cooldown_seconds, 0, 300);
@@ -378,7 +378,7 @@ void draw_settings(app::AppState& state) {
                      &state.settings.confirmations.audit_retention_days, 1, 730);
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Vault");
+    separator_text("Vault");
     {
         const bool prev = state.settings.remember_master_password;
         if (ImGui::Checkbox("Skip master-password prompt on launch (DPAPI)",
@@ -404,7 +404,7 @@ void draw_settings(app::AppState& state) {
                   "option deletes the cached password.");
 
     ImGui::Spacing();
-    ImGui::SeparatorText("CS2 video config");
+    separator_text("CS2 video config");
     ImGui::Checkbox("Apply video config on login",
                     &state.settings.cs2_video.auto_apply_on_login);
     hover_tooltip("When you press Login on an account, copy the stored cs2_video.txt into that "
@@ -453,7 +453,7 @@ void draw_settings(app::AppState& state) {
                   "default for every account.");
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Gamesense");
+    separator_text("Gamesense");
     {
         static std::string g_gamesense_err;
         const auto loader = app::gamesense_loader_path();

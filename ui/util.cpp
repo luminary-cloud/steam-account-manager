@@ -2,6 +2,8 @@
 
 #include <cstdarg>
 
+#include <imgui_internal.h>
+
 #include <windows.h>
 #include <shellapi.h>
 
@@ -54,6 +56,27 @@ void set_tooltip(const char* fmt, ...) {
     ImGui::SetTooltipV(fmt, args);
     va_end(args);
     ImGui::PopStyleVar();
+}
+
+namespace {
+// ImGui::Separator()/SeparatorText() span window->WorkRect.Max.x and ignore the
+// PushItemWidth(-kContentPaddingX) every other content item honors, so they run
+// flush to the right edge. Pull the work-rect right edge in for the duration of
+// the call, then restore it so later layout is unaffected.
+template <class Fn>
+void with_content_inset(Fn&& draw) {
+    ImGuiWindow* w = ImGui::GetCurrentWindow();
+    const float saved = w->WorkRect.Max.x;
+    w->WorkRect.Max.x -= kContentPaddingX;
+    draw();
+    w->WorkRect.Max.x = saved;
+}
+}  // namespace
+
+void separator() { with_content_inset([] { ImGui::Separator(); }); }
+
+void separator_text(const char* label) {
+    with_content_inset([&] { ImGui::SeparatorText(label); });
 }
 
 bool begin_styled_modal(const char* name, float width) {

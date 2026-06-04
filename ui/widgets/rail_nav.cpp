@@ -26,6 +26,10 @@ int pending_confirmations_badge(const app::AppState& state) {
     return state.pending_confirmations_count.load(std::memory_order_relaxed);
 }
 
+int pending_trade_offers_badge(const app::AppState& state) {
+    return state.pending_trade_offers_count.load(std::memory_order_relaxed);
+}
+
 constexpr float kSidebarWidth    = 188.0F;
 constexpr float kSidebarPaddingX = 16.0F;
 constexpr float kNavItemHeight   = 32.0F;
@@ -68,10 +72,11 @@ bool sidebar_item(const char* label, bool selected, float width, int badge_count
     return pressed;
 }
 
-constexpr std::array<NavEntry, 3> kWorkspaceItems{{
+constexpr std::array<NavEntry, 4> kWorkspaceItems{{
     {"Accounts",      app::Screen::Accounts,      nullptr},
     {"Authenticator", app::Screen::Authenticator, nullptr},
     {"Confirmations", app::Screen::Confirmations, pending_confirmations_badge},
+    {"Trade Offers",  app::Screen::TradeOffers,   pending_trade_offers_badge},
 }};
 constexpr std::array<NavEntry, 2> kManageItems{{
     {"Add account", app::Screen::AddAccount},

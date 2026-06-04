@@ -11,6 +11,7 @@
 #include "ui/screens/confirmations_screen.hpp"
 #include "ui/screens/sda_screen.hpp"
 #include "ui/screens/settings_screen.hpp"
+#include "ui/screens/trade_offers_screen.hpp"
 #include "ui/screens/unlock_screen.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
@@ -21,7 +22,8 @@ namespace sam::ui {
 
 namespace {
 
-constexpr float kContentPaddingX = 24.0F;
+// kContentPaddingX (the matching horizontal inset) lives in ui/util.hpp so the
+// separator helpers can share it.
 constexpr float kContentPaddingY = 20.0F;
 
 void draw_screen(app::AppState& state) {
@@ -30,6 +32,7 @@ void draw_screen(app::AppState& state) {
         case app::Screen::Accounts:      screens::draw_accounts(state);      break;
         case app::Screen::Authenticator: screens::draw_sda(state);           break;
         case app::Screen::Confirmations: screens::draw_confirmations(state); break;
+        case app::Screen::TradeOffers:   screens::draw_trade_offers(state);  break;
         case app::Screen::AddAccount:    screens::draw_add_account(state);   break;
         case app::Screen::Settings:      screens::draw_settings(state);      break;
     }

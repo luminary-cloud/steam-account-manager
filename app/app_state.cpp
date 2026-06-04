@@ -1105,6 +1105,16 @@ void AppState::save_settings() {
     cj["auto_approve_trade_partners"]  = settings.confirmations.auto_approve_trade_partners;
     cj["audit_retention_days"]         = settings.confirmations.audit_retention_days;
 
+    auto& tj = j["trade"];
+    tj["default_destination_trade_url"] = settings.trade.default_destination_trade_url;
+    tj["saved_trade_urls"]              = settings.trade.saved_trade_urls;
+    tj["auto_confirm_sent"]             = settings.trade.auto_confirm_sent;
+    tj["per_account_cooldown_seconds"]  = settings.trade.per_account_cooldown_seconds;
+    tj["inventory_cooldown_seconds"]    = settings.trade.inventory_cooldown_seconds;
+    tj["refresh_stagger_ms"]            = settings.trade.refresh_stagger_ms;
+    tj["background_poll_enabled"]       = settings.trade.background_poll_enabled;
+    tj["background_poll_seconds"]       = settings.trade.background_poll_seconds;
+
     j["accounts_sort"] = settings.accounts_sort;
     j["collapsed_groups"] = settings.collapsed_groups;
     auto& qf = j["quick_filters"];
@@ -1259,6 +1269,23 @@ void AppState::load_settings() {
         get_c("auto_approve_phone_change",    settings.confirmations.auto_approve_phone_change);
         get_c("auto_approve_trade_partners",  settings.confirmations.auto_approve_trade_partners);
         get_c("audit_retention_days",         settings.confirmations.audit_retention_days);
+    }
+
+    if (j.contains("trade")) {
+        auto& tj = j["trade"];
+        auto get_t = [&](const char* key, auto& dst) {
+            if (tj.contains(key)) {
+                dst = tj[key].get<std::remove_reference_t<decltype(dst)>>();
+            }
+        };
+        get_t("default_destination_trade_url", settings.trade.default_destination_trade_url);
+        get_t("saved_trade_urls",              settings.trade.saved_trade_urls);
+        get_t("auto_confirm_sent",             settings.trade.auto_confirm_sent);
+        get_t("per_account_cooldown_seconds",  settings.trade.per_account_cooldown_seconds);
+        get_t("inventory_cooldown_seconds",    settings.trade.inventory_cooldown_seconds);
+        get_t("refresh_stagger_ms",            settings.trade.refresh_stagger_ms);
+        get_t("background_poll_enabled",       settings.trade.background_poll_enabled);
+        get_t("background_poll_seconds",       settings.trade.background_poll_seconds);
     }
 
     get("accounts_sort", settings.accounts_sort);

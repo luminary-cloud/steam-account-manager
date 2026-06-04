@@ -79,6 +79,7 @@ enum class Screen {
     Accounts,
     Authenticator,
     Confirmations,
+    TradeOffers,
     AddAccount,
     Settings,
 };
@@ -196,6 +197,28 @@ struct Settings {
         int  audit_retention_days         = 90;
     } confirmations;
 
+    struct TradeToggles {
+        // Destination trade link the create-offer dialog pre-fills, plus the
+        // history of links the user has entered. A trade link is not a secret,
+        // so these live in settings.json and survive a restart.
+        std::string default_destination_trade_url;
+        std::vector<std::string> saved_trade_urls;
+
+        // Auto-resolve the mobile confirmation for offers we send. Incoming
+        // offers are always reviewed manually.
+        bool auto_confirm_sent = true;
+
+        // Trades are rate-limit sensitive: refreshes are manual with a cooldown,
+        // multi-account work is staggered, and the inventory endpoint (heavily
+        // throttled) gets its own longer cooldown.
+        int  per_account_cooldown_seconds = 15;
+        int  inventory_cooldown_seconds   = 30;
+        int  refresh_stagger_ms           = 1500;
+
+        bool background_poll_enabled      = false;
+        int  background_poll_seconds      = 30;
+    } trade;
+
     // Sort key index into the dropdown options; matches core::SortKey order.
     int accounts_sort = 0;
 
@@ -286,6 +309,11 @@ struct AppState {
     // state and the `loaded` flag distinguishes "0 known" from "never queried".
     std::atomic<int> pending_confirmations_count{0};
     std::atomic<bool> pending_confirmations_loaded{false};
+
+    // Pending incoming trade-offer count surfaced as a badge on the nav rail.
+    // Updated by the Trade Offers screen after a refresh; like the confirmations
+    // badge we do not poll in the background by default.
+    std::atomic<int> pending_trade_offers_count{0};
 
     // Per-account state for the Confirmations tab. UI-thread-only writes from
     // the post-refresh callbacks; background poller reads with a relaxed

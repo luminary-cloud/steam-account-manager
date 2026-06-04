@@ -45,6 +45,18 @@ void hover_tooltip(const char* text);
 // global (0, 0) theme strips, so tooltip text isn't flush against the border.
 void set_tooltip(const char* fmt, ...) IM_FMTARGS(1);
 
+// Horizontal inset (px) of the main content column: main_window applies this as
+// both the left Indent and the right item-width inset. Shared so separators and
+// other full-width items can stop at the same right edge as the widgets.
+inline constexpr float kContentPaddingX = 24.0F;
+
+// Drop-in replacements for ImGui::Separator / ImGui::SeparatorText that stop
+// kContentPaddingX short of the right edge, so section dividers line up with the
+// group boxes and widgets (which honor PushItemWidth(-kContentPaddingX)). Native
+// ImGui separators ignore item width and span the full work rect.
+void separator();
+void separator_text(const char* label);
+
 bool begin_styled_modal(const char* name, float width = 420.0F);
 void end_styled_modal();
 
