@@ -980,8 +980,10 @@ void draw_scan_result_modal() {
 
     const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
     if (!ImGui::BeginPopupModal("Scan maFiles", nullptr,
                                 ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::PopStyleVar();
         return;
     }
 
@@ -1015,34 +1017,36 @@ void draw_scan_result_modal() {
     ImGui::Spacing();
     if (action_button("OK")) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
+    ImGui::PopStyleVar();
 }
 
 }  // namespace
 
-void draw_audit_log_modal(app::AppState& state, bool* p_open) {
+void draw_history_modal(app::AppState& state, bool* p_open) {
     if (!*p_open) return;
-    ImGui::OpenPopup("Audit log");
+    ImGui::OpenPopup("Confirmation history");
     ImGui::SetNextWindowSize(ImVec2(760.0F, 480.0F), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14, 12));
-    if (!ImGui::BeginPopupModal("Audit log", p_open,
+    if (!ImGui::BeginPopupModal("Confirmation history", p_open,
                                  ImGuiWindowFlags_NoResize |
                                  ImGuiWindowFlags_NoSavedSettings)) {
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
         return;
     }
 
-    static std::string g_audit_search;
-    widgets::draw_search_bar(g_audit_search, 320.0F);
+    static std::string g_history_search;
+    widgets::draw_search_bar(g_history_search, 320.0F);
     ImGui::SameLine();
     ImGui::TextDisabled("(%zu entries)", state.conf_audit.entries().size());
 
     ImGui::Spacing();
-    ImGui::BeginChild("##audit-body", ImVec2(0, -36.0F));
+    ImGui::BeginChild("##history-body", ImVec2(0, -36.0F));
     constexpr ImGuiTableFlags flags = ImGuiTableFlags_Borders |
                                        ImGuiTableFlags_SizingStretchProp |
                                        ImGuiTableFlags_RowBg |
                                        ImGuiTableFlags_ScrollY;
-    if (ImGui::BeginTable("##audit", 5, flags)) {
+    if (ImGui::BeginTable("##history", 5, flags)) {
         ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 110.0F);
         ImGui::TableSetupColumn("Account", ImGuiTableColumnFlags_WidthFixed, 140.0F);
         ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 90.0F);
@@ -1050,7 +1054,7 @@ void draw_audit_log_modal(app::AppState& state, bool* p_open) {
         ImGui::TableSetupColumn("Headline", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
 
-        std::string search_lower = g_audit_search;
+        std::string search_lower = g_history_search;
         for (char& c : search_lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
         const auto& es = state.conf_audit.entries();
@@ -1099,13 +1103,13 @@ void draw_audit_log_modal(app::AppState& state, bool* p_open) {
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
 }
 
 void draw_confirmations(app::AppState& state) {
     static std::string g_conf_search;
     static int g_conf_sort = 0;
-    static bool g_audit_open = false;
+    static bool g_history_open = false;
 
     ImGui::TextUnformatted("Pending confirmations");
     ImGui::SameLine();
@@ -1120,7 +1124,7 @@ void draw_confirmations(app::AppState& state) {
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (action_button("Audit log")) g_audit_open = true;
+    if (action_button("History")) g_history_open = true;
 
     const int total = state.conf_refresh_all_total.load(std::memory_order_relaxed);
     const int done  = state.conf_refresh_all_done.load(std::memory_order_relaxed);
@@ -1251,7 +1255,7 @@ void draw_confirmations(app::AppState& state) {
     }
 
     draw_scan_result_modal();
-    draw_audit_log_modal(state, &g_audit_open);
+    draw_history_modal(state, &g_history_open);
 }
 
 void confirmations_trigger_refresh_all(app::AppState& state) {

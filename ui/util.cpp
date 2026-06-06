@@ -39,23 +39,25 @@ void open_url(const std::string& url) {
 
 void hover_tooltip(const char* text) {
     if (ImGui::IsItemHovered() && text && *text) {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
         ImGui::BeginTooltip();
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0F);
         ImGui::TextUnformatted(text);
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
     }
 }
 
 void set_tooltip(const char* fmt, ...) {
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
     va_list args;
     va_start(args, fmt);
     ImGui::SetTooltipV(fmt, args);
     va_end(args);
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
 }
 
 namespace {
@@ -81,16 +83,17 @@ void separator_text(const char* label) {
 
 bool begin_styled_modal(const char* name, float width) {
     ImGui::SetNextWindowSize(ImVec2(width, 0), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
     bool open = ImGui::BeginPopupModal(
         name, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
-    if (!open) ImGui::PopStyleVar();
+    if (!open) ImGui::PopStyleVar(2);
     return open;
 }
 
 void end_styled_modal() {
     ImGui::EndPopup();
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
 }
 
 bool begin_styled_combo(const char* label, const char* preview_value, ImGuiComboFlags flags) {

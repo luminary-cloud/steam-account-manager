@@ -587,6 +587,11 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     state.conf_audit.prune_older_than(state.settings.confirmations.audit_retention_days,
         std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::system_clock::now().time_since_epoch()).count());
+    state.trade_audit.set_path(sam::app::trade_audit_path());
+    state.trade_audit.load();
+    state.trade_audit.prune_older_than(90,
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
     if (state.settings.sda.global_hotkey_mods == 0 &&
         state.settings.sda.global_hotkey_vk   == 0) {
         state.settings.sda.global_hotkey_mods = MOD_CONTROL | MOD_SHIFT;

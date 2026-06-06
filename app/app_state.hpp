@@ -21,6 +21,7 @@
 #include "core/crypto/secure_string.hpp"
 #include "core/notifications/notification_store.hpp"
 #include "core/sda/conf_audit.hpp"
+#include "core/trade/trade_audit.hpp"
 #include "core/update_check.hpp"
 #include "ui/widgets/toast_stack.hpp"
 
@@ -326,6 +327,7 @@ struct AppState {
     std::atomic<int> conf_refresh_all_total{0};
     std::atomic<int> conf_refresh_all_done{0};
     sda::ConfAuditLog conf_audit;
+    core::trade::TradeAuditLog trade_audit;
     // Snapshot of pending_confirmations_count taken when a refresh-all batch
     // starts; compared after the last per-account callback to decide whether
     // to push a "N new confirmations" toast.

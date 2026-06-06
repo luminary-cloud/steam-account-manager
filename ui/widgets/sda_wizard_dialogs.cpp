@@ -659,12 +659,13 @@ void draw_add_sda_modal(app::AppState& app, AddSdaDialogState& s) {
     if (!s.open) return;
 
     ImGui::SetNextWindowSize(ImVec2(500.0F, 0), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
     const bool visible = ImGui::BeginPopupModal(
         kAddPopupName, &s.open,
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     if (!visible) {
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
         if (s.step == AddSdaDialogState::Step::Done ||
             s.step == AddSdaDialogState::Step::Failed) {
             s.step = AddSdaDialogState::Step::Idle;
@@ -677,7 +678,7 @@ void draw_add_sda_modal(app::AppState& app, AddSdaDialogState& s) {
     draw_add_body(app, s);
 
     ImGui::EndPopup();
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
 }
 
 void draw_remove_sda_modal(app::AppState& app, RemoveSdaDialogState& s) {
@@ -688,12 +689,13 @@ void draw_remove_sda_modal(app::AppState& app, RemoveSdaDialogState& s) {
     if (!s.open) return;
 
     ImGui::SetNextWindowSize(ImVec2(500.0F, 0), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
     const bool visible = ImGui::BeginPopupModal(
         kRemovePopupName, &s.open,
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     if (!visible) {
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
         if (s.step == RemoveSdaDialogState::Step::Done ||
             s.step == RemoveSdaDialogState::Step::Failed) {
             s.step = RemoveSdaDialogState::Step::Idle;
@@ -706,7 +708,7 @@ void draw_remove_sda_modal(app::AppState& app, RemoveSdaDialogState& s) {
     draw_remove_body(app, s);
 
     ImGui::EndPopup();
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
 }
 
 }  // namespace sam::ui::widgets

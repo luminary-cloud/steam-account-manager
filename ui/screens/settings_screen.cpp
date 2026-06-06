@@ -442,7 +442,7 @@ void draw_settings(app::AppState& state) {
         }
         if (!state.settings.cs2_video.source_label.empty()) {
             ImGui::SameLine();
-            if (action_button("Clear", ImVec2(80, 0))) {
+            if (action_button("Clear##cs2-video", ImVec2(80, 0))) {
                 std::error_code ec;
                 std::filesystem::remove(app::cs2_video_template_path(), ec);
                 state.settings.cs2_video.source_label.clear();
@@ -482,7 +482,7 @@ void draw_settings(app::AppState& state) {
         }
         if (loader) {
             ImGui::SameLine();
-            if (action_button("Clear", ImVec2(80, 0))) {
+            if (action_button("Clear##gamesense-loader", ImVec2(80, 0))) {
                 std::error_code ec;
                 std::filesystem::remove(*loader, ec);
             }

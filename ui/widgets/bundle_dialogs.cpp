@@ -82,12 +82,13 @@ void draw_export_bundle_modal(app::AppState& app, ExportBundleState& state) {
     if (!state.open) return;
 
     ImGui::SetNextWindowSize(ImVec2(460.0F, 0), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
     const bool visible = ImGui::BeginPopupModal(
         kExportPopupName, &state.open,
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     if (!visible) {
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
         // Popup was open but ImGui just closed it (X button / Escape). Wipe
         // sensitive buffers so a typed passphrase doesn't linger in memory.
         wipe(state.passphrase_buf);
@@ -113,7 +114,7 @@ void draw_export_bundle_modal(app::AppState& app, ExportBundleState& state) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
         return;
     }
 
@@ -191,19 +192,20 @@ void draw_export_bundle_modal(app::AppState& app, ExportBundleState& state) {
     }
 
     ImGui::EndPopup();
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
 }
 
 void draw_import_bundle_modal(app::AppState& app, ImportBundleState& state) {
     if (!state.open) return;
 
     ImGui::SetNextWindowSize(ImVec2(480.0F, 0), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
     const bool visible = ImGui::BeginPopupModal(
         kImportPopupName, &state.open,
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     if (!visible) {
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
         // External close: wipe the passphrase buffer.
         wipe(state.passphrase_buf);
         state.error.clear();
@@ -238,7 +240,7 @@ void draw_import_bundle_modal(app::AppState& app, ImportBundleState& state) {
             close_modal();
         }
         ImGui::EndPopup();
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
         return;
     }
 
@@ -349,7 +351,7 @@ void draw_import_bundle_modal(app::AppState& app, ImportBundleState& state) {
     }
 
     ImGui::EndPopup();
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
 }
 
 }  // namespace sam::ui::widgets

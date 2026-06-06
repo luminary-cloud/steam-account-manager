@@ -196,6 +196,7 @@
     <ClCompile Include="core\trade\inventory.cpp" />
     <ClCompile Include="core\trade\offers.cpp" />
     <ClCompile Include="core\trade\actions.cpp" />
+    <ClCompile Include="core\trade\trade_audit.cpp" />
 
     <ClCompile Include="core\cs2_config\video_config.cpp" />
 
@@ -328,6 +329,7 @@
     <ClInclude Include="core\trade\inventory.hpp" />
     <ClInclude Include="core\trade\offers.hpp" />
     <ClInclude Include="core\trade\actions.hpp" />
+    <ClInclude Include="core\trade\trade_audit.hpp" />
 
     <ClInclude Include="core\cs2_config\video_config.hpp" />
 

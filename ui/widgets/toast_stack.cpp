@@ -33,6 +33,14 @@ ImU32 border_color(bool warning) {
 }  // namespace
 
 void ToastStack::push(ToastItem item) {
+    if (!item.id.empty()) {
+        for (auto& existing : items_) {
+            if (existing.id == item.id) {
+                existing = std::move(item);
+                return;
+            }
+        }
+    }
     items_.push_back(std::move(item));
 }
 
@@ -47,15 +55,15 @@ void ToastStack::push_summary(std::string message) {
     t.message = std::move(message);
     t.is_warning = false;
     t.expires_at_unix = now_unix() + 8;
-    items_.push_back(std::move(t));
+    push(std::move(t));
 }
 
 void ToastStack::render(const std::function<void(const std::string&)>& on_click) {
     const auto now = now_unix();
-    while (!items_.empty() && items_.front().expires_at_unix > 0 &&
-           items_.front().expires_at_unix <= now) {
-        items_.pop_front();
-    }
+    items_.erase(std::remove_if(items_.begin(), items_.end(),
+        [now](const ToastItem& t) {
+            return t.expires_at_unix > 0 && t.expires_at_unix <= now;
+        }), items_.end());
     if (items_.empty()) return;
 
     const auto vp = ImGui::GetMainViewport();
@@ -77,7 +85,7 @@ void ToastStack::render(const std::function<void(const std::string&)>& on_click)
         ImGui::PushStyleColor(ImGuiCol_WindowBg, theme::panel());
         ImGui::PushStyleColor(ImGuiCol_Border, ImColor(border_color(it->is_warning)).Value);
 
-        const std::string win_name = "##toast-" + it->id;
+        const std::string win_name = "##toast-" + std::to_string(drawn) + "-" + it->id;
         constexpr ImGuiWindowFlags flags =
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
             ImGuiWindowFlags_NoMove    | ImGuiWindowFlags_NoSavedSettings |

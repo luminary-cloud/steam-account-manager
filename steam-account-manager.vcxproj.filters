@@ -72,6 +72,7 @@
     <ClCompile Include="core\trade\inventory.cpp"><Filter>core\trade</Filter></ClCompile>
     <ClCompile Include="core\trade\offers.cpp"><Filter>core\trade</Filter></ClCompile>
     <ClCompile Include="core\trade\actions.cpp"><Filter>core\trade</Filter></ClCompile>
+    <ClCompile Include="core\trade\trade_audit.cpp"><Filter>core\trade</Filter></ClCompile>
     <ClCompile Include="core\cs2_config\video_config.cpp"><Filter>core\cs2_config</Filter></ClCompile>
     <ClCompile Include="core\cs2\friend_code.cpp"><Filter>core\cs2</Filter></ClCompile>
 
@@ -317,6 +318,7 @@
     <ClInclude Include="core\trade\inventory.hpp"><Filter>core\trade</Filter></ClInclude>
     <ClInclude Include="core\trade\offers.hpp"><Filter>core\trade</Filter></ClInclude>
     <ClInclude Include="core\trade\actions.hpp"><Filter>core\trade</Filter></ClInclude>
+    <ClInclude Include="core\trade\trade_audit.hpp"><Filter>core\trade</Filter></ClInclude>
     <ClInclude Include="core\cs2_config\video_config.hpp"><Filter>core\cs2_config</Filter></ClInclude>
     <ClInclude Include="core\cs2\friend_code.hpp"><Filter>core\cs2</Filter></ClInclude>
 

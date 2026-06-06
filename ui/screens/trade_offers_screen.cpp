@@ -19,6 +19,7 @@
 #include "core/trade/actions.hpp"
 #include "core/trade/inventory.hpp"
 #include "core/trade/offers.hpp"
+#include "core/trade/trade_audit.hpp"
 #include "core/trade/trade_url.hpp"
 #include "ui/screens/confirmations_screen.hpp"
 #include "ui/theme.hpp"
@@ -367,9 +368,12 @@ void submit_inventory_load(app::AppState& state, const core::Account& seed) {
 void submit_send(app::AppState& state, const core::Account& acc, trade::TradeUrl tu,
                  std::vector<trade::TradeAssetRef> give, std::string message) {
     const std::string aid = acc.id;
+    const std::string login = acc.login;
+    const int item_count = static_cast<int>(give.size());
     const bool auto_conf = state.settings.trade.auto_confirm_sent;
     auto cap = acc;
-    app::job_pump::submit([&state, cap, aid, tu, give, message, auto_conf]() mutable {
+    app::job_pump::submit([&state, cap, aid, login, item_count, tu, give, message,
+                           auto_conf]() mutable {
         auto res = trade::send_trade_offer(cap, tu, give, message);
 
         if (!res.ok && res.needs_relogin) {
@@ -388,8 +392,18 @@ void submit_send(app::AppState& state, const core::Account& acc, trade::TradeUrl
 
         if (!res.ok) {
             const std::string err = res.error;
-            state.post_ui_callback([&state, aid, err] {
+            SAM_LOG_INFO("trade send {}: failed items={} err={}", login, item_count, err);
+            state.post_ui_callback([&state, aid, login, item_count, err] {
                 push_toast(state, "send-fail-" + aid, "Send failed: " + err, aid, true);
+                trade::TradeAuditEntry e;
+                e.unix_time = now_unix();
+                e.account_id = aid;
+                e.account_login = login;
+                e.item_count = item_count;
+                e.outcome = trade::TradeAuditOutcome::Failed;
+                e.detail = err;
+                e.source = trade::TradeAuditSource::UserSingle;
+                state.trade_audit.record(std::move(e));
             });
             return;
         }
@@ -409,7 +423,15 @@ void submit_send(app::AppState& state, const core::Account& acc, trade::TradeUrl
             if (!confirmed && conf_note.empty()) conf_note = "confirmation not found yet";
         }
 
-        state.post_ui_callback([&state, aid, oid, needs_conf, auto_conf, confirmed, conf_note] {
+        const trade::TradeAuditOutcome outcome =
+            !needs_conf ? trade::TradeAuditOutcome::Sent
+            : confirmed ? trade::TradeAuditOutcome::SentAndConfirmed
+                        : trade::TradeAuditOutcome::NeedsConfirmation;
+        SAM_LOG_INFO("trade send {}: offer={} items={} outcome={}", login, oid, item_count,
+                     static_cast<int>(outcome));
+
+        state.post_ui_callback([&state, aid, login, item_count, oid, needs_conf, auto_conf,
+                                confirmed, conf_note, outcome] {
             if (!needs_conf) {
                 push_toast(state, "send-" + oid, "Offer sent", aid, false);
             } else if (auto_conf && confirmed) {
@@ -420,6 +442,16 @@ void submit_send(app::AppState& state, const core::Account& acc, trade::TradeUrl
                 push_toast(state, "send-" + oid, m, aid, true);
                 confirmations_trigger_refresh_all(state);
             }
+            trade::TradeAuditEntry e;
+            e.unix_time = now_unix();
+            e.account_id = aid;
+            e.account_login = login;
+            e.offer_id = oid;
+            e.item_count = item_count;
+            e.outcome = outcome;
+            if (outcome == trade::TradeAuditOutcome::NeedsConfirmation) e.detail = conf_note;
+            e.source = trade::TradeAuditSource::UserSingle;
+            state.trade_audit.record(std::move(e));
             // Force the new outgoing offer to show on the next refresh.
             {
                 std::lock_guard lk(g_mtx);
@@ -1143,6 +1175,7 @@ void bulk_send_all(app::AppState& state, std::vector<core::Account> accs,
     app::job_pump::submit([&state, accs = std::move(accs), tu, stagger, auto_conf]() mutable {
         int sent_ok = 0;
         int attempted = 0;
+        std::vector<trade::TradeAuditEntry> audit;
         for (auto& seed : accs) {
             core::Account creds = seed;
             auto inv = with_relogin(state, creds, [&](core::Account& a) {
@@ -1168,24 +1201,44 @@ void bulk_send_all(app::AppState& state, std::vector<core::Account> accs,
                 return trade::send_trade_offer(a, tu, give, "");
             });
             apply_refreshed_tokens(state, creds);
+
+            trade::TradeAuditEntry e;
+            e.unix_time = now_unix();
+            e.account_id = seed.id;
+            e.account_login = seed.login;
+            e.item_count = static_cast<int>(give.size());
+            e.source = trade::TradeAuditSource::UserBulk;
             if (res.ok) {
                 ++sent_ok;
+                bool confirmed = false;
                 if (res.needs_confirmation && auto_conf) {
                     for (int att = 0; att < 3; ++att) {
                         if (att > 0)
                             std::this_thread::sleep_for(std::chrono::milliseconds(1500));
                         const auto cr = trade::confirm_sent_offer(creds, res.offer_id);
-                        if (cr.ok || !cr.not_found) break;
+                        if (cr.ok) { confirmed = true; break; }
+                        if (!cr.not_found) break;
                     }
                 }
+                e.offer_id = res.offer_id;
+                e.outcome = !res.needs_confirmation ? trade::TradeAuditOutcome::Sent
+                            : confirmed             ? trade::TradeAuditOutcome::SentAndConfirmed
+                                                    : trade::TradeAuditOutcome::NeedsConfirmation;
+            } else {
+                e.outcome = trade::TradeAuditOutcome::Failed;
+                e.detail = res.error;
             }
+            SAM_LOG_INFO("trade bulk send {}: offer={} items={} outcome={}", seed.login,
+                         e.offer_id, e.item_count, static_cast<int>(e.outcome));
+            audit.push_back(std::move(e));
             std::this_thread::sleep_for(std::chrono::milliseconds(stagger));
         }
-        state.post_ui_callback([&state, sent_ok, attempted] {
+        state.post_ui_callback([&state, sent_ok, attempted, audit] {
             push_toast(state, "bulk-send",
                        "Bulk send: " + std::to_string(sent_ok) + "/" +
                            std::to_string(attempted) + " accounts sent",
                        "", sent_ok != attempted);
+            for (const auto& e : audit) state.trade_audit.record(e);
             confirmations_trigger_refresh_all(state);
         });
     });
@@ -1217,10 +1270,109 @@ void draw_bulk_confirms(app::AppState& state) {
     ImGui::PopStyleVar();
 }
 
+void draw_history_modal(app::AppState& state, bool* p_open) {
+    if (!*p_open) return;
+    ImGui::OpenPopup("Trade history");
+    ImGui::SetNextWindowSize(ImVec2(760.0F, 480.0F), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14, 12));
+    if (!ImGui::BeginPopupModal("Trade history", p_open,
+                                ImGuiWindowFlags_NoResize |
+                                ImGuiWindowFlags_NoSavedSettings)) {
+        ImGui::PopStyleVar(2);
+        return;
+    }
+
+    static std::string g_history_search;
+    widgets::draw_search_bar(g_history_search, 320.0F);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(%zu entries)", state.trade_audit.entries().size());
+
+    ImGui::Spacing();
+    ImGui::BeginChild("##history-body", ImVec2(0, -36.0F));
+    constexpr ImGuiTableFlags flags = ImGuiTableFlags_Borders |
+                                      ImGuiTableFlags_SizingStretchProp |
+                                      ImGuiTableFlags_RowBg |
+                                      ImGuiTableFlags_ScrollY;
+    if (ImGui::BeginTable("##history", 5, flags)) {
+        ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 110.0F);
+        ImGui::TableSetupColumn("Account", ImGuiTableColumnFlags_WidthFixed, 140.0F);
+        ImGui::TableSetupColumn("Result", ImGuiTableColumnFlags_WidthFixed, 120.0F);
+        ImGui::TableSetupColumn("Source", ImGuiTableColumnFlags_WidthFixed, 60.0F);
+        ImGui::TableSetupColumn("Detail", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+
+        const std::string search_lower = lower_copy(g_history_search);
+        const auto& es = state.trade_audit.entries();
+        for (auto it = es.rbegin(); it != es.rend(); ++it) {
+            const auto& e = *it;
+            if (!search_lower.empty() &&
+                lower_copy(e.account_login).find(search_lower) == std::string::npos &&
+                lower_copy(e.detail).find(search_lower) == std::string::npos) {
+                continue;
+            }
+            ImGui::TableNextRow();
+
+            ImGui::TableNextColumn();
+            char tbuf[24];
+            std::time_t t = static_cast<std::time_t>(e.unix_time);
+            std::tm tm{};
+            localtime_s(&tm, &t);
+            std::strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M", &tm);
+            ImGui::TextUnformatted(tbuf);
+
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(e.account_login.c_str());
+
+            ImGui::TableNextColumn();
+            ImVec4 col = theme::success();
+            const char* label = "Sent";
+            switch (e.outcome) {
+                case trade::TradeAuditOutcome::Sent: break;
+                case trade::TradeAuditOutcome::SentAndConfirmed:
+                    label = "Sent + confirmed";
+                    break;
+                case trade::TradeAuditOutcome::NeedsConfirmation:
+                    col = theme::warning();
+                    label = "Needs confirm";
+                    break;
+                case trade::TradeAuditOutcome::Failed:
+                    col = theme::danger();
+                    label = "Failed";
+                    break;
+            }
+            ImGui::PushStyleColor(ImGuiCol_Text, col);
+            ImGui::TextUnformatted(label);
+            ImGui::PopStyleColor();
+
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled(
+                "%s", e.source == trade::TradeAuditSource::UserBulk ? "bulk" : "user");
+
+            ImGui::TableNextColumn();
+            std::string detail =
+                std::to_string(e.item_count) + (e.item_count == 1 ? " item" : " items");
+            if (!e.offer_id.empty()) detail += "  offer " + e.offer_id;
+            if (!e.detail.empty()) detail += "  " + e.detail;
+            ImGui::TextWrapped("%s", detail.c_str());
+        }
+        ImGui::EndTable();
+    }
+    ImGui::EndChild();
+
+    if (action_button("Close", ImVec2(100, 0))) {
+        *p_open = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+    ImGui::PopStyleVar(2);
+}
+
 }  // namespace
 
 void draw_trade_offers(app::AppState& state) {
     static std::string g_search;
+    static bool g_history_open = false;
 
     ImGui::TextUnformatted("Trade Offers");
     ImGui::SameLine();
@@ -1244,6 +1396,9 @@ void draw_trade_offers(app::AppState& state) {
         g_confirm_accept_open = true;
     }
     ImGui::EndDisabled();
+
+    ImGui::SameLine();
+    if (action_button("History")) g_history_open = true;
 
     ImGui::Spacing();
     ImGui::TextDisabled(
@@ -1305,6 +1460,7 @@ void draw_trade_offers(app::AppState& state) {
 
     draw_send_modal(state);
     draw_bulk_confirms(state);
+    draw_history_modal(state, &g_history_open);
 }
 
 }  // namespace sam::ui::screens

@@ -78,12 +78,13 @@ void request_show_secrets(ShowSecretsState& state) {
 void draw_backup_modal(app::AppState& app, BackupDialogState& state) {
     if (!state.open) return;
     ImGui::SetNextWindowSize(ImVec2(480.0F, 0), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
     const bool visible = ImGui::BeginPopupModal(
         kBackupPopupName, &state.open,
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     if (!visible) {
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
         state.account_id.clear();
         state.synthesized_uri.clear();
         return;
@@ -95,7 +96,7 @@ void draw_backup_modal(app::AppState& app, BackupDialogState& state) {
         ImGui::Spacing();
         if (action_button("Close")) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
         return;
     }
 
@@ -140,19 +141,20 @@ void draw_backup_modal(app::AppState& app, BackupDialogState& state) {
     if (action_button("Close")) ImGui::CloseCurrentPopup();
 
     ImGui::EndPopup();
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
 }
 
 void draw_export_mafiles_modal(app::AppState& app, ExportMafilesState& state) {
     if (!state.open) return;
 
     ImGui::SetNextWindowSize(ImVec2(560.0F, 0), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
     const bool visible = ImGui::BeginPopupModal(
         kExportPopupName, &state.open,
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     if (!visible) {
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
         wipe(state.passphrase_buf);
         wipe(state.confirm_buf);
         state.selected_ids.clear();
@@ -278,18 +280,19 @@ void draw_export_mafiles_modal(app::AppState& app, ExportMafilesState& state) {
     if (action_button("Close", ImVec2(100, 0))) ImGui::CloseCurrentPopup();
 
     ImGui::EndPopup();
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
 }
 
 void draw_show_secrets_modal(app::AppState& app, ShowSecretsState& state) {
     if (!state.open) return;
 
     ImGui::SetNextWindowSize(ImVec2(720.0F, 480.0F), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14, 12));
     const bool visible = ImGui::BeginPopupModal(
         kSecretsPopupName, &state.open,
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
-    if (!visible) { ImGui::PopStyleVar(); return; }
+    if (!visible) { ImGui::PopStyleVar(2); return; }
 
     ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
     ImGui::TextWrapped("These secrets unlock the account. Anyone who sees them can "
@@ -349,7 +352,7 @@ void draw_show_secrets_modal(app::AppState& app, ShowSecretsState& state) {
 
     if (action_button("Close", ImVec2(100, 0))) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
 }
 
 }  // namespace sam::ui::widgets
