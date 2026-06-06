@@ -51,6 +51,23 @@ std::string format_with_commas(int value) {
     return out;
 }
 
+// Formats integer cents as a grouped decimal string, e.g. 612808 -> "6,128.08".
+// No currency symbol; the caller prepends "$" or appends a currency code.
+std::string format_cents(std::int64_t cents) {
+    char buf[24];
+    std::snprintf(buf, sizeof(buf), "%s.%02d",
+                  format_with_commas(static_cast<int>(cents / 100)).c_str(),
+                  static_cast<int>(cents % 100));
+    return buf;
+}
+
+// Threshold color for an external-funds figure, in cents (USD).
+ImVec4 funds_color(std::int64_t cents) {
+    if (cents >= 35000) return theme::success();   // >= $350.00
+    if (cents >= 25000) return theme::warning();   // $250.00 - $349.99
+    return theme::danger();                        // < $250.00
+}
+
 // Notes are shown inline on the card's subtitle line. Flatten newlines to
 // spaces and clip to the available width with an ellipsis so a long or
 // multi-line note can't push the rest of the card's layout down.
@@ -179,45 +196,107 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
 
     ImGui::Spacing();
 
-    // Stats row: Steam Level · Games · CS2 Rank · Playtime · Prime.
+    // Stats row: Level · Games · CS2 Rank · Playtime · Prime · Spent. Laid out
+    // as a wrapping flow so a full row spills onto a second line instead of
+    // running off the fixed-width card.
     {
-        bool any = false;
-        auto sep = [&]() {
-            if (any) { ImGui::SameLine(); ImGui::TextDisabled("·"); ImGui::SameLine(); }
-            any = true;
+        struct StatSeg {
+            const char* label = "";
+            std::string value;          // empty => label-only (e.g. Prime)
+            bool prime = false;         // label in success colour, no value
+            bool value_colored = false; // value drawn with value_color
+            bool value_dim = false;     // value drawn dim (TextDisabled)
+            ImVec4 value_color{};
         };
+        StatSeg segs[6];
+        std::size_t n = 0;
+
+        char num[24];
         if (state.settings.info.show_steam_level && a.web.steam_level > 0) {
-            sep();
-            ImGui::TextDisabled("Level");
-            ImGui::SameLine();
-            ImGui::Text("%d", a.web.steam_level);
+            std::snprintf(num, sizeof(num), "%d", a.web.steam_level);
+            segs[n++] = StatSeg{.label = "Level", .value = num};
         }
         if (state.settings.info.show_owned_games && a.web.owned_games_count >= 0) {
-            sep();
-            ImGui::TextDisabled("Games");
-            ImGui::SameLine();
-            ImGui::Text("%d", a.web.owned_games_count);
+            std::snprintf(num, sizeof(num), "%d", a.web.owned_games_count);
+            segs[n++] = StatSeg{.label = "Games", .value = num};
         }
         if (!a.is_nfa && a.cs2.cs2_player_level >= 0) {
-            sep();
-            ImGui::TextDisabled("CS2 Rank");
-            ImGui::SameLine();
-            ImGui::Text("%d", a.cs2.cs2_player_level);
+            std::snprintf(num, sizeof(num), "%d", a.cs2.cs2_player_level);
+            segs[n++] = StatSeg{.label = "CS2 Rank", .value = num};
         }
         if (state.settings.info.show_owned_games && a.web.total_playtime_minutes > 0) {
-            sep();
-            ImGui::TextDisabled("Playtime");
-            ImGui::SameLine();
-            ImGui::Text("%lld h",
-                static_cast<long long>(a.web.total_playtime_minutes / 60));
+            std::snprintf(num, sizeof(num), "%lld h",
+                          static_cast<long long>(a.web.total_playtime_minutes / 60));
+            segs[n++] = StatSeg{.label = "Playtime", .value = num};
         }
         if (!a.is_nfa && state.settings.info.show_prime && a.cs2.prime_status) {
-            sep();
-            ImGui::PushStyleColor(ImGuiCol_Text, theme::success());
-            ImGui::TextUnformatted("Prime");
-            ImGui::PopStyleColor();
+            segs[n++] = StatSeg{.label = "Prime", .prime = true};
         }
-        if (any) ImGui::NewLine();
+        if (state.settings.info.show_external_funds && a.funds.total_spend_usd_cents >= 0) {
+            if (a.funds.currency_is_usd) {
+                segs[n++] = StatSeg{.label = "Spent",
+                                    .value = "$" + format_cents(a.funds.total_spend_usd_cents),
+                                    .value_colored = true,
+                                    .value_color = funds_color(a.funds.total_spend_usd_cents)};
+            } else {
+                // Thresholds are USD-specific; show the raw figure + code without
+                // a threshold color so a non-USD value isn't mislabeled as dollars.
+                segs[n++] = StatSeg{.label = "Spent",
+                                    .value = format_cents(a.funds.total_spend_usd_cents) +
+                                             " " + a.funds.currency,
+                                    .value_dim = true};
+            }
+        }
+
+        auto seg_w = [](const StatSeg& s) -> float {
+            float w = ImGui::CalcTextSize(s.label).x;
+            if (!s.value.empty())
+                w += ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize(s.value.c_str()).x;
+            return w;
+        };
+        auto draw_seg = [](const StatSeg& s) {
+            if (s.prime) {
+                ImGui::PushStyleColor(ImGuiCol_Text, theme::success());
+                ImGui::TextUnformatted(s.label);
+                ImGui::PopStyleColor();
+                return;
+            }
+            ImGui::TextDisabled("%s", s.label);
+            if (!s.value.empty()) {
+                ImGui::SameLine();
+                if (s.value_colored) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, s.value_color);
+                    ImGui::TextUnformatted(s.value.c_str());
+                    ImGui::PopStyleColor();
+                } else if (s.value_dim) {
+                    ImGui::TextDisabled("%s", s.value.c_str());
+                } else {
+                    ImGui::TextUnformatted(s.value.c_str());
+                }
+            }
+        };
+
+        if (n > 0) {
+            // Wrap when the next segment (plus its " · " separator) would run
+            // past the card's inner right edge. Captured at the row start, where
+            // the cursor sits at the left margin.
+            const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+            const float sp = ImGui::GetStyle().ItemSpacing.x;
+            const float sep_w = sp + ImGui::CalcTextSize("·").x + sp;
+            for (std::size_t i = 0; i < n; ++i) {
+                draw_seg(segs[i]);
+                if (i + 1 < n) {
+                    const float last_x2 = ImGui::GetItemRectMax().x;
+                    if (last_x2 + sep_w + seg_w(segs[i + 1]) <= right) {
+                        ImGui::SameLine();
+                        ImGui::TextDisabled("·");
+                        ImGui::SameLine();
+                    }
+                    // else: the next segment falls onto a new line automatically.
+                }
+            }
+            ImGui::NewLine();
+        }
     }
 
     // Tags.
@@ -233,6 +312,18 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         }
         ImGui::NewLine();
     }
+
+    // Competitive-cooldown and weekly-drop indicators share the strip just above
+    // the action row; compute their active state once so the rank badges reserve
+    // the right amount of space and both indicators can stack below.
+    const auto now_s = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    const bool cd_active = state.settings.info.show_cooldown &&
+                           a.cs2.cooldown_expires_unix > now_s;
+    const bool wd_active = state.settings.info.show_weekly_drop &&
+                           a.cs2.weekly_drop_reset_unix > now_s;
+    const float indicator_line_h = ImGui::GetTextLineHeightWithSpacing();
+    const int indicator_rows = (cd_active ? 1 : 0) + (wd_active ? 1 : 0);
 
     // Rank badges: Premier tier image (with ELO overlay or "---" placeholder)
     // and Wingman rank icon (rank 0 = unranked placeholder), each with a
@@ -273,22 +364,9 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
                 : 0.0F;
 
             // Vertical: center between current flow position and the top of the
-            // cooldown row (or the button row if no cooldown is showing).
-            bool cd_active = false;
-            if (state.settings.info.show_cooldown && a.cs2.cooldown_expires_unix > 0) {
-                const auto now_s = std::chrono::duration_cast<std::chrono::seconds>(
-                    std::chrono::system_clock::now().time_since_epoch()).count();
-                cd_active = a.cs2.cooldown_expires_unix > now_s;
-            }
-            bool wd_active = false;
-            if (!cd_active && state.settings.info.show_weekly_drop &&
-                a.cs2.weekly_drop_reset_unix > 0) {
-                const auto now_s = std::chrono::duration_cast<std::chrono::seconds>(
-                    std::chrono::system_clock::now().time_since_epoch()).count();
-                wd_active = a.cs2.weekly_drop_reset_unix > now_s;
-            }
+            // cooldown / weekly-drop strip (or the button row if neither shows).
             const float bottom_y = ImGui::GetWindowSize().y - kButtonRowReserve -
-                                   ((cd_active || wd_active) ? ImGui::GetTextLineHeightWithSpacing() : 0.0F);
+                                   static_cast<float>(indicator_rows) * indicator_line_h;
             // The trailing NewLine after the stats row leaves the cursor a full
             // text-line (plus item spacing) below the visible content; subtract
             // that so the center is computed against the *actual* bottom of
@@ -298,7 +376,12 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
             const float wins_h   = ImGui::GetTextLineHeight();
             const float row_h    = wins_h + kWinsGap + kBadgeH;
             const float center_y = (top_y + bottom_y) * 0.5F;
-            const float row_y    = std::max(top_y, center_y - row_h * 0.5F);
+            // Centre the badges, but keep a little clearance above the cooldown /
+            // weekly-drop strip so a tight card nudges them up rather than letting
+            // them crowd it.
+            const float indicator_gap = (indicator_rows > 0) ? 8.0F : 0.0F;
+            const float row_y    = std::min(std::max(top_y, center_y - row_h * 0.5F),
+                                            std::max(top_y, bottom_y - row_h - indicator_gap));
             const float badge_y  = row_y + wins_h + kWinsGap;
 
             // Horizontal: equal 3-way gap when both icons show (left margin,
@@ -362,16 +445,15 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         }
     }
 
-    // Cooldown indicator: pinned just above the action row so it can't
-    // overlap with the buttons even when the stats above are tall.
-    if (state.settings.info.show_cooldown && a.cs2.cooldown_expires_unix > 0) {
-        const auto now_s = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        if (a.cs2.cooldown_expires_unix > now_s) {
+    // Cooldown + weekly-drop indicators, stacked just above the action row so
+    // both can show when both apply (cooldown on top). Pinned from the bottom up
+    // so they never overlap the buttons even when the content above is tall.
+    if (indicator_rows > 0) {
+        float slot_y = ImGui::GetWindowSize().y - kButtonRowReserve -
+                       static_cast<float>(indicator_rows) * indicator_line_h;
+        if (cd_active) {
             const auto remaining = a.cs2.cooldown_expires_unix - now_s;
-            const float cd_y = ImGui::GetWindowSize().y - kButtonRowReserve -
-                               ImGui::GetTextLineHeightWithSpacing();
-            ImGui::SetCursorPosY(cd_y);
+            ImGui::SetCursorPosY(slot_y);
             ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
             const char* reason = a.cs2.cooldown_reason.empty()
                 ? "active" : a.cs2.cooldown_reason.c_str();
@@ -386,21 +468,11 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
                             reason, static_cast<long long>(remaining / 60));
             }
             ImGui::PopStyleColor();
+            slot_y += indicator_line_h;
         }
-    }
-
-    // Weekly XP drop indicator: shares the cooldown's single pinned row, so it
-    // only shows when no cooldown is active (cooldown takes priority).
-    if (state.settings.info.show_weekly_drop && a.cs2.weekly_drop_reset_unix > 0) {
-        const auto now_s = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        const bool cd_showing = state.settings.info.show_cooldown &&
-                                a.cs2.cooldown_expires_unix > now_s;
-        if (!cd_showing && a.cs2.weekly_drop_reset_unix > now_s) {
+        if (wd_active) {
             const auto remaining = a.cs2.weekly_drop_reset_unix - now_s;
-            const float wd_y = ImGui::GetWindowSize().y - kButtonRowReserve -
-                               ImGui::GetTextLineHeightWithSpacing();
-            ImGui::SetCursorPosY(wd_y);
+            ImGui::SetCursorPosY(slot_y);
             ImGui::PushStyleColor(ImGuiCol_Text, theme::success());
             if (remaining >= 86400) {
                 ImGui::Text("Weekly drop · resets in %lldd",

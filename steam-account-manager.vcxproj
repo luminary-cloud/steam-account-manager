@@ -187,6 +187,9 @@
     <ClCompile Include="core\steam_gcpd\gcpd_scraper.cpp" />
     <ClCompile Include="core\steam_gcpd\gcpd_parser.cpp" />
 
+    <ClCompile Include="core\steam_spend\spend_scraper.cpp" />
+    <ClCompile Include="core\steam_spend\spend_parser.cpp" />
+
     <ClCompile Include="core\profile\edit.cpp" />
 
     <ClCompile Include="core\trade\trade_url.cpp" />
@@ -314,6 +317,9 @@
 
     <ClInclude Include="core\steam_gcpd\gcpd_scraper.hpp" />
     <ClInclude Include="core\steam_gcpd\gcpd_parser.hpp" />
+
+    <ClInclude Include="core\steam_spend\spend_scraper.hpp" />
+    <ClInclude Include="core\steam_spend\spend_parser.hpp" />
 
     <ClInclude Include="core\profile\edit.hpp" />
 

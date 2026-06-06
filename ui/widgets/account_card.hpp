@@ -6,8 +6,10 @@
 namespace sam::ui::widgets {
 
 // Fixed height of one account card, in pixels. Exposed so the grid's
-// ImGuiListClipper in accounts_screen.cpp can seek by row.
-constexpr float kAccountCardHeight = 290.0F;
+// ImGuiListClipper in accounts_screen.cpp can seek by row. Sized so the
+// rank badges keep clear of the cooldown + weekly-drop strip even when both
+// of those indicator lines show at once.
+constexpr float kAccountCardHeight = 308.0F;
 
 enum class CardAction {
     None,

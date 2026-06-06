@@ -133,6 +133,7 @@ struct Settings {
         bool show_vac_live = true;
         bool show_cooldown = true;
         bool show_weekly_drop = true;
+        bool show_external_funds = true;
     } info;
 
     struct NotificationToggles {
@@ -360,6 +361,9 @@ struct AppState {
     std::mutex job_mutex;
     std::deque<Job> completed_jobs;
     std::unordered_set<std::string> refreshing_ids;
+    // Account ids with an in-flight external-funds (spend) fetch, so the UI can
+    // disable the "Refresh spend" action while it runs.
+    std::unordered_set<std::string> spend_fetching_ids;
 
     // Account ids for which we've already fired the "NFA token expired/invalid"
     // notification, so it fires once per dead token. UI-thread only (touched in
@@ -434,6 +438,25 @@ struct AppState {
     bool is_selected(const std::string& id) const;
     void refresh_account_data();
     void refresh_single_account(const std::string& id, bool batch_refresh = false);
+
+    // Fetches "external funds used" (TotalSpend) for one account. Steam gates
+    // help.steampowered.com/accountdata behind a freshly-password-authenticated
+    // web:help session, so this performs a full credentials login (auto_relogin,
+    // using the stored password + Steam Guard) first, then scrapes AccountSpend
+    // with that fresh session. No-op for NFA accounts or accounts without a
+    // stored password. `quiet` suppresses per-account toasts (used by the bulk
+    // path). Async.
+    void refresh_spend(const std::string& id, bool quiet = false);
+
+    // Fetches funds for every eligible account, staggered (one sign-in at a
+    // time) to stay gentle on Steam's login rate limit. When `only_missing` is
+    // true, skips accounts that already have a figure -- this is the one-time
+    // automatic fill on launch. The toolbar "Refresh funds" button passes false.
+    void refresh_all_spend(bool only_missing);
+
+    // True while a bulk refresh_all_spend is scheduling/running, so the toolbar
+    // can disable the button and show progress.
+    std::atomic<bool> spend_bulk_running{false};
 
     // Copies the stored CS2 video template (app::cs2_video_template_path()) into
     // `a`'s CS2 config folder and pushes a result toast. Surfaces failures as a

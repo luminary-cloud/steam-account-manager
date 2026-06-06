@@ -19,6 +19,8 @@
 #include "core/steam_api/summaries.hpp"
 #include "core/steam_gcpd/gcpd_parser.hpp"
 #include "core/steam_gcpd/gcpd_scraper.hpp"
+#include "core/steam_spend/spend_parser.hpp"
+#include "core/steam_spend/spend_scraper.hpp"
 #include "core/steam_local/loginusers.hpp"
 #include "core/steam_login/mobile_auth.hpp"
 #include "core/steam_login/session.hpp"
@@ -929,6 +931,191 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
     });
 }
 
+void AppState::refresh_spend(const std::string& id, bool quiet) {
+    auto* acc = find_account(id);
+    if (!acc) return;
+
+    auto toast = [this, quiet](const std::string& aid, std::string msg, bool warn) {
+        if (quiet) return;
+        ui::widgets::ToastItem t;
+        t.id = "spend-" + aid;
+        t.message = std::move(msg);
+        t.account_id = aid;
+        t.is_warning = warn;
+        const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        t.expires_at_unix = now + settings.notifications.toast_duration_seconds;
+        toasts.push(std::move(t));
+    };
+
+    if (acc->is_nfa) {
+        toast(id, "Spend: not available for token-only (NFA) accounts", true);
+        return;
+    }
+    if (acc->password.empty()) {
+        toast(id, "Spend: needs a stored password to sign in", true);
+        return;
+    }
+    if (acc->steam_id_64 == 0) {
+        toast(id, "Spend: refresh the account first (no SteamID yet)", true);
+        return;
+    }
+    if (spend_fetching_ids.count(id)) return;
+    spend_fetching_ids.insert(id);
+
+    // Snapshot credentials for the worker; the vault Account lives on the UI thread.
+    core::Account creds;
+    creds.login                = acc->login;
+    creds.password             = acc->password;
+    creds.sda                  = acc->sda;
+    creds.steam_id_64          = acc->steam_id_64;
+    creds.session_id           = acc->session_id;
+    creds.refresh_token        = acc->refresh_token;
+    creds.access_token         = acc->access_token;
+    creds.access_token_expires = acc->access_token_expires;
+
+    const std::string aid = id;
+    const std::string login_name = acc->login;
+    SAM_LOG_INFO("spend: refresh requested for '{}'", login_name);
+
+    job_pump::submit([this, aid, login_name, creds, toast]() mutable {
+        // AccountSpend is gated behind a freshly-password-authenticated web:help
+        // session (step-up auth). A full credentials login gives a fresh-oat
+        // session; the scraper then lets help.steampowered.com bootstrap its own
+        // cookie across the redirect chain.
+        std::string err;
+        if (!auto_relogin(aid, creds, &err)) {
+            SAM_LOG_WARN("spend: sign-in failed for '{}': {}", login_name, err);
+            post_ui_callback([this, aid, err, toast]() {
+                spend_fetching_ids.erase(aid);
+                toast(aid, "Spend: sign-in failed (" +
+                          (err.empty() ? std::string("unknown") : err) + ")", true);
+            });
+            return;
+        }
+
+        const auto resp = steam_spend::fetch_account_spend(creds);
+        std::optional<steam_spend::SpendData> parsed;
+        std::string fail_msg;
+        if (resp.status == 200 && steam_spend::looks_like_spend_page(resp.body)) {
+            parsed = steam_spend::parse_account_spend(resp.body);
+        } else if (resp.status == 200 && steam_spend::looks_like_login_page(resp.body)) {
+            fail_msg = "Spend: Steam still requires a manual sign-in for this page";
+        } else if (resp.transport_error) {
+            fail_msg = "Spend: request failed (" + resp.error_message + ")";
+        } else {
+            fail_msg = "Spend: unexpected response (status " + std::to_string(resp.status) + ")";
+        }
+
+        // The login wasn't wasted; carry the fresh session back to persist it.
+        crypto::SecureString rt = creds.refresh_token;
+        crypto::SecureString at = creds.access_token;
+        crypto::SecureString ls = creds.steam_login_secure;
+        std::string sid = creds.session_id;
+        const std::int64_t exp = creds.access_token_expires;
+
+        post_ui_callback([this, aid, login_name, parsed, fail_msg, toast,
+                          rt = std::move(rt), at = std::move(at), ls = std::move(ls),
+                          sid = std::move(sid), exp]() mutable {
+            spend_fetching_ids.erase(aid);
+            auto* a = find_account(aid);
+            if (!a) return;
+            if (!rt.empty()) a->refresh_token = std::move(rt);
+            if (!at.empty()) { a->access_token = std::move(at); a->access_token_expires = exp; }
+            if (!ls.empty()) a->steam_login_secure = std::move(ls);
+            if (!sid.empty()) a->session_id = std::move(sid);
+
+            if (parsed && parsed->found_total && parsed->total_spend_cents >= 0) {
+                const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                a->funds.total_spend_usd_cents = parsed->total_spend_cents;
+                a->funds.currency_is_usd       = parsed->currency_is_usd;
+                a->funds.currency              = parsed->currency;
+                a->funds.last_refreshed_unix   = now;
+                std::string amt;
+                if (parsed->currency_is_usd) {
+                    char buf[32];
+                    std::snprintf(buf, sizeof(buf), "$%lld.%02d",
+                                  static_cast<long long>(parsed->total_spend_cents / 100),
+                                  static_cast<int>(parsed->total_spend_cents % 100));
+                    amt = buf;
+                } else {
+                    amt = std::to_string(parsed->total_spend_cents / 100) + " " + parsed->currency;
+                }
+                SAM_LOG_INFO("spend: '{}' total spend {} ({} cents)",
+                             login_name, amt, parsed->total_spend_cents);
+                toast(aid, login_name + ": spent " + amt, false);
+            } else {
+                toast(aid, fail_msg.empty() ? "Spend: no data found" : fail_msg, true);
+            }
+            vault_dirty = true;
+            save_vault_if_dirty();
+        });
+    });
+}
+
+void AppState::refresh_all_spend(bool only_missing) {
+    if (spend_bulk_running.load(std::memory_order_acquire)) {
+        SAM_LOG_INFO("spend: bulk refresh already running, ignoring");
+        return;
+    }
+
+    // Eligible = full-access account with stored credentials and a known
+    // SteamID. only_missing additionally skips accounts that already have a
+    // figure (the one-time automatic fill); a manual "Refresh funds" re-pulls
+    // everything.
+    std::vector<std::string> ids;
+    for (const auto& a : vault.accounts) {
+        if (a.is_nfa || a.password.empty() || a.steam_id_64 == 0) continue;
+        if (only_missing && a.funds.total_spend_usd_cents >= 0) continue;
+        ids.push_back(a.id);
+    }
+    if (ids.empty()) {
+        if (!only_missing) {
+            ui::widgets::ToastItem t;
+            t.id = "spend-bulk";
+            t.message = "No accounts with stored credentials to fetch funds for.";
+            t.is_warning = true;
+            const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            t.expires_at_unix = now + settings.notifications.toast_duration_seconds;
+            toasts.push(std::move(t));
+        }
+        return;
+    }
+
+    if (!only_missing) {
+        ui::widgets::ToastItem t;
+        t.id = "spend-bulk";
+        t.message = "Fetching external funds for " + std::to_string(ids.size()) +
+                    " accounts (signs in to each)...";
+        const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        t.expires_at_unix = now + settings.notifications.toast_duration_seconds;
+        toasts.push(std::move(t));
+    }
+
+    SAM_LOG_INFO("spend: bulk refresh queuing {} accounts (only_missing={})",
+                 ids.size(), only_missing);
+    spend_bulk_running.store(true, std::memory_order_release);
+
+    // One outer worker paces the per-account fetches a few seconds apart so we
+    // never fire many sign-ins at once. Each scheduled refresh_spend runs in its
+    // own worker (quiet: no per-account toasts; the figures appear as they land).
+    job_pump::submit([this, ids = std::move(ids)] {
+        for (const auto& aid : ids) {
+            {
+                std::lock_guard lk(job_mutex);
+                completed_jobs.push_back({"", [this, aid] {
+                    refresh_spend(aid, /*quiet=*/true);
+                }});
+            }
+            if (!job_pump::interruptible_sleep(std::chrono::seconds(4))) break;
+        }
+        spend_bulk_running.store(false, std::memory_order_release);
+    });
+}
+
 bool AppState::auto_relogin(const std::string& account_id,
                             core::Account& creds,
                             std::string* err) {
@@ -1058,6 +1245,7 @@ void AppState::save_settings() {
     info["show_vac_live"]      = settings.info.show_vac_live;
     info["show_cooldown"]      = settings.info.show_cooldown;
     info["show_weekly_drop"]   = settings.info.show_weekly_drop;
+    info["show_external_funds"] = settings.info.show_external_funds;
 
     auto& notif = j["notifications"];
     notif["enabled"]               = settings.notifications.enabled;
@@ -1195,6 +1383,7 @@ void AppState::load_settings() {
         get_info("show_vac_live",      settings.info.show_vac_live);
         get_info("show_cooldown",      settings.info.show_cooldown);
         get_info("show_weekly_drop",   settings.info.show_weekly_drop);
+        get_info("show_external_funds", settings.info.show_external_funds);
     }
 
     if (j.contains("notifications")) {

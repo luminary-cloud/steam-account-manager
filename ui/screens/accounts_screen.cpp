@@ -321,6 +321,24 @@ void draw_accounts(app::AppState& state) {
             ImGui::TextDisabled("Refreshing %d/%d", done, total);
         }
     }
+    if (state.settings.info.show_external_funds) {
+        ImGui::SameLine();
+        const bool busy = state.spend_bulk_running.load(std::memory_order_acquire);
+        ImGui::BeginDisabled(busy);
+        if (action_button("Refresh funds")) {
+            state.refresh_all_spend(/*only_missing=*/false);
+        }
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            set_tooltip("Sign in to each account and read total external funds (TotalSpend) "
+                        "from Steam Support. One sign-in per account, so it is slower than "
+                        "Refresh all.");
+        }
+        if (busy) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("Fetching funds...");
+        }
+    }
     if (state.settings.accounts_view == app::AccountsViewMode::List) {
         ImGui::SameLine();
         if (action_button("New group")) {

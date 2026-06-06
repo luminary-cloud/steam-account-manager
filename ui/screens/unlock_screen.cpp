@@ -42,6 +42,12 @@ void try_unlock(app::AppState& state, const std::string& pw, std::string& error)
             }
         }
         if (state.settings.refresh_on_launch) state.refresh_account_data();
+        // One-time automatic fill of external funds for accounts that don't have
+        // a figure yet (skipped when the feature is off); no-op once every
+        // eligible account has been fetched.
+        if (state.settings.info.show_external_funds) {
+            state.refresh_all_spend(/*only_missing=*/true);
+        }
         error.clear();
     } catch (const sam::core::store::WrongPassword&) {
         error = "Wrong master password.";

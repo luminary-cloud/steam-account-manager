@@ -188,6 +188,22 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
             const std::string xp = format_with_commas(a.cs2.cs2_player_xp);
             push_chip("XP", xp.c_str());
         }
+        if (state.settings.info.show_external_funds && a.funds.total_spend_usd_cents >= 0) {
+            if (a.funds.currency_is_usd) {
+                std::snprintf(buf, sizeof(buf), "$%s.%02d",
+                              format_with_commas(static_cast<int>(a.funds.total_spend_usd_cents / 100)).c_str(),
+                              static_cast<int>(a.funds.total_spend_usd_cents % 100));
+                const ImVec4 col = a.funds.total_spend_usd_cents >= 35000 ? theme::success()
+                                 : a.funds.total_spend_usd_cents >= 25000 ? theme::warning()
+                                 : theme::danger();
+                push_chip("Spent", buf, &col);
+            } else {
+                std::snprintf(buf, sizeof(buf), "%s %s",
+                              format_with_commas(static_cast<int>(a.funds.total_spend_usd_cents / 100)).c_str(),
+                              a.funds.currency.c_str());
+                push_chip("Spent", buf);
+            }
+        }
         if (a.steam_id_64 != 0) {
             char sid[24];
             std::snprintf(sid, sizeof(sid), "%llu",

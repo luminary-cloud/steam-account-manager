@@ -10,6 +10,7 @@
     <Filter Include="core\steam_auth"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000006}</UniqueIdentifier></Filter>
     <Filter Include="core\steam_auth\gen"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000015}</UniqueIdentifier></Filter>
     <Filter Include="core\steam_gcpd"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000007}</UniqueIdentifier></Filter>
+    <Filter Include="core\steam_spend"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000034}</UniqueIdentifier></Filter>
     <Filter Include="core\profile"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000030}</UniqueIdentifier></Filter>
     <Filter Include="core\trade"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000033}</UniqueIdentifier></Filter>
     <Filter Include="core\cs2_config"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000031}</UniqueIdentifier></Filter>
@@ -64,6 +65,8 @@
 
     <ClCompile Include="core\steam_gcpd\gcpd_scraper.cpp"><Filter>core\steam_gcpd</Filter></ClCompile>
     <ClCompile Include="core\steam_gcpd\gcpd_parser.cpp"><Filter>core\steam_gcpd</Filter></ClCompile>
+    <ClCompile Include="core\steam_spend\spend_scraper.cpp"><Filter>core\steam_spend</Filter></ClCompile>
+    <ClCompile Include="core\steam_spend\spend_parser.cpp"><Filter>core\steam_spend</Filter></ClCompile>
     <ClCompile Include="core\profile\edit.cpp"><Filter>core\profile</Filter></ClCompile>
     <ClCompile Include="core\trade\trade_url.cpp"><Filter>core\trade</Filter></ClCompile>
     <ClCompile Include="core\trade\inventory.cpp"><Filter>core\trade</Filter></ClCompile>
@@ -306,6 +309,8 @@
 
     <ClInclude Include="core\steam_gcpd\gcpd_scraper.hpp"><Filter>core\steam_gcpd</Filter></ClInclude>
     <ClInclude Include="core\steam_gcpd\gcpd_parser.hpp"><Filter>core\steam_gcpd</Filter></ClInclude>
+    <ClInclude Include="core\steam_spend\spend_scraper.hpp"><Filter>core\steam_spend</Filter></ClInclude>
+    <ClInclude Include="core\steam_spend\spend_parser.hpp"><Filter>core\steam_spend</Filter></ClInclude>
     <ClInclude Include="core\profile\edit.hpp"><Filter>core\profile</Filter></ClInclude>
     <ClInclude Include="core\trade\models.hpp"><Filter>core\trade</Filter></ClInclude>
     <ClInclude Include="core\trade\trade_url.hpp"><Filter>core\trade</Filter></ClInclude>

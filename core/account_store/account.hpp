@@ -99,6 +99,17 @@ struct CS2Status {
     std::int64_t last_refreshed_unix = 0;
 };
 
+// External funds applied to the account ("TotalSpend" from
+// help.steampowered.com/accountdata/AccountSpend), denominated in USD.
+struct ExternalFundsStatus {
+    std::int64_t total_spend_usd_cents = -1;   // -1 = never fetched
+    // True when Steam reported the figure in USD. When false the value is some
+    // other currency (e.g. RMB) and must not be presented as dollars.
+    bool currency_is_usd = true;
+    std::string currency;                       // raw code as reported, e.g. "USD"
+    std::int64_t last_refreshed_unix = 0;
+};
+
 struct Account {
     std::string id;                       // ULID, stable
     std::uint64_t steam_id_64 = 0;        // 0 until resolved
@@ -132,6 +143,7 @@ struct Account {
     WebProfile web;
     BanStatus bans;
     CS2Status cs2;
+    ExternalFundsStatus funds;
 
     // Captured at the end of each refresh; the next refresh diffs against it
     // to emit BanEvents.

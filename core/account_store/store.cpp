@@ -213,6 +213,21 @@ void from_json(const json& j, CS2Status& c) {
     c.last_refreshed_unix   = j.value("last_refreshed_unix", static_cast<std::int64_t>(0));
 }
 
+void to_json(json& j, const ExternalFundsStatus& f) {
+    j = json{
+        {"total_spend_usd_cents", f.total_spend_usd_cents},
+        {"currency_is_usd",       f.currency_is_usd},
+        {"currency",              f.currency},
+        {"last_refreshed_unix",   f.last_refreshed_unix},
+    };
+}
+void from_json(const json& j, ExternalFundsStatus& f) {
+    f.total_spend_usd_cents = j.value("total_spend_usd_cents", static_cast<std::int64_t>(-1));
+    f.currency_is_usd       = j.value("currency_is_usd", true);
+    f.currency              = j.value("currency", std::string{});
+    f.last_refreshed_unix   = j.value("last_refreshed_unix", static_cast<std::int64_t>(0));
+}
+
 void to_json(json& j, const Account& a) {
     j = json::object();
     j["id"]                   = a.id;
@@ -237,6 +252,7 @@ void to_json(json& j, const Account& a) {
     j["web"]                  = a.web;
     j["bans"]                 = a.bans;
     j["cs2"]                  = a.cs2;
+    j["funds"]                = a.funds;
     j["prev_snapshot"]        = a.prev_snapshot;
     j["created_unix"]         = a.created_unix;
     j["last_login_unix"]      = a.last_login_unix;
@@ -271,6 +287,7 @@ void from_json(const json& j, Account& a) {
     if (j.contains("web"))  a.web  = j.at("web").get<WebProfile>();
     if (j.contains("bans")) a.bans = j.at("bans").get<BanStatus>();
     if (j.contains("cs2"))  a.cs2  = j.at("cs2").get<CS2Status>();
+    if (j.contains("funds")) a.funds = j.at("funds").get<ExternalFundsStatus>();
     if (j.contains("prev_snapshot")) {
         a.prev_snapshot = j.at("prev_snapshot").get<PreviousSnapshot>();
     }
