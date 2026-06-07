@@ -1007,7 +1007,7 @@ void draw_full_login(app::AppState& state) {
     widgets::draw_stepper(steps);
 
     ImGui::SameLine();
-    ImGui::BeginChild("##login-body", ImVec2(0, 0), false);
+    ImGui::BeginGroup();
 
     if (wiz.phase == LoginWizard::Phase::Credentials) {
         ImGui::SetNextItemWidth(280.0F);
@@ -1359,7 +1359,7 @@ void draw_full_login(app::AppState& state) {
         ImGui::PopStyleColor();
     }
 
-    ImGui::EndChild();
+    ImGui::EndGroup();
 }
 
 void draw_import_bundle(app::AppState& state) {

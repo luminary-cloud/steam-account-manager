@@ -24,7 +24,6 @@ struct AddSdaDialogState {
     std::string error;
     std::string working_text;
     bool acknowledged_rcode = false;
-    bool resync_attempted = false;
     bool bad_code_hint = false;
     // Set by request_add_sda; consumed in draw_add_sda_modal so the OpenPopup
     // call shares the modal's ID-stack scope (the button can sit in a PushID).

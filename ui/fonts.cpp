@@ -2,9 +2,9 @@
 
 #include <cstdint>
 #include <cstdlib>
-#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -35,21 +35,34 @@ std::vector<std::uint8_t> read_font_file(const std::filesystem::path& path) {
     return bytes;
 }
 
+// Font bytes are cached for the program lifetime and shared across every ImFont via
+// FontDataOwnedByAtlas=false, so a large file like msyh.ttc is read once, not per size.
+std::vector<std::uint8_t>& cached_font_bytes(const std::filesystem::path& path) {
+    static std::map<std::string, std::vector<std::uint8_t>> cache;
+    const std::string key = path.string();
+    auto it = cache.find(key);
+    if (it == cache.end()) {
+        it = cache.emplace(key, read_font_file(path)).first;
+    }
+    return it->second;
+}
+
 ImFont* add_font_from_disk(ImFontAtlas* atlas, const std::filesystem::path& path,
-                           float pixel_size, const ImWchar* glyph_ranges) {
-    auto bytes = read_font_file(path);
+                           float pixel_size, const ImWchar* glyph_ranges,
+                           bool merge = false, int font_no = 0) {
+    std::vector<std::uint8_t>& bytes = cached_font_bytes(path);
     if (bytes.empty()) return nullptr;
 
     ImFontConfig cfg;
-    cfg.FontDataOwnedByAtlas = true;
+    cfg.FontDataOwnedByAtlas = false;
+    cfg.MergeMode = merge;
+    cfg.FontNo = static_cast<ImU32>(font_no);
     cfg.OversampleH = 5;
     cfg.OversampleV = 5;
     cfg.PixelSnapH = false;
     cfg.RasterizerMultiply = 1.20F;
 
-    void* data = IM_ALLOC(bytes.size());
-    std::memcpy(data, bytes.data(), bytes.size());
-    return atlas->AddFontFromMemoryTTF(data, static_cast<int>(bytes.size()),
+    return atlas->AddFontFromMemoryTTF(bytes.data(), static_cast<int>(bytes.size()),
                                        pixel_size, &cfg, glyph_ranges);
 }
 
@@ -72,6 +85,16 @@ const ImWchar* extended_glyph_ranges() {
     return &ranges[0];
 }
 
+// Merge system fonts covering scripts Segoe UI lacks so non-Latin names render instead
+// of '?'. Null ranges: the dynamic atlas loads glyphs on demand and ignores ranges.
+// Order matters, the first font with a glyph wins, so Segoe UI keeps the Latin set.
+void merge_fallback_fonts(ImFontAtlas* atlas, float pixel_size) {
+    add_font_from_disk(atlas, windows_font_path("msyh.ttc"),     pixel_size, nullptr, true, 0);  // CJK + JP kana
+    add_font_from_disk(atlas, windows_font_path("malgun.ttf"),   pixel_size, nullptr, true, 0);  // Korean
+    add_font_from_disk(atlas, windows_font_path("seguisym.ttf"), pixel_size, nullptr, true, 0);  // symbols, dingbats
+    add_font_from_disk(atlas, windows_font_path("cambria.ttc"),  pixel_size, nullptr, true, 1);  // Cambria Math: fancy letters
+}
+
 }  // namespace
 
 void load(float scale) {
@@ -91,7 +114,11 @@ void load(float scale) {
     };
 
     g_body = add_font_from_disk(io.Fonts, windows_font_path("segoeui.ttf"), body_size, ranges);
+    if (g_body) merge_fallback_fonts(io.Fonts, body_size);
+
     g_title = add_font_from_disk(io.Fonts, windows_font_path("segoeuib.ttf"), title_size, ranges);
+    if (g_title) merge_fallback_fonts(io.Fonts, title_size);
+
     g_badge = add_font_from_disk(io.Fonts, windows_font_path("segoeuib.ttf"), badge_size, badge_ranges);
 
     if (!g_body) {

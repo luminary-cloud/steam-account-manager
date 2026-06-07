@@ -33,7 +33,6 @@ struct FinalizeResult {
     bool ok = false;
     int status_code = 0;
     bool needs_retry = false;            // true on status 89 (bad sms code)
-    bool needs_resync = false;           // true on status 88 (time desync)
     std::string error;
 };
 

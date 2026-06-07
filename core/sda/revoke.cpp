@@ -1,13 +1,16 @@
 #include "core/sda/revoke.hpp"
 
+#include <chrono>
 #include <map>
 #include <string>
+#include <thread>
 
 #include <nlohmann/json.hpp>
 
 #include "core/crypto/rng.hpp"
 #include "core/http/client.hpp"
 #include "core/http/url.hpp"
+#include "core/json_num.hpp"
 #include "core/log.hpp"
 #include "core/sda/totp.hpp"
 #include "core/time_aligner.hpp"
@@ -42,12 +45,12 @@ core::SteamGuardAccount sda_from_response(const json& r, const std::string& devi
     s.serial_number   = r.value("serial_number", "");
     s.revocation_code = r.value("revocation_code", "");
     s.uri             = r.value("uri", "");
-    s.server_time     = r.value("server_time", 0);
+    s.server_time     = r.contains("server_time") ? parse_json_i64(r["server_time"], 0) : 0;
     s.account_name    = r.value("account_name", "");
     s.token_gid       = r.value("token_gid", "");
     s.identity_secret = r.value("identity_secret", "");
     s.secret_1        = r.value("secret_1", "");
-    s.status          = r.value("status", 1);
+    s.status          = r.contains("status") ? static_cast<int>(parse_json_i64(r["status"], 1)) : 1;
     s.device_id       = device_id;
     s.fully_enrolled  = false;
     return s;
@@ -130,41 +133,83 @@ FinalizeResult finalize_add(const core::Account& a, const std::string& sms_code)
     }
 
     const auto& sda = *a.sda;
-    const std::int64_t when = time_aligner::aligned_now();
-    const std::string code = generate_code(sda.shared_secret, when);
 
-    std::map<std::string, std::string> fields{
-        {"steamid", std::to_string(a.steam_id_64)},
-        {"authenticator_code", code},
-        {"authenticator_time", std::to_string(when)},
-        {"activation_code", sms_code},
-        {"validate_sms_code", "1"},
-    };
+    // Steam finalizes over several round-trips: it answers status 88 until the
+    // submitted codes line up, and success + want_more when it wants the next
+    // time window's code. Keep submitting fresh authenticator codes (the
+    // activation code from email/SMS stays the same) until Steam is satisfied.
+    bool resynced = false;
+    for (int tries = 0; tries < 10; ++tries) {
+        const std::int64_t when = time_aligner::aligned_now();
+        const std::string code = generate_code(sda.shared_secret, when);
 
-    auto resp = post_two_factor("FinalizeAddAuthenticator", token, fields);
-    if (resp.status != 200) {
-        out.error = "http " + std::to_string(resp.status);
+        std::map<std::string, std::string> fields{
+            {"steamid", std::to_string(a.steam_id_64)},
+            {"authenticator_code", code},
+            {"authenticator_time", std::to_string(when)},
+            {"activation_code", sms_code},
+            {"validate_sms_code", "1"},
+        };
+
+        auto resp = post_two_factor("FinalizeAddAuthenticator", token, fields);
+        if (resp.status != 200) {
+            out.error = "http " + std::to_string(resp.status);
+            return out;
+        }
+
+        bool success = false;
+        bool want_more = false;
+        try {
+            const auto j = json::parse(resp.body);
+            if (!j.contains("response")) {
+                out.error = "no response field";
+                return out;
+            }
+            const auto& r = j["response"];
+            out.status_code = r.contains("status")
+                ? static_cast<int>(parse_json_i64(r["status"], 0)) : 0;
+            success   = r.value("success", false);
+            want_more = r.value("want_more", false);
+        } catch (const std::exception& ex) {
+            out.error = ex.what();
+            return out;
+        }
+
+        SAM_LOG_INFO("FinalizeAddAuthenticator: try {} status={} success={} want_more={}",
+                     tries, out.status_code, success, want_more);
+
+        if (out.status_code == 89) {
+            out.needs_retry = true;  // bad activation code; let the user retype it
+            return out;
+        }
+        if (out.status_code == 88) {
+            // Codes not matching, usually clock drift. Resync once, then keep
+            // trying as later windows roll around.
+            if (!resynced) {
+                resynced = true;
+                (void)time_aligner::sync_now();
+                continue;
+            }
+            std::this_thread::sleep_for(std::chrono::seconds(seconds_remaining(when) + 1));
+            continue;
+        }
+        if (want_more) {
+            // Steam took this code and wants the next window's code.
+            std::this_thread::sleep_for(std::chrono::seconds(seconds_remaining(when) + 1));
+            continue;
+        }
+        if (success || out.status_code == 1) {
+            out.ok = true;
+            return out;
+        }
+        // Any other status (e.g. 2 "already finalized"): the authenticator may
+        // already be live. Stop and let the caller reconcile via QueryStatus.
+        out.error = "status " + std::to_string(out.status_code);
         return out;
     }
 
-    try {
-        const auto j = json::parse(resp.body);
-        if (!j.contains("response")) {
-            out.error = "no response field";
-            return out;
-        }
-        const auto& r = j["response"];
-        out.status_code = r.value("status", 0);
-        switch (out.status_code) {
-            case 1:  out.ok = true; break;
-            case 88: out.needs_resync = true; break;
-            case 89: out.needs_retry = true; break;
-            default:
-                out.error = "status " + std::to_string(out.status_code);
-        }
-    } catch (const std::exception& ex) {
-        out.error = ex.what();
-    }
+    out.error = "Steam did not confirm the authenticator after several tries. "
+                "Check that your system clock is accurate.";
     return out;
 }
 

@@ -115,6 +115,8 @@ void dispatch_add(app::AppState& app, AddSdaDialogState& s) {
     });
 }
 
+void dispatch_verify_active(app::AppState& app, AddSdaDialogState& s);
+
 void dispatch_finalize(app::AppState& app, AddSdaDialogState& s) {
     const std::string aid = s.account_id;
     const std::string sms_code = s.activation_buf.data();
@@ -161,14 +163,6 @@ void dispatch_finalize(app::AppState& app, AddSdaDialogState& s) {
                 return;
             }
 
-            if (result.needs_resync && !s.resync_attempted) {
-                s.resync_attempted = true;
-                s.working_text = "Resyncing time with Steam...";
-                time_aligner::sync_now_async();
-                dispatch_finalize(app, s);
-                return;
-            }
-
             if (result.needs_retry) {
                 s.bad_code_hint = true;
                 s.activation_buf.fill(0);
@@ -176,10 +170,12 @@ void dispatch_finalize(app::AppState& app, AddSdaDialogState& s) {
                 return;
             }
 
-            s.step = AddSdaDialogState::Step::Failed;
-            s.error = !result.error.empty()
-                ? result.error
-                : "FinalizeAddAuthenticator failed.";
+            // Finalize came back ambiguous (e.g. status 2 "already finalized") or
+            // ran out of tries. Steam often activates the authenticator anyway, so
+            // confirm against the live status before declaring failure.
+            s.working_text = "Checking the authenticator with Steam...";
+            s.step = AddSdaDialogState::Step::Working;
+            dispatch_verify_active(app, s);
         });
     });
 }
@@ -322,7 +318,6 @@ void request_add_sda(app::AppState& app, AddSdaDialogState& s, std::string accou
     s.error.clear();
     s.working_text.clear();
     s.acknowledged_rcode = false;
-    s.resync_attempted = false;
     s.bad_code_hint = false;
     s.open = true;
 
@@ -346,7 +341,6 @@ void request_verify_sda(app::AppState& app, AddSdaDialogState& s, std::string ac
     s.error.clear();
     s.working_text = "Checking the authenticator with Steam...";
     s.acknowledged_rcode = true;
-    s.resync_attempted = false;
     s.bad_code_hint = false;
     s.open = true;
     s.step = AddSdaDialogState::Step::Working;
@@ -477,7 +471,6 @@ void draw_add_body(app::AppState& app, AddSdaDialogState& s) {
 
             if ((clicked || submitted) && has_code) {
                 s.bad_code_hint = false;
-                s.resync_attempted = false;
                 s.working_text = "Verifying...";
                 s.step = AddSdaDialogState::Step::Working;
                 dispatch_finalize(app, s);

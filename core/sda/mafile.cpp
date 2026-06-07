@@ -10,6 +10,7 @@
 #include "core/crypto/aes_cbc.hpp"
 #include "core/crypto/base64.hpp"
 #include "core/crypto/kdf.hpp"
+#include "core/json_num.hpp"
 
 namespace sam::sda {
 
@@ -36,18 +37,6 @@ std::string read_text(const std::filesystem::path& path) {
     return ss.str();
 }
 
-// Some maFile exporters write numeric fields as JSON strings (e.g.
-// "server_time": "1774469674"), so a plain j.value<int>() throws type_error.302.
-std::int64_t parse_json_i64(const json& v, std::int64_t fallback) {
-    if (v.is_number_integer())  return v.get<std::int64_t>();
-    if (v.is_number_unsigned()) return static_cast<std::int64_t>(v.get<std::uint64_t>());
-    if (v.is_number_float())    return static_cast<std::int64_t>(v.get<double>());
-    if (v.is_string()) {
-        try { return std::stoll(v.get<std::string>()); } catch (...) { return fallback; }
-    }
-    return fallback;
-}
-
 core::SteamGuardAccount from_json_obj(const json& j) {
     core::SteamGuardAccount s;
     s.shared_secret   = j.value("shared_secret", "");
@@ -63,16 +52,6 @@ core::SteamGuardAccount from_json_obj(const json& j) {
     s.device_id       = j.value("device_id", "");
     s.fully_enrolled  = j.value("fully_enrolled", true);
     return s;
-}
-
-std::uint64_t parse_json_u64(const json& v) {
-    if (v.is_number_unsigned())          return v.get<std::uint64_t>();
-    if (v.is_number_integer())           return static_cast<std::uint64_t>(v.get<std::int64_t>());
-    if (v.is_number_float())             return static_cast<std::uint64_t>(v.get<double>());
-    if (v.is_string()) {
-        try { return std::stoull(v.get<std::string>()); } catch (...) { return 0; }
-    }
-    return 0;
 }
 
 void extract_session(const json& j, MafileLoadResult& out) {

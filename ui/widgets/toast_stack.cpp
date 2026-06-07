@@ -70,10 +70,19 @@ void ToastStack::render(const std::function<void(const std::string&)>& on_click)
     const float origin_x = vp->WorkPos.x + vp->WorkSize.x - kToastWidth - kToastMargin;
     float origin_y = vp->WorkPos.y + vp->WorkSize.y - kToastMargin;
 
+    // The close ("x") button shares the message's first line; budget the text
+    // column to wrap a few pixels short of it. The font and global style match
+    // inside and outside the toast window, so computing this once keeps the
+    // height (CalcTextSize below) and the rendered wrap position in agreement.
+    // A mismatch makes a long message wrap into an extra line at render time
+    // that the fixed-height, no-scrollbar window then clips.
+    const float close_w =
+        ImGui::CalcTextSize("x").x + ImGui::GetStyle().FramePadding.x * 2.0F;
+    const float wrap_w = kToastWidth - kToastPad * 2.0F - close_w - 6.0F;
+
     int drawn = 0;
     for (auto it = items_.rbegin(); it != items_.rend() && drawn < kMaxVisible; ++it, ++drawn) {
-        const float text_w = kToastWidth - kToastPad * 2.0F - 24.0F;
-        const ImVec2 ts = ImGui::CalcTextSize(it->message.c_str(), nullptr, false, text_w);
+        const ImVec2 ts = ImGui::CalcTextSize(it->message.c_str(), nullptr, false, wrap_w);
         const float h = ts.y + kToastPad * 2.0F;
         origin_y -= h;
 
@@ -92,10 +101,10 @@ void ToastStack::render(const std::function<void(const std::string&)>& on_click)
             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing |
             ImGuiWindowFlags_NoNav;
         if (ImGui::Begin(win_name.c_str(), nullptr, flags)) {
-            const ImVec2 region = ImGui::GetContentRegionAvail();
-            const float close_w =
-                ImGui::CalcTextSize("x").x + ImGui::GetStyle().FramePadding.x * 2.0F;
-            ImGui::PushTextWrapPos(region.x - close_w - 6.0F);
+            // Wrap at the same width used for the height above. PushTextWrapPos
+            // takes a window-local X and the text starts at local x = kToastPad,
+            // so kToastPad + wrap_w yields an effective wrap width of wrap_w.
+            ImGui::PushTextWrapPos(kToastPad + wrap_w);
             ImGui::TextUnformatted(it->message.c_str());
             ImGui::PopTextWrapPos();
 
