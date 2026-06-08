@@ -91,6 +91,7 @@
     <ClCompile Include="core\crypto\base64.cpp"><Filter>core\crypto</Filter></ClCompile>
 
     <ClCompile Include="core\http\client.cpp"><Filter>core\http</Filter></ClCompile>
+    <ClCompile Include="core\http\proxy.cpp"><Filter>core\http</Filter></ClCompile>
     <ClCompile Include="core\http\url.cpp"><Filter>core\http</Filter></ClCompile>
 
     <ClCompile Include="core\launch\steam_launcher.cpp"><Filter>core\launch</Filter></ClCompile>
@@ -343,6 +344,7 @@
     <ClInclude Include="core\crypto\secure_string.hpp"><Filter>core\crypto</Filter></ClInclude>
 
     <ClInclude Include="core\http\client.hpp"><Filter>core\http</Filter></ClInclude>
+    <ClInclude Include="core\http\proxy.hpp"><Filter>core\http</Filter></ClInclude>
     <ClInclude Include="core\http\url.hpp"><Filter>core\http</Filter></ClInclude>
     <ClInclude Include="core\http\response.hpp"><Filter>core\http</Filter></ClInclude>
 

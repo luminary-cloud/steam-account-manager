@@ -14,6 +14,7 @@
 #include "core/cs2_config/video_config.hpp"
 #include "core/account_store/store.hpp"
 #include "core/crypto/rng.hpp"
+#include "core/http/client.hpp"
 #include "core/log.hpp"
 #include "core/steam_api/ban_check.hpp"
 #include "core/steam_api/summaries.hpp"
@@ -553,6 +554,7 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
     creds.refresh_token = acc->refresh_token;
     creds.access_token = acc->access_token;
     creds.access_token_expires = acc->access_token_expires;
+    creds.proxy = acc->proxy;
 
     // Credentials for silent auto-relogin: only sent into the worker if we
     // actually have both the password and (for Steam-Guard-enrolled accounts)
@@ -581,6 +583,7 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
 
     job_pump::submit([cfg, resolved, aid, creds, relogin_password, relogin_sda,
                       gcpd_enabled, batch_refresh, is_nfa, this]() mutable {
+        http::ScopedProxy proxy_guard(std::string(creds.proxy.data(), creds.proxy.size()));
         SAM_LOG_INFO("refresh: fetching bans/summaries/level/games for {}", resolved);
         std::vector<std::uint64_t> ids{resolved};
         auto bans = steam_api::fetch_bans(cfg, ids);
@@ -973,12 +976,14 @@ void AppState::refresh_spend(const std::string& id, bool quiet) {
     creds.refresh_token        = acc->refresh_token;
     creds.access_token         = acc->access_token;
     creds.access_token_expires = acc->access_token_expires;
+    creds.proxy                = acc->proxy;
 
     const std::string aid = id;
     const std::string login_name = acc->login;
     SAM_LOG_INFO("spend: refresh requested for '{}'", login_name);
 
     job_pump::submit([this, aid, login_name, creds, toast]() mutable {
+        http::ScopedProxy proxy_guard(std::string(creds.proxy.data(), creds.proxy.size()));
         // AccountSpend is gated behind a freshly-password-authenticated web:help
         // session (step-up auth). A full credentials login gives a fresh-oat
         // session; the scraper then lets help.steampowered.com bootstrap its own
@@ -1120,6 +1125,7 @@ bool AppState::auto_relogin(const std::string& account_id,
                             core::Account& creds,
                             std::string* err) {
     auto set_err = [&](std::string msg) { if (err) *err = std::move(msg); };
+    http::ScopedProxy proxy_guard(std::string(creds.proxy.data(), creds.proxy.size()));
 
     if (creds.login.empty() || creds.password.empty()) {
         SAM_LOG_INFO("auto-relogin: skipped for '{}' (no stored password)", creds.login);
@@ -1216,6 +1222,16 @@ void AppState::start_update_check() {
     });
 }
 
+void AppState::sync_proxy_policy() {
+    http::ProxyMode mode = http::ProxyMode::Direct;
+    switch (settings.proxy_mode) {
+        case ProxyMode::None:       mode = http::ProxyMode::Direct;     break;
+        case ProxyMode::Single:     mode = http::ProxyMode::Single;     break;
+        case ProxyMode::PerAccount: mode = http::ProxyMode::PerAccount; break;
+    }
+    http::set_proxy_policy(mode, settings.single_proxy);
+}
+
 void AppState::save_settings() {
     nlohmann::json j;
     j["clipboard_clear_seconds"] = settings.clipboard_clear_seconds;
@@ -1229,6 +1245,8 @@ void AppState::save_settings() {
     j["start_with_windows"]      = settings.start_with_windows;
     j["privacy_mode"]            = settings.privacy_mode;
     j["web_api_key"]             = settings.web_api_key;
+    j["proxy_mode"]              = static_cast<int>(settings.proxy_mode);
+    j["single_proxy"]            = settings.single_proxy;
     j["check_updates_on_launch"]  = settings.check_updates_on_launch;
     j["version_check_skip_until"] = settings.version_check_skip_until;
 
@@ -1311,8 +1329,11 @@ void AppState::save_settings() {
     qf["only_prime"]    = settings.quick_filters.only_prime;
 
     auto& vj = j["cs2_video"];
-    vj["auto_apply_on_login"] = settings.cs2_video.auto_apply_on_login;
+    vj["mode"]                = static_cast<int>(settings.cs2_video.mode);
     vj["source_label"]        = settings.cs2_video.source_label;
+    vj["folder_source_label"] = settings.cs2_video.folder_source_label;
+    // Downgrade-safe: an older build keys off this bool for video.txt mode.
+    vj["auto_apply_on_login"] = (settings.cs2_video.mode == CS2ConfigMode::VideoTxt);
 
     auto path = settings_path();
     std::filesystem::create_directories(path.parent_path());
@@ -1361,6 +1382,11 @@ void AppState::load_settings() {
     get("start_with_windows",      settings.start_with_windows);
     get("privacy_mode",            settings.privacy_mode);
     get("web_api_key",             settings.web_api_key);
+    get("single_proxy",            settings.single_proxy);
+    if (j.contains("proxy_mode")) {
+        settings.proxy_mode = static_cast<ProxyMode>(j["proxy_mode"].get<int>());
+    }
+    sync_proxy_policy();
     get("check_updates_on_launch",  settings.check_updates_on_launch);
     get("version_check_skip_until", settings.version_check_skip_until);
 
@@ -1497,30 +1523,69 @@ void AppState::load_settings() {
                 dst = vj[key].get<std::remove_reference_t<decltype(dst)>>();
             }
         };
-        get_v("auto_apply_on_login", settings.cs2_video.auto_apply_on_login);
         get_v("source_label",        settings.cs2_video.source_label);
+        get_v("folder_source_label", settings.cs2_video.folder_source_label);
+
+        if (vj.contains("mode")) {
+            int m = vj["mode"].get<int>();
+            if (m < 0 || m > 2) m = 0;
+            settings.cs2_video.mode = static_cast<CS2ConfigMode>(m);
+        } else {
+            // Migrate from the legacy on/off bool.
+            const bool legacy = vj.contains("auto_apply_on_login") &&
+                                vj["auto_apply_on_login"].get<bool>();
+            settings.cs2_video.mode =
+                legacy ? CS2ConfigMode::VideoTxt : CS2ConfigMode::None;
+        }
     }
 }
 
-void AppState::apply_cs2_video_config(const core::Account& a) {
-    const auto result =
-        cs2_config::deploy_video_config(a.steam_id_64, cs2_video_template_path());
-
+// Builds the post-deploy toast. Must run on the UI thread (touches `toasts`).
+static void push_cs2_toast(AppState& state, const std::string& aid,
+                           const std::string& login,
+                           const cs2_config::DeployResult& result, const char* prefix) {
     const auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
 
     ui::widgets::ToastItem t;
-    t.id = "cs2video-" + a.id + "-" + std::to_string(now_unix);
-    t.message = result.ok ? "CS2 video config applied"
-                          : ("CS2 video config: " + result.message);
-    t.account_id = a.id;
+    t.id = "cs2cfg-" + aid + "-" + std::to_string(now_unix);
+    t.message = result.ok ? (std::string(prefix) + " applied")
+                          : (std::string(prefix) + ": " + result.message);
+    t.account_id = aid;
     t.is_warning = !result.ok;
-    t.expires_at_unix = now_unix + settings.notifications.toast_duration_seconds;
-    toasts.push(std::move(t));
+    t.expires_at_unix = now_unix + state.settings.notifications.toast_duration_seconds;
+    state.toasts.push(std::move(t));
 
     if (!result.ok) {
-        SAM_LOG_WARN("cs2 video config: {} (login={})", result.message, a.login);
+        SAM_LOG_WARN("cs2 config: {} (login={})", result.message, login);
     }
+}
+
+void AppState::apply_cs2_video_config(const core::Account& a) {
+    const auto mode = settings.cs2_video.mode;
+    if (mode == CS2ConfigMode::None) return;
+
+    // Copy the account fields by value; the Account& may be invalidated by a
+    // vault mutation before a worker job runs.
+    const std::string aid = a.id;
+    const std::string login = a.login;
+    const std::uint64_t sid = a.steam_id_64;
+
+    if (mode == CS2ConfigMode::VideoTxt) {
+        const auto result =
+            cs2_config::deploy_video_config(sid, cs2_video_template_path());
+        push_cs2_toast(*this, aid, login, result, "CS2 video config");
+        return;
+    }
+
+    // Folder730: a recursive copy can be large, so run it off the UI thread and
+    // marshal the toast back to the main thread.
+    job_pump::submit([this, aid, login, sid, tdir = cs2_730_template_dir()]() {
+        const auto result = cs2_config::deploy_730_folder(sid, tdir);
+        post_ui_callback([this, aid, login, result]() {
+            push_cs2_toast(*this, aid, login, result, "CS2 730 folder");
+        });
+    });
 }
 
 void AppState::clear_session_secrets() {

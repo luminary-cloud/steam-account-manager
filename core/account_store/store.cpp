@@ -249,6 +249,7 @@ void to_json(json& j, const Account& a) {
     j["trust"]                = static_cast<int>(a.trust);
     j["login_method"]         = static_cast<int>(a.login_method);
     if (a.trade_url.has_value()) j["trade_url"] = *a.trade_url;
+    j["proxy"]                = secure_to_string(a.proxy);
     j["web"]                  = a.web;
     j["bans"]                 = a.bans;
     j["cs2"]                  = a.cs2;
@@ -284,6 +285,7 @@ void from_json(const json& j, Account& a) {
     if (j.contains("trade_url") && j["trade_url"].is_string()) {
         a.trade_url = j["trade_url"].get<std::string>();
     }
+    a.proxy = string_to_secure(j.value("proxy", std::string{}));
     if (j.contains("web"))  a.web  = j.at("web").get<WebProfile>();
     if (j.contains("bans")) a.bans = j.at("bans").get<BanStatus>();
     if (j.contains("cs2"))  a.cs2  = j.at("cs2").get<CS2Status>();

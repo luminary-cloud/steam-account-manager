@@ -51,8 +51,7 @@ void handle_card_action(app::AppState& state,
             a.last_login_unix = now_seconds();
             state.vault_dirty = true;
             state.save_vault_if_dirty();
-            if (state.settings.cs2_video.auto_apply_on_login &&
-                std::filesystem::exists(app::cs2_video_template_path())) {
+            if (state.settings.cs2_video.mode != app::CS2ConfigMode::None) {
                 state.apply_cs2_video_config(a);
             }
             if (a.login_method != core::LoginMethod::Normal) {

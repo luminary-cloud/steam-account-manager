@@ -10,6 +10,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "core/http/client.hpp"
 #include "core/log.hpp"
 #include "core/steam_api/web_api.hpp"
 #include "core/steam_login/session.hpp"
@@ -125,6 +126,7 @@ TradeOffer offer_from_json(const json& o,
 }  // namespace
 
 TradeOffersResult get_trade_offers(core::Account& a, bool active_only) {
+    http::ScopedProxy proxy_guard(std::string(a.proxy.data(), a.proxy.size()));
     TradeOffersResult out;
 
     if (steam_login::needs_refresh(a, 300)) {

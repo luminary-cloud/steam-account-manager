@@ -5,6 +5,7 @@
 #include <cctype>
 #include <chrono>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <thread>
 #include <vector>
@@ -14,6 +15,7 @@
 
 #pragma comment(lib, "winhttp.lib")
 
+#include "core/http/proxy.hpp"
 #include "core/http/url.hpp"
 #include "core/log.hpp"
 
@@ -58,6 +60,11 @@ int jitter_ms(int base_ms) {
 }
 
 std::atomic<bool> g_cancelled{false};
+thread_local std::string g_thread_proxy;                    // per-account proxy (PerAccount mode)
+thread_local std::optional<std::string> g_thread_override;  // forced proxy for Test buttons
+std::mutex g_policy_mtx;
+ProxyMode g_proxy_mode = ProxyMode::Direct;
+std::string g_single_proxy;
 std::mutex g_session_mtx;
 HINTERNET g_session = nullptr;
 
@@ -161,6 +168,68 @@ bool split_url(const std::string& url, std::wstring& host, INTERNET_PORT& port,
     return true;
 }
 
+// Resolves which proxy URL the current request should use, honoring (in order) a
+// thread-local test override, then the global ProxyMode policy.
+std::string resolve_effective_proxy() {
+    if (g_thread_override.has_value()) return *g_thread_override;
+    std::lock_guard lk(g_policy_mtx);
+    switch (g_proxy_mode) {
+        case ProxyMode::Direct:     return {};
+        case ProxyMode::Single:     return g_single_proxy;
+        case ProxyMode::PerAccount: return g_thread_proxy;
+    }
+    return {};
+}
+
+// Applies the resolved proxy to a freshly opened request handle. http/https proxies
+// go straight to WinHTTP; socks5 proxies route through the local bridge because
+// WinHTTP can't authenticate to SOCKS5 itself.
+void apply_proxy(HINTERNET request) {
+    const std::string proxy = resolve_effective_proxy();
+    if (proxy.empty()) return;
+    const auto ep = parse_proxy(proxy);
+    if (!ep) {
+        SAM_LOG_WARN("http: ignoring malformed proxy '{}'", proxy);
+        return;
+    }
+
+    std::string named;
+    const bool socks = ep->is_socks();
+    if (socks) {
+        const auto addr = socks_bridge_address(*ep);
+        if (!addr) {
+            SAM_LOG_WARN("http: socks bridge unavailable for {}:{}", ep->host, ep->port);
+            return;
+        }
+        named = *addr;
+    } else if (ep->scheme == "http" || ep->scheme == "https") {
+        named = ep->host + ":" + std::to_string(ep->port);
+    } else {
+        SAM_LOG_WARN("http: unsupported proxy scheme '{}'", ep->scheme);
+        return;
+    }
+
+    const std::wstring wproxy = to_wide(named);
+    WINHTTP_PROXY_INFO info{};
+    info.dwAccessType = WINHTTP_ACCESS_TYPE_NAMED_PROXY;
+    info.lpszProxy = const_cast<LPWSTR>(wproxy.c_str());
+    info.lpszProxyBypass = nullptr;
+    WinHttpSetOption(request, WINHTTP_OPTION_PROXY, &info, sizeof(info));
+
+    if (!socks && (!ep->user.empty() || !ep->pass.empty())) {
+        std::wstring wuser = to_wide(ep->user);
+        std::wstring wpass = to_wide(ep->pass);
+        if (!wuser.empty()) {
+            WinHttpSetOption(request, WINHTTP_OPTION_PROXY_USERNAME,
+                             wuser.data(), static_cast<DWORD>(wuser.size()));
+        }
+        if (!wpass.empty()) {
+            WinHttpSetOption(request, WINHTTP_OPTION_PROXY_PASSWORD,
+                             wpass.data(), static_cast<DWORD>(wpass.size()));
+        }
+    }
+}
+
 Response perform_once(const Request& req) {
     Response out;
 
@@ -222,6 +291,8 @@ Response perform_once(const Request& req) {
         DWORD flags = WINHTTP_DISABLE_COOKIES;
         WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, &flags, sizeof(flags));
     }
+
+    apply_proxy(request);
 
     std::wstring header_block;
     {
@@ -366,6 +437,29 @@ void cancel_all() {
         WinHttpCloseHandle(g_session);
         g_session = nullptr;
     }
+}
+
+ScopedProxy::ScopedProxy(std::string proxy_url) : prev_(std::move(g_thread_proxy)) {
+    g_thread_proxy = std::move(proxy_url);
+}
+
+ScopedProxy::~ScopedProxy() {
+    g_thread_proxy = std::move(prev_);
+}
+
+void set_proxy_policy(ProxyMode mode, std::string single_proxy) {
+    std::lock_guard lk(g_policy_mtx);
+    g_proxy_mode = mode;
+    g_single_proxy = std::move(single_proxy);
+}
+
+ScopedProxyOverride::ScopedProxyOverride(std::string proxy_url)
+    : prev_(std::move(g_thread_override)) {
+    g_thread_override = std::move(proxy_url);
+}
+
+ScopedProxyOverride::~ScopedProxyOverride() {
+    g_thread_override = std::move(prev_);
 }
 
 std::string form_encode(const std::map<std::string, std::string>& fields) {

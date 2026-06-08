@@ -139,6 +139,11 @@ struct Account {
     LoginMethod login_method = LoginMethod::Normal;
     std::optional<std::string> trade_url;
 
+    // Optional per-account outbound proxy for the app's own web traffic.
+    // Form: scheme://[user:pass@]host:port (socks5, http, https). Empty = direct.
+    // May embed credentials, so it lives in a SecureString inside the vault.
+    crypto::SecureString proxy;
+
     // Cached info.
     WebProfile web;
     BanStatus bans;

@@ -14,6 +14,7 @@ namespace sam::profile {
 using json = nlohmann::json;
 
 PersonaChangeResult change_persona_name(core::Account& a, const std::string& new_name) {
+    http::ScopedProxy proxy_guard(std::string(a.proxy.data(), a.proxy.size()));
     PersonaChangeResult out;
 
     if (a.steam_id_64 == 0) {

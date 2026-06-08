@@ -27,6 +27,9 @@ std::filesystem::path trade_audit_path() {
 std::filesystem::path cs2_video_template_path() {
     return platform::data_dir() / "cs2_video_template.txt";
 }
+std::filesystem::path cs2_730_template_dir() {
+    return platform::data_dir() / "cs2_730_template";
+}
 std::filesystem::path log_dir()       { return platform::log_dir(); }
 
 }  // namespace sam::app

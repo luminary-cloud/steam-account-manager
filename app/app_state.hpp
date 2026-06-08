@@ -90,6 +90,22 @@ enum class AccountsViewMode : std::uint8_t {
     List = 1,
 };
 
+// How outbound web requests are proxied. Mirrors http::ProxyMode; kept as a separate
+// app-layer enum so Settings doesn't pull in the http header.
+enum class ProxyMode : std::uint8_t {
+    None = 0,
+    Single = 1,
+    PerAccount = 2,
+};
+
+// What gets copied into the launched account's CS2 (appid 730) config on login.
+// None: nothing. VideoTxt: a single cs2_video.txt. Folder730: a whole 730 folder.
+enum class CS2ConfigMode : std::uint8_t {
+    None = 0,
+    VideoTxt = 1,
+    Folder730 = 2,
+};
+
 struct Settings {
     int clipboard_clear_seconds = 12;
     int auto_lock_minutes = 15;
@@ -114,6 +130,11 @@ struct Settings {
     // are cleared on lock via clear_session_secrets().
     bool privacy_mode = false;
     std::string web_api_key;
+
+    // Outbound proxy policy. single_proxy is used only in Single mode; per-account
+    // proxies live on each Account in the encrypted vault.
+    ProxyMode   proxy_mode = ProxyMode::None;
+    std::string single_proxy;   // scheme://[user:pass@]host:port
 
     // Checks GitHub for a newer release on launch and shows the "Update
     // available" modal. version_check_skip_until holds the tag the user chose
@@ -235,12 +256,14 @@ struct Settings {
     } quick_filters;
 
     struct CS2VideoConfig {
-        // When on, pressing Login copies the stored template into the launched
-        // account's CS2 cfg folder. The template lives at
-        // app::cs2_video_template_path(); source_label is the path it was
-        // imported from and is shown in Settings for reference only.
-        bool auto_apply_on_login = false;
-        std::string source_label;
+        // What gets applied to the launched account's CS2 730 folder on login.
+        // VideoTxt copies the single template at app::cs2_video_template_path();
+        // Folder730 copies the whole snapshot under app::cs2_730_template_dir().
+        // The *_label fields are the paths the snapshots were imported from and
+        // are shown in Settings for reference only.
+        CS2ConfigMode mode = CS2ConfigMode::None;
+        std::string source_label;         // imported video.txt path
+        std::string folder_source_label;  // imported 730 folder path
     } cs2_video;
 };
 
@@ -410,6 +433,10 @@ struct AppState {
     void flush_pending_save();
     void save_settings();
     void load_settings();
+
+    // Pushes the current proxy_mode + single_proxy into the http layer's global
+    // policy. Call after load_settings and whenever the user changes either.
+    void sync_proxy_policy();
     // Spawns the background GitHub release check when check_updates_on_launch is
     // set. No-op otherwise. Result lands in update_result under update_mutex.
     void start_update_check();

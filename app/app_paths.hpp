@@ -13,6 +13,7 @@ std::filesystem::path notifications_path();
 std::filesystem::path conf_audit_path();
 std::filesystem::path trade_audit_path();
 std::filesystem::path cs2_video_template_path();
+std::filesystem::path cs2_730_template_dir();
 std::filesystem::path log_dir();
 
 }  // namespace sam::app

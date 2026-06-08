@@ -149,6 +149,7 @@ http::Request build_request(http::Method method,
 }  // namespace
 
 ConfirmationFetchResult fetch_confirmations(const core::Account& a) {
+    http::ScopedProxy proxy_guard(std::string(a.proxy.data(), a.proxy.size()));
     ConfirmationFetchResult out;
 
     if (!a.sda.has_value() || a.session_id.empty() || a.steam_id_64 == 0 ||
@@ -227,6 +228,7 @@ bool respond_to_confirmation(const core::Account& a,
                               const Confirmation& c,
                               bool allow,
                               std::string* error_out) {
+    http::ScopedProxy proxy_guard(std::string(a.proxy.data(), a.proxy.size()));
     if (!a.sda.has_value() ||
         a.sda->identity_secret.empty() || a.sda->device_id.empty()) {
         if (error_out) *error_out = "missing maFile data (identity_secret/device_id)";
@@ -302,6 +304,7 @@ bool respond_bulk(const core::Account& a,
                    const std::vector<Confirmation>& items,
                    bool allow,
                    std::string* error_out) {
+    http::ScopedProxy proxy_guard(std::string(a.proxy.data(), a.proxy.size()));
     if (items.empty()) return true;
 
     if (items.size() <= kBulkChunkCap) {
@@ -324,6 +327,7 @@ bool respond_bulk_chunk(const core::Account& a,
                          const Confirmation* items, std::size_t n,
                          bool allow, std::string* error_out) {
     if (n == 0) return true;
+    http::ScopedProxy proxy_guard(std::string(a.proxy.data(), a.proxy.size()));
     if (!a.sda.has_value() ||
         a.sda->identity_secret.empty() || a.sda->device_id.empty()) {
         if (error_out) *error_out = "missing maFile data (identity_secret/device_id)";

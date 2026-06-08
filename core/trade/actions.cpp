@@ -24,6 +24,7 @@ using json = nlohmann::json;
 OfferActionResult post_action(core::Account& a, const std::string& url,
                               const std::string& referer,
                               std::map<std::string, std::string> body) {
+    http::ScopedProxy proxy_guard(std::string(a.proxy.data(), a.proxy.size()));
     OfferActionResult out;
     if (a.is_nfa) {
         out.error = "trades require a full login";
@@ -112,6 +113,7 @@ OfferActionResult cancel_trade_offer(core::Account& a, const std::string& offer_
 SendOfferResult send_trade_offer(core::Account& a, const TradeUrl& trade_url,
                                  const std::vector<TradeAssetRef>& give,
                                  const std::string& message) {
+    http::ScopedProxy proxy_guard(std::string(a.proxy.data(), a.proxy.size()));
     SendOfferResult out;
     if (a.is_nfa) {
         out.error = "trades require a full login";

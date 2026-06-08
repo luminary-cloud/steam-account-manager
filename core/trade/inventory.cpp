@@ -47,6 +47,7 @@ std::string key3(std::uint64_t a, std::uint64_t b, std::uint64_t c) {
 InventoryFetchResult fetch_inventory(core::Account& a, std::uint64_t owner_steam_id_64,
                                      std::uint32_t app_id, std::uint32_t context_id,
                                      int count, std::uint64_t start_assetid) {
+    http::ScopedProxy proxy_guard(std::string(a.proxy.data(), a.proxy.size()));
     InventoryFetchResult out;
     if (a.is_nfa) {
         out.error = "trades require a full login";

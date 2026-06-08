@@ -218,6 +218,7 @@
     <ClCompile Include="core\crypto\base64.cpp" />
 
     <ClCompile Include="core\http\client.cpp" />
+    <ClCompile Include="core\http\proxy.cpp" />
     <ClCompile Include="core\http\url.cpp" />
 
     <ClCompile Include="core\launch\steam_launcher.cpp" />
@@ -357,6 +358,7 @@
     <ClInclude Include="core\crypto\secure_string.hpp" />
 
     <ClInclude Include="core\http\client.hpp" />
+    <ClInclude Include="core\http\proxy.hpp" />
     <ClInclude Include="core\http\url.hpp" />
     <ClInclude Include="core\http\response.hpp" />
 

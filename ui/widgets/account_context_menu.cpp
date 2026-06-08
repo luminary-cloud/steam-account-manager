@@ -59,10 +59,19 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
 
     ImGui::Separator();
 
-    const bool has_template =
-        std::filesystem::exists(app::cs2_video_template_path());
-    if (ImGui::MenuItem("Add video config", nullptr, false, has_sid && has_template)) {
-        state.apply_cs2_video_config(a);
+    const auto cs2_mode = state.settings.cs2_video.mode;
+    if (cs2_mode != app::CS2ConfigMode::None) {
+        const char* cfg_label = "Add video config";
+        bool cfg_ready = false;
+        if (cs2_mode == app::CS2ConfigMode::VideoTxt) {
+            cfg_ready = std::filesystem::exists(app::cs2_video_template_path());
+        } else {  // Folder730
+            cfg_label = "Apply 730 folder";
+            cfg_ready = std::filesystem::is_directory(app::cs2_730_template_dir());
+        }
+        if (ImGui::MenuItem(cfg_label, nullptr, false, has_sid && cfg_ready)) {
+            state.apply_cs2_video_config(a);
+        }
     }
 
     if (ImGui::MenuItem("Change username", nullptr, false, has_sid)) {
