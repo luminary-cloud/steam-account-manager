@@ -1,4 +1,5 @@
 #include "core/steam_gcpd/gcpd_parser.hpp"
+#include "core/account_store/account.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -169,12 +170,27 @@ MatchmakingData parse_matchmaking(std::string_view html) {
         const auto& header = tbl.front().cells;
         if (header.empty()) continue;
 
-        // Cooldown table: header[0] is "Competitive Cooldown Expiration".
+        // Cooldown table: header[0] is "Competitive Cooldown Expiration",
+        // header[1] the Level, header[2] Acknowledged.
         if (contains_ci(header[0], "Cooldown")) {
             for (std::size_t i = 1; i < tbl.size(); ++i) {
                 const auto& row = tbl[i].cells;
                 if (row.empty()) continue;
-                const std::int64_t ts = parse_gcpd_timestamp(row[0]);
+                const std::int64_t ts = parse_gcpd_timestamp(row[0]);  // localized "Never" -> 0
+                if (ts == 0) {
+                    // A non-date expiration ("Never") paired with a real penalty
+                    // Level (>= 1) denotes a permanent cooldown. Keying off the
+                    // integer Level keeps this locale-agnostic.
+                    const bool has_level = row.size() > 1 && to_int(row[1], 0) >= 1;
+                    if (!row[0].empty() && has_level) {
+                        out.cooldown_expires_unix = sam::core::kCooldownNever;
+                        out.cooldown_reason = "Competitive cooldown";
+                    }
+                    continue;
+                }
+                // A permanent cooldown outranks any temporary row in the table;
+                // ts < kCooldownNever is always true, so guard against clobbering it.
+                if (out.cooldown_expires_unix == sam::core::kCooldownNever) continue;
                 if (ts > now &&
                     (out.cooldown_expires_unix == 0 || ts < out.cooldown_expires_unix)) {
                     out.cooldown_expires_unix = ts;

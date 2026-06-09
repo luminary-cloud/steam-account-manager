@@ -23,6 +23,7 @@
 #include "ui/widgets/tag_chip.hpp"
 #include "ui/widgets/trust_badge.hpp"
 
+#include "core/account_store/account.hpp"
 #include "core/account_store/ban_diff.hpp"
 #include "core/account_store/ban_event.hpp"
 
@@ -285,19 +286,23 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
                               && a.cs2.cooldown_expires_unix > now_s;
     std::string cooldown_line;
     if (has_cooldown) {
-        const auto remaining = a.cs2.cooldown_expires_unix - now_s;
         const char* reason = a.cs2.cooldown_reason.empty()
             ? "Cooldown active" : a.cs2.cooldown_reason.c_str();
         char buf[160];
-        if (remaining >= 86400) {
-            std::snprintf(buf, sizeof(buf), "%s \xC2\xB7 %lldd left",
-                          reason, static_cast<long long>(remaining / 86400));
-        } else if (remaining >= 3600) {
-            std::snprintf(buf, sizeof(buf), "%s \xC2\xB7 %lldh left",
-                          reason, static_cast<long long>(remaining / 3600));
+        if (a.cs2.cooldown_expires_unix == sam::core::kCooldownNever) {
+            std::snprintf(buf, sizeof(buf), "%s \xC2\xB7 Permanent", reason);
         } else {
-            std::snprintf(buf, sizeof(buf), "%s \xC2\xB7 %lldm left",
-                          reason, static_cast<long long>(remaining / 60));
+            const auto remaining = a.cs2.cooldown_expires_unix - now_s;
+            if (remaining >= 86400) {
+                std::snprintf(buf, sizeof(buf), "%s \xC2\xB7 %lldd left",
+                              reason, static_cast<long long>(remaining / 86400));
+            } else if (remaining >= 3600) {
+                std::snprintf(buf, sizeof(buf), "%s \xC2\xB7 %lldh left",
+                              reason, static_cast<long long>(remaining / 3600));
+            } else {
+                std::snprintf(buf, sizeof(buf), "%s \xC2\xB7 %lldm left",
+                              reason, static_cast<long long>(remaining / 60));
+            }
         }
         cooldown_line = buf;
     }

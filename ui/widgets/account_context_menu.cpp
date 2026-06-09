@@ -9,6 +9,7 @@
 #include <imgui.h>
 
 #include "app/app_paths.hpp"
+#include "core/account_store/account.hpp"
 #include "core/cs2/friend_code.hpp"
 #include "core/sda/totp.hpp"
 #include "platform/clipboard.hpp"
@@ -107,6 +108,7 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
             for (const auto& o : kOptions) {
                 if (ImGui::MenuItem(o.label)) set_cooldown(now + o.seconds);
             }
+            if (ImGui::MenuItem("Permanent")) set_cooldown(sam::core::kCooldownNever);
             if (a.cs2.cooldown_expires_unix > 0) {
                 ImGui::Separator();
                 if (ImGui::MenuItem("Clear")) set_cooldown(0);

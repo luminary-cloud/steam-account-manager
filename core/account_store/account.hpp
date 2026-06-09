@@ -79,6 +79,11 @@ struct PreviousSnapshot {
     std::int64_t snapshot_unix = 0;
 };
 
+// cooldown_expires_unix sentinels: 0 = no cooldown, kCooldownNever = permanent
+// (non-expiring) cooldown. Steam renders a permanent cooldown's expiration as a
+// localized "Never" with a penalty Level >= 1.
+inline constexpr std::int64_t kCooldownNever = INT64_MAX;
+
 // CS2-specific fields. All populated by scraping the /gcpd/730 page.
 // CS2 has no Danger Zone, so we track Premier and Wingman.
 struct CS2Status {
@@ -90,7 +95,7 @@ struct CS2Status {
     int cs2_player_xp    = -1;             // XP earned towards next CS2 rank
     bool prime_status = false;             // inferred from cs2_player_level + xp
     bool vac_live = false;                 // mirrors BanStatus.vac_banned
-    std::int64_t cooldown_expires_unix = 0;
+    std::int64_t cooldown_expires_unix = 0;  // 0 = none, kCooldownNever = permanent
     std::string cooldown_reason;           // "Griefing", "Untrusted", "Team Damage", "Abandon"
     // Unix time (UTC, s) of the next weekly XP-drop reset. Set when the user marks the
     // drop claimed; reads as "claimed" while now < this value and auto-clears once now

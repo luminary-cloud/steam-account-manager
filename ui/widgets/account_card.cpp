@@ -8,6 +8,7 @@
 
 #include <imgui.h>
 
+#include "core/account_store/account.hpp"
 #include "core/sda/totp.hpp"
 #include "core/time_aligner.hpp"
 #include "ui/fonts.hpp"
@@ -452,20 +453,24 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         float slot_y = ImGui::GetWindowSize().y - kButtonRowReserve -
                        static_cast<float>(indicator_rows) * indicator_line_h;
         if (cd_active) {
-            const auto remaining = a.cs2.cooldown_expires_unix - now_s;
             ImGui::SetCursorPosY(slot_y);
             ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
             const char* reason = a.cs2.cooldown_reason.empty()
                 ? "active" : a.cs2.cooldown_reason.c_str();
-            if (remaining >= 86400) {
-                ImGui::Text("%s · %lldd left",
-                            reason, static_cast<long long>(remaining / 86400));
-            } else if (remaining >= 3600) {
-                ImGui::Text("%s · %lldh left",
-                            reason, static_cast<long long>(remaining / 3600));
+            if (a.cs2.cooldown_expires_unix == sam::core::kCooldownNever) {
+                ImGui::Text("%s · Permanent", reason);
             } else {
-                ImGui::Text("%s · %lldm left",
-                            reason, static_cast<long long>(remaining / 60));
+                const auto remaining = a.cs2.cooldown_expires_unix - now_s;
+                if (remaining >= 86400) {
+                    ImGui::Text("%s · %lldd left",
+                                reason, static_cast<long long>(remaining / 86400));
+                } else if (remaining >= 3600) {
+                    ImGui::Text("%s · %lldh left",
+                                reason, static_cast<long long>(remaining / 3600));
+                } else {
+                    ImGui::Text("%s · %lldm left",
+                                reason, static_cast<long long>(remaining / 60));
+                }
             }
             ImGui::PopStyleColor();
             slot_y += indicator_line_h;
