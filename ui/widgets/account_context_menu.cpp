@@ -58,6 +58,22 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         if (!code.empty()) platform::clipboard::set_text(code);
     }
 
+    // Sign the default browser in to this account and open its profile in a
+    // private window. Needs a web-capable refresh token (or a saved password to
+    // mint one), so it's unavailable for token-only (NFA) accounts.
+    const bool can_browser = has_sid && !a.is_nfa &&
+                             (!a.refresh_token.empty() || !a.password.empty());
+    if (ImGui::MenuItem("Open in browser (signed in)", nullptr, false, can_browser)) {
+        state.open_account_in_browser(a);
+    }
+    if (!can_browser && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        const char* why = a.is_nfa
+            ? "Token-only (NFA) accounts can't open a web session"
+            : (a.steam_id_64 == 0 ? "No SteamID yet - refresh the account first"
+                                  : "Needs a saved password to sign in");
+        set_tooltip("%s", why);
+    }
+
     ImGui::Separator();
 
     const auto cs2_mode = state.settings.cs2_video.mode;

@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -132,12 +133,14 @@ std::optional<std::string> extract_cookie(const std::string& set_cookie_value,
 
 }  // namespace
 
-bool transfer_login(std::uint64_t steam_id_64,
-                    const crypto::SecureString& refresh_token,
-                    const std::string& session_id,
-                    std::string& out_cookie) {
+bool finalize_login_targets(std::uint64_t steam_id_64,
+                            const crypto::SecureString& refresh_token,
+                            const std::string& session_id,
+                            const std::string& redir,
+                            std::vector<TransferTarget>& out_targets) {
+    out_targets.clear();
     if (steam_id_64 == 0 || refresh_token.empty() || session_id.empty()) {
-        SAM_LOG_WARN("transfer_login: missing inputs (sid={} rt_set={} session_set={})",
+        SAM_LOG_WARN("finalize_login_targets: missing inputs (sid={} rt_set={} session_set={})",
                      steam_id_64, !refresh_token.empty(), !session_id.empty());
         return false;
     }
@@ -148,7 +151,8 @@ bool transfer_login(std::uint64_t steam_id_64,
     // per-domain transfer URLs (settoken endpoints) that mint cookies on each
     // Steam frontend. CSRF check requires the `sessionid` form value to match
     // a `sessionid` cookie on the request; we generate-and-send the same
-    // value as both, which Steam accepts.
+    // value as both, which Steam accepts. `redir` is where the browser should
+    // land once the transfer completes.
     http::Request fin;
     fin.method = http::Method::Post;
     fin.url = "https://login.steampowered.com/jwt/finalizelogin";
@@ -159,12 +163,12 @@ bool transfer_login(std::uint64_t steam_id_64,
                             "login.steampowered.com", "/", true, false});
     fin.body = "nonce=" + http::url_encode(rt) +
                "&sessionid=" + http::url_encode(session_id) +
-               "&redir=" + http::url_encode("https://steamcommunity.com/login/home/?goto=");
+               "&redir=" + http::url_encode(redir);
 
-    SAM_LOG_INFO("transfer_login: POST finalizelogin");
+    SAM_LOG_INFO("finalize_login_targets: POST finalizelogin");
     const auto fin_resp = http::request(fin);
     if (fin_resp.status != 200) {
-        SAM_LOG_WARN("transfer_login: finalizelogin status {} body='{}'",
+        SAM_LOG_WARN("finalize_login_targets: finalizelogin status {} body='{}'",
                      fin_resp.status, fin_resp.body);
         return false;
     }
@@ -173,38 +177,56 @@ bool transfer_login(std::uint64_t steam_id_64,
     try {
         j = json::parse(fin_resp.body);
     } catch (const std::exception& ex) {
-        SAM_LOG_WARN("transfer_login: finalizelogin parse failed: {}", ex.what());
+        SAM_LOG_WARN("finalize_login_targets: finalizelogin parse failed: {}", ex.what());
         return false;
     }
 
     if (!j.contains("transfer_info") || !j["transfer_info"].is_array()) {
-        SAM_LOG_WARN("transfer_login: no transfer_info in response, body='{}'",
+        SAM_LOG_WARN("finalize_login_targets: no transfer_info in response, body='{}'",
                      fin_resp.body);
+        return false;
+    }
+
+    for (const auto& t : j["transfer_info"]) {
+        const std::string url = t.value("url", "");
+        if (url.empty()) continue;
+        if (!t.contains("params") || !t["params"].is_object()) continue;
+        const auto& params = t["params"];
+        const std::string nonce = params.value("nonce", "");
+        const std::string auth  = params.value("auth", "");
+        if (nonce.empty() || auth.empty()) continue;
+        out_targets.push_back({url, nonce, auth});
+    }
+
+    SAM_LOG_INFO("finalize_login_targets: {} target(s)", out_targets.size());
+    return !out_targets.empty();
+}
+
+bool transfer_login(std::uint64_t steam_id_64,
+                    const crypto::SecureString& refresh_token,
+                    const std::string& session_id,
+                    std::string& out_cookie) {
+    std::vector<TransferTarget> targets;
+    if (!finalize_login_targets(steam_id_64, refresh_token, session_id,
+                                "https://steamcommunity.com/login/home/?goto=", targets)) {
         return false;
     }
 
     // POST each settoken URL and look for steamLoginSecure in the response.
     // We only need the community-domain cookie for GCPD.
-    for (const auto& t : j["transfer_info"]) {
-        const std::string url = t.value("url", "");
-        if (url.find("steamcommunity.com") == std::string::npos) continue;
-        if (!t.contains("params") || !t["params"].is_object()) continue;
-
-        const auto& params = t["params"];
-        const std::string nonce = params.value("nonce", "");
-        const std::string auth  = params.value("auth", "");
-        if (nonce.empty() || auth.empty()) continue;
+    for (const auto& t : targets) {
+        if (t.url.find("steamcommunity.com") == std::string::npos) continue;
 
         http::Request st;
         st.method = http::Method::Post;
-        st.url = url;
+        st.url = t.url;
         st.headers["Content-Type"] = "application/x-www-form-urlencoded";
         st.follow_redirects = false;  // settoken responds with cookies, not redirects we want
-        st.body = "nonce=" + http::url_encode(nonce) +
-                  "&auth="  + http::url_encode(auth)  +
+        st.body = "nonce=" + http::url_encode(t.nonce) +
+                  "&auth="  + http::url_encode(t.auth)  +
                   "&steamID=" + std::to_string(steam_id_64);
 
-        SAM_LOG_INFO("transfer_login: POST {}", url);
+        SAM_LOG_INFO("transfer_login: POST {}", t.url);
         const auto st_resp = http::request(st);
         SAM_LOG_INFO("transfer_login: settoken status={} cookies={}",
                      st_resp.status, st_resp.set_cookies.size());

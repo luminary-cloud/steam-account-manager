@@ -62,6 +62,7 @@
     <ClCompile Include="core\steam_login\rsa_password.cpp"><Filter>core\steam_login</Filter></ClCompile>
     <ClCompile Include="core\steam_login\session.cpp"><Filter>core\steam_login</Filter></ClCompile>
     <ClCompile Include="core\steam_login\web_session.cpp"><Filter>core\steam_login</Filter></ClCompile>
+    <ClCompile Include="core\steam_login\browser_login.cpp"><Filter>core\steam_login</Filter></ClCompile>
 
     <ClCompile Include="core\steam_gcpd\gcpd_scraper.cpp"><Filter>core\steam_gcpd</Filter></ClCompile>
     <ClCompile Include="core\steam_gcpd\gcpd_parser.cpp"><Filter>core\steam_gcpd</Filter></ClCompile>
@@ -110,6 +111,7 @@
 
     <ClCompile Include="platform\fs.cpp"><Filter>platform</Filter></ClCompile>
     <ClCompile Include="platform\file_dialog.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\browser.cpp"><Filter>platform</Filter></ClCompile>
     <ClCompile Include="platform\paths.cpp"><Filter>platform</Filter></ClCompile>
     <ClCompile Include="platform\registry.cpp"><Filter>platform</Filter></ClCompile>
     <ClCompile Include="platform\process.cpp"><Filter>platform</Filter></ClCompile>
@@ -308,6 +310,7 @@
     <ClInclude Include="core\steam_login\rsa_password.hpp"><Filter>core\steam_login</Filter></ClInclude>
     <ClInclude Include="core\steam_login\session.hpp"><Filter>core\steam_login</Filter></ClInclude>
     <ClInclude Include="core\steam_login\web_session.hpp"><Filter>core\steam_login</Filter></ClInclude>
+    <ClInclude Include="core\steam_login\browser_login.hpp"><Filter>core\steam_login</Filter></ClInclude>
 
     <ClInclude Include="core\steam_gcpd\gcpd_scraper.hpp"><Filter>core\steam_gcpd</Filter></ClInclude>
     <ClInclude Include="core\steam_gcpd\gcpd_parser.hpp"><Filter>core\steam_gcpd</Filter></ClInclude>
@@ -365,6 +368,7 @@
 
     <ClInclude Include="platform\fs.hpp"><Filter>platform</Filter></ClInclude>
     <ClInclude Include="platform\file_dialog.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\browser.hpp"><Filter>platform</Filter></ClInclude>
     <ClInclude Include="platform\paths.hpp"><Filter>platform</Filter></ClInclude>
     <ClInclude Include="platform\registry.hpp"><Filter>platform</Filter></ClInclude>
     <ClInclude Include="platform\process.hpp"><Filter>platform</Filter></ClInclude>

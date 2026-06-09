@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <random>
@@ -66,26 +67,58 @@ std::mutex g_policy_mtx;
 ProxyMode g_proxy_mode = ProxyMode::Direct;
 std::string g_single_proxy;
 std::mutex g_session_mtx;
-HINTERNET g_session = nullptr;
+std::map<std::string, HINTERNET> g_sessions;  // keyed by effective proxy URL ("" = direct)
 
-HINTERNET shared_session() {
+// Returns a WinHTTP session with the given proxy baked in at creation time. The
+// proxy must be set here (NAMED_PROXY) rather than per-request: an AUTOMATIC_PROXY
+// session resolves the proxy at send time (WPAD/PAC -> direct when none is
+// configured) and silently overrides a request-handle WINHTTP_OPTION_PROXY. One
+// session per distinct proxy also keeps each proxy's keep-alive pool separate, so
+// per-account proxies can't cross-contaminate exit IPs. Proxies that can't be set
+// up fall back to a direct session (logged once).
+HINTERNET session_for(const std::string& effective_proxy) {
     std::lock_guard lk(g_session_mtx);
     if (g_cancelled.load(std::memory_order_acquire)) return nullptr;
-    if (!g_session) {
-        g_session = WinHttpOpen(L"sam/0.1",
-                                WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-                                WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS,
-                                0);
+    if (const auto it = g_sessions.find(effective_proxy); it != g_sessions.end())
+        return it->second;
+
+    std::wstring wnamed;  // empty => direct (NO_PROXY)
+    if (!effective_proxy.empty()) {
+        if (const auto ep = parse_proxy(effective_proxy)) {
+            if (ep->is_socks()) {
+                if (const auto addr = socks_bridge_address(*ep)) wnamed = to_wide(*addr);
+                else SAM_LOG_WARN("http: socks bridge unavailable for {}:{}, going direct",
+                                  ep->host, ep->port);
+            } else if (ep->scheme == "http" || ep->scheme == "https") {
+                wnamed = to_wide(ep->host + ":" + std::to_string(ep->port));
+            } else {
+                SAM_LOG_WARN("http: unsupported proxy scheme '{}', going direct", ep->scheme);
+            }
+        } else {
+            SAM_LOG_WARN("http: ignoring malformed proxy '{}', going direct", effective_proxy);
+        }
     }
-    return g_session;
+
+    HINTERNET session = wnamed.empty()
+        ? WinHttpOpen(L"sam/0.1", WINHTTP_ACCESS_TYPE_NO_PROXY,
+                      WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0)
+        : WinHttpOpen(L"sam/0.1", WINHTTP_ACCESS_TYPE_NAMED_PROXY,
+                      wnamed.c_str(), WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!session) {
+        SAM_LOG_WARN("http: WinHttpOpen failed for proxy '{}'", effective_proxy);
+        return nullptr;
+    }
+    g_sessions.emplace(effective_proxy, session);
+    return session;
 }
 
-// Closes the session at process exit if cancel_all() wasn't called (e.g. the
+// Closes every session at process exit if cancel_all() wasn't called (e.g. the
 // headless --startup refresh path).
 struct SessionCleanup {
     ~SessionCleanup() {
         std::lock_guard lk(g_session_mtx);
-        if (g_session) { WinHttpCloseHandle(g_session); g_session = nullptr; }
+        for (auto& [key, h] : g_sessions) if (h) WinHttpCloseHandle(h);
+        g_sessions.clear();
     }
 };
 SessionCleanup g_session_cleanup;
@@ -181,52 +214,27 @@ std::string resolve_effective_proxy() {
     return {};
 }
 
-// Applies the resolved proxy to a freshly opened request handle. http/https proxies
-// go straight to WinHTTP; socks5 proxies route through the local bridge because
-// WinHTTP can't authenticate to SOCKS5 itself.
+// Applies http/https proxy credentials to a freshly opened request handle. The
+// proxy address itself lives on the session (see session_for); only the username
+// and password must be set per-request, as WinHTTP rejects them on a session
+// handle. SOCKS proxies need nothing here: the bridge does their auth.
 void apply_proxy(HINTERNET request) {
     const std::string proxy = resolve_effective_proxy();
     if (proxy.empty()) return;
     const auto ep = parse_proxy(proxy);
-    if (!ep) {
-        SAM_LOG_WARN("http: ignoring malformed proxy '{}'", proxy);
-        return;
+    if (!ep || ep->is_socks()) return;
+    if (ep->scheme != "http" && ep->scheme != "https") return;
+    if (ep->user.empty() && ep->pass.empty()) return;
+
+    std::wstring wuser = to_wide(ep->user);
+    std::wstring wpass = to_wide(ep->pass);
+    if (!wuser.empty()) {
+        WinHttpSetOption(request, WINHTTP_OPTION_PROXY_USERNAME,
+                         wuser.data(), static_cast<DWORD>(wuser.size()));
     }
-
-    std::string named;
-    const bool socks = ep->is_socks();
-    if (socks) {
-        const auto addr = socks_bridge_address(*ep);
-        if (!addr) {
-            SAM_LOG_WARN("http: socks bridge unavailable for {}:{}", ep->host, ep->port);
-            return;
-        }
-        named = *addr;
-    } else if (ep->scheme == "http" || ep->scheme == "https") {
-        named = ep->host + ":" + std::to_string(ep->port);
-    } else {
-        SAM_LOG_WARN("http: unsupported proxy scheme '{}'", ep->scheme);
-        return;
-    }
-
-    const std::wstring wproxy = to_wide(named);
-    WINHTTP_PROXY_INFO info{};
-    info.dwAccessType = WINHTTP_ACCESS_TYPE_NAMED_PROXY;
-    info.lpszProxy = const_cast<LPWSTR>(wproxy.c_str());
-    info.lpszProxyBypass = nullptr;
-    WinHttpSetOption(request, WINHTTP_OPTION_PROXY, &info, sizeof(info));
-
-    if (!socks && (!ep->user.empty() || !ep->pass.empty())) {
-        std::wstring wuser = to_wide(ep->user);
-        std::wstring wpass = to_wide(ep->pass);
-        if (!wuser.empty()) {
-            WinHttpSetOption(request, WINHTTP_OPTION_PROXY_USERNAME,
-                             wuser.data(), static_cast<DWORD>(wuser.size()));
-        }
-        if (!wpass.empty()) {
-            WinHttpSetOption(request, WINHTTP_OPTION_PROXY_PASSWORD,
-                             wpass.data(), static_cast<DWORD>(wpass.size()));
-        }
+    if (!wpass.empty()) {
+        WinHttpSetOption(request, WINHTTP_OPTION_PROXY_PASSWORD,
+                         wpass.data(), static_cast<DWORD>(wpass.size()));
     }
 }
 
@@ -239,10 +247,11 @@ Response perform_once(const Request& req) {
         return out;
     }
 
-    HINTERNET session = shared_session();
+    const std::string effective_proxy = resolve_effective_proxy();
+    HINTERNET session = session_for(effective_proxy);
     if (!session) {
         out.transport_error = true;
-        out.error_message = "WinHttpOpen failed";
+        out.error_message = "session unavailable";
         return out;
     }
 
@@ -433,10 +442,8 @@ Response request(const Request& req) {
 void cancel_all() {
     g_cancelled.store(true, std::memory_order_release);
     std::lock_guard lk(g_session_mtx);
-    if (g_session) {
-        WinHttpCloseHandle(g_session);
-        g_session = nullptr;
-    }
+    for (auto& [key, h] : g_sessions) if (h) WinHttpCloseHandle(h);
+    g_sessions.clear();
 }
 
 ScopedProxy::ScopedProxy(std::string proxy_url) : prev_(std::move(g_thread_proxy)) {

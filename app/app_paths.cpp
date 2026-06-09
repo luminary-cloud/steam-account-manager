@@ -30,6 +30,12 @@ std::filesystem::path cs2_video_template_path() {
 std::filesystem::path cs2_730_template_dir() {
     return platform::data_dir() / "cs2_730_template";
 }
+std::filesystem::path browser_login_html_path() {
+    return platform::data_dir() / "browser-login.html";
+}
+std::filesystem::path browser_profile_dir() {
+    return platform::data_dir() / "browser-profile";
+}
 std::filesystem::path log_dir()       { return platform::log_dir(); }
 
 }  // namespace sam::app

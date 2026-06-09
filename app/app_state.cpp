@@ -15,6 +15,7 @@
 #include "core/account_store/store.hpp"
 #include "core/crypto/rng.hpp"
 #include "core/http/client.hpp"
+#include "core/http/url.hpp"
 #include "core/log.hpp"
 #include "core/steam_api/ban_check.hpp"
 #include "core/steam_api/summaries.hpp"
@@ -23,10 +24,12 @@
 #include "core/steam_spend/spend_parser.hpp"
 #include "core/steam_spend/spend_scraper.hpp"
 #include "core/steam_local/loginusers.hpp"
+#include "core/steam_login/browser_login.hpp"
 #include "core/steam_login/mobile_auth.hpp"
 #include "core/steam_login/session.hpp"
 #include "core/update_check.hpp"
 #include "core/version.hpp"
+#include "platform/browser.hpp"
 #include "platform/tray_icon.hpp"
 
 namespace sam::app {
@@ -1584,6 +1587,134 @@ void AppState::apply_cs2_video_config(const core::Account& a) {
         const auto result = cs2_config::deploy_730_folder(sid, tdir);
         post_ui_callback([this, aid, login, result]() {
             push_cs2_toast(*this, aid, login, result, "CS2 730 folder");
+        });
+    });
+}
+
+void AppState::open_account_in_browser(const core::Account& a) {
+    // NFA accounts hold a client-scoped refresh token Steam won't exchange for a
+    // web session, and an account with no SteamID has no profile to open. The
+    // context menu disables the item in both cases; guard again here.
+    if (a.steam_id_64 == 0 || a.is_nfa) return;
+
+    const std::string aid = a.id;
+    const std::string login_name = a.login;
+    const std::uint64_t sid64 = a.steam_id_64;
+
+    // Thin copy for the worker; the Account& may be invalidated by a vault
+    // mutation before the job runs (same pattern as refresh/spend).
+    core::Account creds;
+    creds.steam_id_64 = a.steam_id_64;
+    creds.login = a.login;
+    creds.session_id = a.session_id;
+    creds.steam_login_secure = a.steam_login_secure;
+    creds.refresh_token = a.refresh_token;
+    creds.access_token = a.access_token;
+    creds.access_token_expires = a.access_token_expires;
+    creds.password = a.password;
+    creds.sda = a.sda;
+    creds.proxy = a.proxy;
+
+    SAM_LOG_INFO("browser-login: requested for '{}' (steam_id={})", login_name, sid64);
+
+    job_pump::submit([this, aid, login_name, sid64, creds]() mutable {
+        http::ScopedProxy proxy_guard(std::string(creds.proxy.data(), creds.proxy.size()));
+
+        if (creds.session_id.empty()) creds.session_id = crypto::random_session_id();
+
+        // finalizelogin consumes the refresh_token. Refresh the (cheap)
+        // access_token first; if the refresh_token is missing or rejected, fall
+        // back to a full credentials re-login to mint a fresh pair.
+        if (creds.refresh_token.empty()) {
+            std::string err;
+            auto_relogin(aid, creds, &err);
+        } else if (steam_login::needs_refresh(creds, 300)) {
+            if (!steam_login::refresh_access_token(creds)) {
+                std::string err;
+                auto_relogin(aid, creds, &err);
+            }
+        }
+
+        // Land the browser on the profile once the community cookie is set.
+        const std::string profile_url =
+            "https://steamcommunity.com/profiles/" + std::to_string(sid64);
+        const std::string redir = "https://steamcommunity.com/login/home/?goto=" +
+            http::url_encode("profiles/" + std::to_string(sid64));
+
+        auto build_targets = [&](std::vector<steam_login::TransferTarget>& out) {
+            return steam_login::finalize_login_targets(
+                creds.steam_id_64, creds.refresh_token, creds.session_id, redir, out);
+        };
+
+        std::vector<steam_login::TransferTarget> targets;
+        if (!build_targets(targets)) {
+            // The refresh_token may be expired; one credentials re-login + retry.
+            std::string err;
+            if (auto_relogin(aid, creds, &err)) build_targets(targets);
+        }
+
+        // Replicate Steam's per-domain transfer in the browser: each target's
+        // cookies are set (in hidden frames), then the page lands on the profile.
+        bool ready = false;
+        if (!targets.empty()) {
+            const std::string html =
+                steam_login::build_login_html(targets, sid64, profile_url);
+            if (!html.empty()) {
+                std::ofstream f(browser_login_html_path(), std::ios::binary | std::ios::trunc);
+                if (f) {
+                    f.write(html.data(), static_cast<std::streamsize>(html.size()));
+                    ready = static_cast<bool>(f);
+                }
+            }
+        }
+        if (!ready) {
+            SAM_LOG_WARN("browser-login: could not mint a web session for '{}'", login_name);
+        }
+
+        // Carry any rotated tokens back to persist them.
+        crypto::SecureString rt = creds.refresh_token;
+        crypto::SecureString at = creds.access_token;
+        crypto::SecureString ls = creds.steam_login_secure;
+        std::string ses = creds.session_id;
+        const std::int64_t exp = creds.access_token_expires;
+
+        post_ui_callback([this, aid, login_name, ready,
+                          rt = std::move(rt), at = std::move(at), ls = std::move(ls),
+                          ses = std::move(ses), exp]() mutable {
+            if (auto* acc = find_account(aid)) {
+                if (!rt.empty()) acc->refresh_token = std::move(rt);
+                if (!at.empty()) { acc->access_token = std::move(at); acc->access_token_expires = exp; }
+                if (!ls.empty()) acc->steam_login_secure = std::move(ls);
+                if (!ses.empty()) acc->session_id = std::move(ses);
+                vault_dirty = true;
+                save_vault_if_dirty();
+            }
+
+            const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            ui::widgets::ToastItem t;
+            t.id = "browser-login-" + aid;
+            t.account_id = aid;
+            t.expires_at_unix = now + settings.notifications.toast_duration_seconds;
+
+            if (!ready) {
+                t.message = "Browser sign-in failed for " + login_name +
+                            " (couldn't mint a web session)";
+                t.is_warning = true;
+                toasts.push(std::move(t));
+                return;
+            }
+
+            std::error_code ec;
+            std::filesystem::create_directories(browser_profile_dir(), ec);
+            const std::wstring url = L"file:///" + browser_login_html_path().generic_wstring();
+            const bool isolated =
+                platform::open_isolated_window(url, browser_profile_dir().wstring());
+            t.message = isolated
+                ? "Opened " + login_name + " in an isolated browser window"
+                : "Opened " + login_name + " (couldn't isolate - used default browser)";
+            t.is_warning = !isolated;
+            toasts.push(std::move(t));
         });
     });
 }

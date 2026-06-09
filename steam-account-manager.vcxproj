@@ -184,6 +184,7 @@
     <ClCompile Include="core\steam_login\rsa_password.cpp" />
     <ClCompile Include="core\steam_login\session.cpp" />
     <ClCompile Include="core\steam_login\web_session.cpp" />
+    <ClCompile Include="core\steam_login\browser_login.cpp" />
 
     <ClCompile Include="core\steam_gcpd\gcpd_scraper.cpp" />
     <ClCompile Include="core\steam_gcpd\gcpd_parser.cpp" />
@@ -232,6 +233,7 @@
 
     <ClCompile Include="platform\fs.cpp" />
     <ClCompile Include="platform\file_dialog.cpp" />
+    <ClCompile Include="platform\browser.cpp" />
     <ClCompile Include="platform\paths.cpp" />
     <ClCompile Include="platform\registry.cpp" />
     <ClCompile Include="platform\process.cpp" />
@@ -317,6 +319,7 @@
     <ClInclude Include="core\steam_login\rsa_password.hpp" />
     <ClInclude Include="core\steam_login\session.hpp" />
     <ClInclude Include="core\steam_login\web_session.hpp" />
+    <ClInclude Include="core\steam_login\browser_login.hpp" />
 
     <ClInclude Include="core\steam_gcpd\gcpd_scraper.hpp" />
     <ClInclude Include="core\steam_gcpd\gcpd_parser.hpp" />
@@ -374,6 +377,7 @@
 
     <ClInclude Include="platform\fs.hpp" />
     <ClInclude Include="platform\file_dialog.hpp" />
+    <ClInclude Include="platform\browser.hpp" />
     <ClInclude Include="platform\paths.hpp" />
     <ClInclude Include="platform\registry.hpp" />
     <ClInclude Include="platform\process.hpp" />

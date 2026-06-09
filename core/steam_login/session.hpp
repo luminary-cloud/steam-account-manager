@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "core/account_store/account.hpp"
 #include "core/crypto/secure_string.hpp"
@@ -34,6 +35,29 @@ bool needs_refresh(const core::Account& account, int safety_seconds = 300);
 // Refreshes the access token using the stored refresh token. Returns true on
 // success. The caller is responsible for saving the vault afterwards.
 bool refresh_access_token(core::Account& account);
+
+// One per-domain token-transfer endpoint returned by `jwt/finalizelogin`. POST
+// `nonce`+`auth` (plus the steamID) to `url` and the response sets that domain's
+// login cookies. `auth`/`nonce` are single-use and short-lived.
+struct TransferTarget {
+    std::string url;
+    std::string nonce;
+    std::string auth;
+};
+
+// Runs only the `jwt/finalizelogin` step and returns every per-domain transfer
+// target (community, store, help, ...). `redir` is where Steam should send the
+// browser once the transfer completes. Used both by `transfer_login` (which
+// POSTs the targets itself) and by the browser-login flow (which hands the
+// community target to the browser). Returns false / empty on any error.
+//
+// As with `transfer_login`, the `nonce` posted to finalizelogin is the
+// refresh_token, not the access_token (the latter returns "Access is denied").
+bool finalize_login_targets(std::uint64_t steam_id_64,
+                            const crypto::SecureString& refresh_token,
+                            const std::string& session_id,
+                            const std::string& redir,
+                            std::vector<TransferTarget>& out_targets);
 
 // Exchanges a refresh_token for a community-valid steamLoginSecure cookie via
 // Steam's `jwt/finalizelogin` + `settoken` flow.

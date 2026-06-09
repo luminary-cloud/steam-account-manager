@@ -493,6 +493,13 @@ struct AppState {
     // "Add video config" context-menu item.
     void apply_cs2_video_config(const core::Account& a);
 
+    // Signs the user's default browser in to `a` and opens its Steam profile in
+    // a private/incognito window. Mints a fresh web session from the stored
+    // refresh_token (re-logging in with the stored password if needed), hands
+    // the steamcommunity.com token-transfer target to the browser via a local
+    // launcher page, and reports the result as a toast. No-op for NFA accounts.
+    void open_account_in_browser(const core::Account& a);
+
     // Stagger a refresh across many accounts. Submits one outer job that
     // walks `ids` and posts refresh_single_account(aid, /*batch_refresh=*/true)
     // onto completed_jobs with `stagger` between iterations, so the worker
