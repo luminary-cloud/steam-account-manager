@@ -37,6 +37,10 @@ void open_url(const std::string& url) {
     ShellExecuteW(nullptr, L"open", w.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
+void open_folder(const std::filesystem::path& path) {
+    ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
 void hover_tooltip(const char* text) {
     if (ImGui::IsItemHovered() && text && *text) {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0F);

@@ -22,12 +22,16 @@
 #include "platform/dpapi.hpp"
 #include "platform/file_dialog.hpp"
 #include "platform/fs.hpp"
+#include "platform/paths.hpp"
 #include "platform/startup_task.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
 #include "ui/widgets/master_pw_field.hpp"
 
 namespace sam::ui::screens {
+
+// Gap above the pinned Save / Open-data-folder footer row.
+constexpr float kFooterGap = 8.0F;
 
 void draw_settings(app::AppState& state) {
     ImGui::TextUnformatted("Settings");
@@ -50,6 +54,22 @@ void draw_settings(app::AppState& state) {
             return false;
         }
     };
+
+    // Pin the footer to the bottom: the body scrolls inside a child that reserves
+    // room for everything drawn after it, so the parent content region doesn't
+    // grow a second scrollbar. That trailing content is the gap + button row here
+    // plus the three item-spacings around them and main_window's Dummy(0,24) added
+    // after this screen returns.
+    constexpr float kButtonRowHeight = 26.0F;  // action_button height
+    constexpr float kTrailingDummy   = 24.0F;  // main_window's Dummy after draw_screen
+    const float footer_reserved = ImGui::GetStyle().ItemSpacing.y * 3.0F +
+                                  kFooterGap + kButtonRowHeight + kTrailingDummy;
+
+    ImGui::BeginChild("##settings-body", ImVec2(0, -footer_reserved),
+                      ImGuiChildFlags_NavFlattened);
+    // The parent's PushItemWidth(-kContentPaddingX) doesn't carry across the
+    // child boundary; re-apply it so widget and separator right edges match.
+    ImGui::PushItemWidth(-kContentPaddingX);
 
     separator_text("General");
     ImGui::SetNextItemWidth(200);
@@ -707,12 +727,20 @@ void draw_settings(app::AppState& state) {
                   "Accounts set to \"Launch CS2 + gamesense\" run it after CS2 starts. "
                   "Pick again to update the loader.");
 
-    ImGui::Spacing();
+    ImGui::PopItemWidth();
+    ImGui::EndChild();
+
+    ImGui::Dummy(ImVec2(0.0F, kFooterGap));
     if (action_button("Save settings", ImVec2(160, 0))) {
         state.save_settings();
         ImGui::OpenPopup("Settings saved");
     }
     hover_tooltip("Persist settings to the config directory.");
+    ImGui::SameLine();
+    if (action_button("Open data folder", ImVec2(160, 0))) {
+        open_folder(platform::data_dir());
+    }
+    hover_tooltip("Open the account manager data folder (vault, settings, logs) in Explorer.");
 
     if (begin_styled_modal("Settings saved")) {
         ImGui::TextWrapped("Settings saved.");

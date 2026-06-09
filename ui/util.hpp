@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <ctime>
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -39,6 +40,10 @@ inline std::int64_t next_weekly_reset(std::int64_t from_unix) {
 }
 
 void open_url(const std::string& url);
+
+// Opens a folder (or file) in Explorer / the shell default.
+void open_folder(const std::filesystem::path& path);
+
 void hover_tooltip(const char* text);
 
 // Drop-in for ImGui::SetTooltip that restores the inner WindowPadding the
