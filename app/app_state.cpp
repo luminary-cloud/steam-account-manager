@@ -35,9 +35,6 @@
 namespace sam::app {
 
 namespace {
-// Save coalescing: collapses bursts of vault_dirty events into a single write.
-constexpr std::chrono::milliseconds kSaveDebounce{250};
-
 // Per-account refresh cooldowns. The GCPD scrape is rate-limited
 // independently so the cheap Web API portion can still run more often.
 constexpr std::int64_t kMinAccountRefreshSeconds = 30;
@@ -183,97 +180,6 @@ void flush_native_notification(AppState& state) {
     state.session_event_message.clear();
 }
 }  // namespace
-
-VaultSaver::~VaultSaver() {
-    {
-        std::lock_guard lk(mtx_);
-        stop_ = true;
-    }
-    cv_.notify_all();
-    if (thread_.joinable()) thread_.join();
-}
-
-void VaultSaver::start(std::filesystem::path path) {
-    std::lock_guard lk(mtx_);
-    if (started_) return;
-    path_ = std::move(path);
-    started_ = true;
-    thread_ = std::thread([this] { run(); });
-}
-
-void VaultSaver::schedule(const core::Vault& vault,
-                           const crypto::SecureString& password) {
-    {
-        std::lock_guard lk(mtx_);
-        pending_ = Pending{vault, password,
-                            std::chrono::steady_clock::now() + kSaveDebounce};
-    }
-    cv_.notify_all();
-}
-
-void VaultSaver::flush() {
-    std::unique_lock lk(mtx_);
-    if (!started_) return;
-    if (pending_.has_value()) {
-        // Pull the deadline forward so the worker fires immediately.
-        pending_->deadline = std::chrono::steady_clock::now();
-        cv_.notify_all();
-    }
-    cv_.wait(lk, [&] { return !pending_.has_value() && !busy_; });
-}
-
-void VaultSaver::run() {
-    while (true) {
-        std::optional<Pending> work;
-        {
-            std::unique_lock lk(mtx_);
-            cv_.wait(lk, [&] { return stop_ || pending_.has_value(); });
-
-            // Coalesce: wait for the deadline, allowing further schedule() calls
-            // to push it. wait_until returns spuriously, which is what we want.
-            while (!stop_ && pending_.has_value() &&
-                   pending_->deadline > std::chrono::steady_clock::now()) {
-                cv_.wait_until(lk, pending_->deadline);
-            }
-
-            if (pending_.has_value()) {
-                work = std::move(pending_);
-                pending_.reset();
-                busy_ = true;
-            } else if (stop_) {
-                break;
-            }
-        }
-
-        if (work) {
-            try {
-                core::store::save_vault(path_, work->vault, work->password);
-            } catch (const std::exception& ex) {
-                SAM_LOG_ERROR("vault save (async) failed: {}", ex.what());
-            }
-            std::lock_guard lk(mtx_);
-            busy_ = false;
-            cv_.notify_all();
-        }
-    }
-
-    // Drain any final pending save on shutdown so we don't lose the last edit.
-    std::optional<Pending> final_work;
-    {
-        std::lock_guard lk(mtx_);
-        if (pending_.has_value()) {
-            final_work = std::move(pending_);
-            pending_.reset();
-        }
-    }
-    if (final_work) {
-        try {
-            core::store::save_vault(path_, final_work->vault, final_work->password);
-        } catch (const std::exception& ex) {
-            SAM_LOG_ERROR("vault save (shutdown drain) failed: {}", ex.what());
-        }
-    }
-}
 
 core::Account* AppState::find_account(const std::string& id) {
     for (auto& a : vault.accounts) {

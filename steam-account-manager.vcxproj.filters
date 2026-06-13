@@ -37,6 +37,7 @@
   <ItemGroup>
     <ClCompile Include="app\win_main.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\app_state.cpp"><Filter>app</Filter></ClCompile>
+    <ClCompile Include="app\vault_saver.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\app_paths.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\gamesense_loader.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\job_pump.cpp"><Filter>app</Filter></ClCompile>
@@ -284,6 +285,8 @@
   <ItemGroup>
     <ClInclude Include="app\resource.h"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\app_state.hpp"><Filter>app</Filter></ClInclude>
+    <ClInclude Include="app\settings.hpp"><Filter>app</Filter></ClInclude>
+    <ClInclude Include="app\vault_saver.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\app_paths.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\gamesense_loader.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\job_pump.hpp"><Filter>app</Filter></ClInclude>
