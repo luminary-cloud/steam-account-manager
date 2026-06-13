@@ -1,3 +1,5 @@
+<div align="center">
+
 # Steam Account Manager
 
 [![build](https://github.com/luminary-cloud/steam-account-manager/actions/workflows/build.yml/badge.svg)](https://github.com/luminary-cloud/steam-account-manager/actions/workflows/build.yml)
@@ -5,12 +7,19 @@
 [![license](https://img.shields.io/github/license/luminary-cloud/steam-account-manager)](LICENSE)
 ![platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
 
-A native Windows manager for your Steam accounts. Keep every account in one local
-vault encrypted with your master password: generate Steam Guard codes, clear mobile
-confirmations, manage trade offers, watch ban and rank changes, and sign in to any
-account with one click. No installer, no telemetry, nothing leaves your machine.
+A native Windows manager for your Steam accounts: one encrypted vault, Steam Guard
+codes, mobile confirmations, trade offers, and one-click login.
 
-<!-- Add a screenshot here: ![Steam Account Manager](assets/screenshot.png) -->
+<details>
+<summary><b>Show screenshot</b></summary>
+<br>
+<img src="assets/screenshot.png" alt="Steam Account Manager" width="820">
+</details>
+
+</div>
+
+Keep every account in one local vault encrypted with your master password. No
+installer, no telemetry, nothing leaves your machine.
 
 ## Features
 
