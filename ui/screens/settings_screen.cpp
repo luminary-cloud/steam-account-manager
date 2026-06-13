@@ -30,7 +30,7 @@
 
 namespace sam::ui::screens {
 
-// Gap above the pinned Save / Open-data-folder footer row.
+// Gap above the pinned Save settings footer row.
 constexpr float kFooterGap = 8.0F;
 
 void draw_settings(app::AppState& state) {
@@ -727,6 +727,112 @@ void draw_settings(app::AppState& state) {
                   "Accounts set to \"Launch CS2 + gamesense\" run it after CS2 starts. "
                   "Pick again to update the loader.");
 
+    ImGui::Spacing();
+    separator_text("Storage");
+    {
+        constexpr ImVec4 kWarn(0.90F, 0.70F, 0.20F, 1.0F);
+        static std::string s_storage_err;
+        static std::filesystem::path s_pending_dir;  // target awaiting confirmation
+        static bool s_pending_is_default = false;
+        static bool s_restart_pending = false;       // a change applied this session
+
+        ImGui::TextUnformatted("Data folder:");
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", platform::data_dir().string().c_str());
+
+        if (const auto bad = platform::custom_data_dir_unavailable()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, kWarn);
+            ImGui::TextWrapped("Chosen folder \"%s\" was unavailable; using the default location.",
+                               bad->string().c_str());
+            ImGui::PopStyleColor();
+        }
+
+        if (s_restart_pending) {
+            ImGui::PushStyleColor(ImGuiCol_Text, kWarn);
+            ImGui::TextWrapped("Data folder updated. Restart the app to start using the new "
+                               "location; the old folder is removed on the next launch.");
+            ImGui::PopStyleColor();
+            if (action_button("Open data folder", ImVec2(160, 0))) {
+                open_folder(platform::data_dir());
+            }
+        } else {
+            if (action_button("Change folder...", ImVec2(160, 0))) {
+                platform::file_dialog::Options opts;
+                opts.parent = state.main_hwnd;
+                opts.title = L"Choose a folder for the account manager data";
+                const auto res = platform::file_dialog::pick_folder(opts);
+                if (res.ok) {
+                    s_storage_err.clear();
+                    s_pending_dir = res.path;
+                    s_pending_is_default = false;
+                    ImGui::OpenPopup("Move data folder");
+                }
+            }
+            hover_tooltip("Copy the vault, settings, and logs to another folder (e.g. a second "
+                          "drive or USB stick). Takes effect after a restart.");
+
+            if (platform::using_custom_data_dir()) {
+                ImGui::SameLine();
+                if (action_button("Reset to default", ImVec2(160, 0))) {
+                    s_storage_err.clear();
+                    s_pending_dir = platform::default_data_dir();
+                    s_pending_is_default = true;
+                    ImGui::OpenPopup("Move data folder");
+                }
+                hover_tooltip("Move the data back to the default location under "
+                              "%LOCALAPPDATA%.");
+            }
+
+            ImGui::SameLine();
+            if (action_button("Open data folder", ImVec2(160, 0))) {
+                open_folder(platform::data_dir());
+            }
+            hover_tooltip("Open the data folder (vault, settings, logs) in Explorer.");
+        }
+
+        if (!s_storage_err.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
+            ImGui::TextWrapped("%s", s_storage_err.c_str());
+            ImGui::PopStyleColor();
+        }
+
+        if (begin_styled_modal("Move data folder")) {
+            ImGui::TextWrapped(s_pending_is_default
+                ? "Move all data back to the default location:"
+                : "Copy all data to:");
+            ImGui::Spacing();
+            ImGui::TextDisabled("%s", s_pending_dir.string().c_str());
+            ImGui::Spacing();
+            std::error_code vec;
+            if (std::filesystem::exists(s_pending_dir / "vault.bin", vec)) {
+                ImGui::PushStyleColor(ImGuiCol_Text, kWarn);
+                ImGui::TextWrapped("That folder already has a vault.bin; it will be overwritten.");
+                ImGui::PopStyleColor();
+            }
+            ImGui::TextWrapped("The current folder is removed on the next launch, and the app "
+                               "must be restarted to apply the change.");
+            ImGui::Spacing();
+            if (action_button("Copy and apply", ImVec2(140, 0))) {
+                std::string err;
+                if (platform::relocate_data_dir(s_pending_dir, &err)) {
+                    if (s_pending_is_default) {
+                        // No pointer == default location.
+                        platform::clear_custom_data_dir(nullptr);
+                    }
+                    s_restart_pending = true;
+                } else {
+                    s_storage_err = err;
+                }
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (action_button("Cancel", ImVec2(80, 0))) {
+                ImGui::CloseCurrentPopup();
+            }
+            end_styled_modal();
+        }
+    }
+
     ImGui::PopItemWidth();
     ImGui::EndChild();
 
@@ -736,11 +842,6 @@ void draw_settings(app::AppState& state) {
         ImGui::OpenPopup("Settings saved");
     }
     hover_tooltip("Persist settings to the config directory.");
-    ImGui::SameLine();
-    if (action_button("Open data folder", ImVec2(160, 0))) {
-        open_folder(platform::data_dir());
-    }
-    hover_tooltip("Open the account manager data folder (vault, settings, logs) in Explorer.");
 
     if (begin_styled_modal("Settings saved")) {
         ImGui::TextWrapped("Settings saved.");

@@ -37,6 +37,7 @@
 #include "platform/dpi.hpp"
 #include "platform/fs.hpp"
 #include "platform/global_hotkey.hpp"
+#include "platform/paths.hpp"
 #include "platform/single_instance.hpp"
 #include "platform/startup_task.hpp"
 #include "platform/tray_icon.hpp"
@@ -491,6 +492,9 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     }
 
     sam::app::ensure_data_dirs();
+    // If a previous run relocated the data folder, drop the now-stale old copy
+    // before we open the log in the new location.
+    sam::platform::cleanup_relocated_old_dir();
     sam::log::init(sam::app::log_dir());
     SAM_LOG_INFO("starting up");
 

@@ -2,7 +2,10 @@
 
 #include <array>
 #include <chrono>
+#include <filesystem>
 #include <string>
+
+#include <windows.h>
 
 #include <imgui.h>
 
@@ -10,7 +13,9 @@
 #include "core/account_store/store.hpp"
 #include "core/log.hpp"
 #include "platform/dpapi.hpp"
+#include "platform/file_dialog.hpp"
 #include "platform/fs.hpp"
+#include "platform/paths.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
 #include "ui/widgets/master_pw_field.hpp"
@@ -84,7 +89,7 @@ void draw_unlock(app::AppState& state) {
         : Mode::Create;
 
     const auto& vp = *ImGui::GetMainViewport();
-    const ImVec2 panel_size{420.0F, 320.0F};
+    const ImVec2 panel_size{420.0F, 380.0F};
     const ImVec2 center{vp.WorkPos.x + vp.WorkSize.x / 2.0F - panel_size.x / 2.0F,
                         vp.WorkPos.y + vp.WorkSize.y / 2.0F - panel_size.y / 2.0F};
     ImGui::SetCursorPos(ImVec2(center.x - vp.WorkPos.x, center.y - vp.WorkPos.y));
@@ -154,6 +159,60 @@ void draw_unlock(app::AppState& state) {
             mode = Mode::Create;
             error_message.clear();
         }
+    }
+
+    // Recovery for an existing user whose data folder lives elsewhere (another
+    // drive, a USB stick, or a fresh Windows install where the saved location
+    // was lost). Point the app at that folder so it doesn't start a blank vault.
+    static std::filesystem::path located_dir;
+    static std::string locate_error;
+    ImGui::Spacing();
+    if (action_button("Locate an existing data folder...")) {
+        platform::file_dialog::Options opts;
+        opts.parent = state.main_hwnd;
+        opts.title = L"Select your steam-account-manager data folder";
+        const auto res = platform::file_dialog::pick_folder(opts);
+        if (res.ok) {
+            locate_error.clear();
+            if (sam::core::store::vault_exists(res.path / "vault.bin")) {
+                located_dir = res.path;
+                ImGui::OpenPopup("Use data folder");
+            } else {
+                locate_error = "No vault.bin in that folder. Pick the folder that "
+                               "holds your existing vault.";
+            }
+        }
+    }
+    hover_tooltip("Already have a data folder from another drive or a previous "
+                  "install? Point the app at it (it must contain vault.bin).");
+    if (!locate_error.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
+        ImGui::TextWrapped("%s", locate_error.c_str());
+        ImGui::PopStyleColor();
+    }
+
+    if (begin_styled_modal("Use data folder")) {
+        ImGui::TextWrapped("Load your accounts from:");
+        ImGui::Spacing();
+        ImGui::TextDisabled("%s", located_dir.string().c_str());
+        ImGui::Spacing();
+        ImGui::TextWrapped("The app will close so it can reopen using this folder.");
+        ImGui::Spacing();
+        if (action_button("Set and close", ImVec2(140, 0))) {
+            std::string err;
+            if (platform::set_custom_data_dir(located_dir, &err)) {
+                ImGui::CloseCurrentPopup();
+                PostMessageW(state.main_hwnd, WM_CLOSE, 0, 0);
+            } else {
+                locate_error = err;
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::SameLine();
+        if (action_button("Cancel", ImVec2(80, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        end_styled_modal();
     }
 
     ImGui::EndChild();

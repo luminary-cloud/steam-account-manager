@@ -20,18 +20,18 @@ namespace sam::ui::widgets {
 void draw_account_context_menu(app::AppState& state, const core::Account& a) {
     const auto secs = std::chrono::seconds(state.settings.clipboard_clear_seconds);
 
-    if (ImGui::MenuItem("Copy login", nullptr, false, !a.login.empty())) {
+    // Items that don't apply to this account are hidden rather than greyed out.
+    if (!a.login.empty() && ImGui::MenuItem("Copy login")) {
         platform::clipboard::set_text(a.login);
     }
 
-    const bool has_pw = !a.password.empty();
-    if (ImGui::MenuItem("Copy password", nullptr, false, has_pw)) {
+    if (!a.password.empty() && ImGui::MenuItem("Copy password")) {
         platform::clipboard::set_text_with_auto_clear(
             std::string_view(a.password.c_str(), a.password.size()), secs);
     }
 
     const bool has_2fa = a.sda.has_value() && !a.sda->shared_secret.empty();
-    if (ImGui::MenuItem("Copy 2FA code", nullptr, false, has_2fa)) {
+    if (has_2fa && ImGui::MenuItem("Copy 2FA code")) {
         const std::string code = sda::generate_code_now(a.sda->shared_secret);
         if (!code.empty()) {
             platform::clipboard::set_text_with_auto_clear(code, secs);
@@ -39,61 +39,58 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
     }
 
     const bool has_sid = a.steam_id_64 != 0;
-    if (ImGui::MenuItem("Copy SteamID64", nullptr, false, has_sid)) {
+    if (has_sid && ImGui::MenuItem("Copy SteamID64")) {
         char sid[24];
         std::snprintf(sid, sizeof(sid), "%llu",
                       static_cast<unsigned long long>(a.steam_id_64));
         platform::clipboard::set_text(sid);
     }
 
-    if (ImGui::MenuItem("Copy profile URL", nullptr, false, has_sid)) {
+    if (has_sid && ImGui::MenuItem("Copy profile URL")) {
         char url[64];
         std::snprintf(url, sizeof(url), "https://steamcommunity.com/profiles/%llu",
                       static_cast<unsigned long long>(a.steam_id_64));
         platform::clipboard::set_text(url);
     }
 
-    if (ImGui::MenuItem("Copy CS2 friend code", nullptr, false, has_sid)) {
+    if (has_sid && ImGui::MenuItem("Copy CS2 friend code")) {
         const std::string code = cs2::friend_code(a.steam_id_64);
         if (!code.empty()) platform::clipboard::set_text(code);
     }
 
     // Sign the default browser in to this account and open its profile in a
     // private window. Needs a web-capable refresh token (or a saved password to
-    // mint one), so it's unavailable for token-only (NFA) accounts.
+    // mint one), so it's hidden for token-only (NFA) accounts.
     const bool can_browser = has_sid && !a.is_nfa &&
                              (!a.refresh_token.empty() || !a.password.empty());
-    if (ImGui::MenuItem("Open in browser (signed in)", nullptr, false, can_browser)) {
+    if (can_browser && ImGui::MenuItem("Open in browser (signed in)")) {
         state.open_account_in_browser(a);
     }
-    if (!can_browser && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        const char* why = a.is_nfa
-            ? "Token-only (NFA) accounts can't open a web session"
-            : (a.steam_id_64 == 0 ? "No SteamID yet - refresh the account first"
-                                  : "Needs a saved password to sign in");
-        set_tooltip("%s", why);
-    }
 
-    ImGui::Separator();
+    // Video config + Change username both need a SteamID, so the whole group
+    // (and its separator) only shows once we have one.
+    if (has_sid) {
+        ImGui::Separator();
 
-    const auto cs2_mode = state.settings.cs2_video.mode;
-    if (cs2_mode != app::CS2ConfigMode::None) {
-        const char* cfg_label = "Add video config";
-        bool cfg_ready = false;
-        if (cs2_mode == app::CS2ConfigMode::VideoTxt) {
-            cfg_ready = std::filesystem::exists(app::cs2_video_template_path());
-        } else {  // Folder730
-            cfg_label = "Apply 730 folder";
-            cfg_ready = std::filesystem::is_directory(app::cs2_730_template_dir());
+        const auto cs2_mode = state.settings.cs2_video.mode;
+        if (cs2_mode != app::CS2ConfigMode::None) {
+            const char* cfg_label = "Add video config";
+            bool cfg_ready = false;
+            if (cs2_mode == app::CS2ConfigMode::VideoTxt) {
+                cfg_ready = std::filesystem::exists(app::cs2_video_template_path());
+            } else {  // Folder730
+                cfg_label = "Apply 730 folder";
+                cfg_ready = std::filesystem::is_directory(app::cs2_730_template_dir());
+            }
+            if (cfg_ready && ImGui::MenuItem(cfg_label)) {
+                state.apply_cs2_video_config(a);
+            }
         }
-        if (ImGui::MenuItem(cfg_label, nullptr, false, has_sid && cfg_ready)) {
-            state.apply_cs2_video_config(a);
-        }
-    }
 
-    if (ImGui::MenuItem("Change username", nullptr, false, has_sid)) {
-        state.selected_account_id = a.id;
-        state.persona_change_requested = true;
+        if (ImGui::MenuItem("Change username")) {
+            state.selected_account_id = a.id;
+            state.persona_change_requested = true;
+        }
     }
 
     // NFA accounts can't scrape their CS2 cooldown from GCPD, so let the user set
@@ -147,11 +144,13 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         };
         const std::int64_t now = now_seconds();
         const bool claimed = a.cs2.weekly_drop_reset_unix > now;
-        if (ImGui::MenuItem("Mark claimed", nullptr, false, !claimed)) {
+        // Show only the action that applies: mark it when unclaimed (or after it
+        // has expired), clear it only while there's an active claim to remove.
+        if (!claimed && ImGui::MenuItem("Mark claimed")) {
             set_drop(next_weekly_reset(now));
         }
-        if (a.cs2.weekly_drop_reset_unix != 0) {
-            if (ImGui::MenuItem("Clear")) set_drop(0);
+        if (claimed && ImGui::MenuItem("Clear")) {
+            set_drop(0);
         }
         ImGui::EndMenu();
     }
