@@ -138,6 +138,8 @@
     <ClCompile Include="ui\screens\accounts_list_view.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\sda_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\add_account_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\add_account_full_login.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\add_account_imports.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\confirmations_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\settings_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\trade_offers_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
@@ -394,6 +396,7 @@
     <ClInclude Include="ui\screens\accounts_list_view.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\sda_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\add_account_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\add_account_detail.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\confirmations_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\settings_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\trade_offers_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
