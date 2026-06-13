@@ -301,6 +301,7 @@
     <ClInclude Include="core\version.hpp" />
     <ClInclude Include="core\time_aligner.hpp" />
     <ClInclude Include="core\log.hpp" />
+    <ClInclude Include="core\strings.hpp" />
 
     <ClInclude Include="core\sda\totp.hpp" />
     <ClInclude Include="core\sda\confirmation.hpp" />
@@ -308,7 +309,6 @@
     <ClInclude Include="core\sda\mafile_export.hpp" />
     <ClInclude Include="core\sda\conf_audit.hpp" />
     <ClInclude Include="core\sda\info_dat.hpp" />
-    <ClInclude Include="core\sda\info_dat_keys.hpp" />
     <ClInclude Include="core\sda\revoke.hpp" />
 
     <ClInclude Include="core\steam_api\web_api.hpp" />
@@ -341,8 +341,7 @@
     <ClInclude Include="core\cs2\friend_code.hpp" />
 
     <ClInclude Include="core\account_store\account.hpp" />
-    <ClInclude Include="core\account_store\group.hpp" />
-    <ClInclude Include="core\account_store\tag.hpp" />
+    <ClInclude Include="core\account_store\account_meta.hpp" />
     <ClInclude Include="core\account_store\store.hpp" />
     <ClInclude Include="core\account_store\schema.hpp" />
     <ClInclude Include="core\account_store\filter.hpp" />

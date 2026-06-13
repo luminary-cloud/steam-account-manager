@@ -108,10 +108,6 @@ bool synced() {
     return g_synced.load(std::memory_order_acquire);
 }
 
-std::int64_t last_success_unix() {
-    return g_last_success_unix.load(std::memory_order_acquire);
-}
-
 std::int64_t seconds_since_last_success() {
     const auto last = g_last_success_unix.load(std::memory_order_acquire);
     if (last == 0) return 0;

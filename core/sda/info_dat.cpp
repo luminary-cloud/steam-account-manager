@@ -14,7 +14,6 @@
 #include "core/crypto/base64.hpp"
 #include "core/crypto/kdf.hpp"
 #include "core/crypto/rijndael256.hpp"
-#include "core/sda/info_dat_keys.hpp"
 
 namespace sam::sda {
 

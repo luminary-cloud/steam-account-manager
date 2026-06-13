@@ -4,16 +4,11 @@
 #include <cctype>
 #include <string_view>
 
+#include "core/strings.hpp"
+
 namespace sam::core {
 
 namespace {
-
-std::string to_lower(std::string_view s) {
-    std::string out(s);
-    std::transform(out.begin(), out.end(), out.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return out;
-}
 
 std::string wstr_to_utf8_lower(const std::wstring& ws) {
     if (ws.empty()) return {};

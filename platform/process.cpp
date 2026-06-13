@@ -1,7 +1,5 @@
 #include "platform/process.hpp"
 
-#include <algorithm>
-#include <array>
 #include <cwctype>
 
 #include <windows.h>
@@ -79,15 +77,6 @@ std::optional<std::uint32_t> launch(const std::filesystem::path& exe,
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     return pid;
-}
-
-bool wait_for_exit(std::uint32_t pid, std::chrono::milliseconds timeout) {
-    HANDLE h = OpenProcess(SYNCHRONIZE, FALSE, pid);
-    if (!h) return true;
-    const DWORD rc = WaitForSingleObject(h,
-        static_cast<DWORD>(std::min<long long>(timeout.count(), INFINITE - 1)));
-    CloseHandle(h);
-    return rc == WAIT_OBJECT_0;
 }
 
 }  // namespace sam::platform::process

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core/log.hpp"
+#include "core/strings.hpp"
 #include "platform/fs.hpp"
 #include "platform/registry.hpp"
 
@@ -99,12 +100,7 @@ std::string read_file_to_string(const std::filesystem::path& path) {
     return ss.str();
 }
 
-std::string to_lower(std::string_view s) {
-    std::string out;
-    out.reserve(s.size());
-    for (char c : s) out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-    return out;
-}
+using core::to_lower;
 
 // Skip a VDF value: either a string (already consumed by caller) or a block.
 // On entry, the next token is expected to be either { ... } or already eaten.

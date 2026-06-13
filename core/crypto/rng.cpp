@@ -3,6 +3,8 @@
 #include <array>
 #include <stdexcept>
 
+#include "core/strings.hpp"
+
 #include <windows.h>
 #include <bcrypt.h>
 
@@ -12,7 +14,6 @@ namespace sam::crypto {
 
 namespace {
 
-constexpr char kHexLower[] = "0123456789abcdef";
 constexpr char kHexUpper[] = "0123456789ABCDEF";
 
 void bcrypt_fill(std::uint8_t* buf, std::size_t n) {
@@ -22,16 +23,6 @@ void bcrypt_fill(std::uint8_t* buf, std::size_t n) {
     if (status < 0) {
         throw std::runtime_error("BCryptGenRandom failed");
     }
-}
-
-std::string to_hex(std::span<const std::uint8_t> bytes) {
-    std::string out;
-    out.resize(bytes.size() * 2);
-    for (std::size_t i = 0; i < bytes.size(); ++i) {
-        out[2 * i] = kHexLower[(bytes[i] >> 4) & 0x0F];
-        out[2 * i + 1] = kHexLower[bytes[i] & 0x0F];
-    }
-    return out;
 }
 
 }  // namespace
@@ -54,7 +45,7 @@ std::string random_device_id() {
     bytes[6] = static_cast<std::uint8_t>((bytes[6] & 0x0F) | 0x40);
     bytes[8] = static_cast<std::uint8_t>((bytes[8] & 0x3F) | 0x80);
 
-    const std::string hex = to_hex({bytes.data(), bytes.size()});
+    const std::string hex = core::to_hex_lower({bytes.data(), bytes.size()});
     std::string uuid;
     uuid.reserve(36);
     uuid += hex.substr(0, 8);

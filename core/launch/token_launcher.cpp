@@ -8,6 +8,7 @@
 
 #include "core/launch/steam_launcher.hpp"
 #include "core/log.hpp"
+#include "core/strings.hpp"
 #include "core/steam_local/connect_cache.hpp"
 #include "core/steam_local/loginusers.hpp"
 #include "core/steam_login/session.hpp"
@@ -21,12 +22,6 @@ namespace {
 std::int64_t now_seconds() {
     using namespace std::chrono;
     return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
-}
-
-std::string to_lower_ascii(std::string s) {
-    for (char& c : s)
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return s;
 }
 
 // Steam account names are ASCII, so a byte-wise widen is sufficient.
@@ -60,7 +55,7 @@ LaunchResult launch_account_with_token(const core::Account& a) {
     if (!steam_exe) return out;                 // out carries the SteamNotInstalled reason
     if (!shutdown_running_steam(*steam_exe, out)) return out;
 
-    const std::string login = to_lower_ascii(a.login);
+    const std::string login = core::to_lower(a.login);
 
     platform::registry::set_auto_login_user(widen_ascii(login));
     steam_local::ensure_loginusers_entry(a.steam_id_64, login, a.web.persona_name);

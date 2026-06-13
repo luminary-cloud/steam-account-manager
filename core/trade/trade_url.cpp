@@ -58,8 +58,4 @@ std::uint64_t account_id_to_steam_id_64(std::uint32_t account_id) {
     return kIndividualBase | static_cast<std::uint64_t>(account_id);
 }
 
-std::uint32_t steam_id_64_to_account_id(std::uint64_t steam_id_64) {
-    return static_cast<std::uint32_t>(steam_id_64 & 0xFFFFFFFFULL);
-}
-
 }  // namespace sam::core::trade

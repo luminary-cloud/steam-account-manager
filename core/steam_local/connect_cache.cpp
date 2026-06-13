@@ -13,6 +13,7 @@
 #include "core/crypto/secure_string.hpp"
 #include "core/log.hpp"
 #include "core/steam_local/crc32.hpp"
+#include "core/strings.hpp"
 #include "core/steam_local/loginusers.hpp"   // VdfNode + tree helpers
 #include "platform/dpapi.hpp"
 #include "platform/fs.hpp"
@@ -21,23 +22,6 @@
 namespace sam::steam_local {
 
 namespace {
-
-std::string to_lower_ascii(std::string s) {
-    for (char& c : s)
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return s;
-}
-
-std::string to_hex_lower(std::span<const std::uint8_t> bytes) {
-    static const char* kHex = "0123456789abcdef";
-    std::string out;
-    out.reserve(bytes.size() * 2);
-    for (std::uint8_t b : bytes) {
-        out.push_back(kHex[b >> 4]);
-        out.push_back(kHex[b & 0x0F]);
-    }
-    return out;
-}
 
 std::string read_file(const std::filesystem::path& p) {
     std::ifstream f(p, std::ios::binary);
@@ -85,7 +69,7 @@ bool write_connect_cache_token(const std::string& account_name,
     }
     const auto path = *path_opt;
 
-    const std::string name = to_lower_ascii(account_name);
+    const std::string name = core::to_lower(account_name);
 
     // ConnectCache entry key: hex(crc32(name)) + "1". Built as a string (not
     // (crc<<4)|1, which overflows uint32 when the top nibble is set).
@@ -111,7 +95,7 @@ bool write_connect_cache_token(const std::string& account_name,
     }
     crypto::zero_buffer(plaintext.data(), plaintext.size());
 
-    const std::string value = to_hex_lower(blob);
+    const std::string value = core::to_hex_lower(blob);
 
     // read_file returns "" if local.vdf is absent; we then build the tree fresh.
     VdfNode root = parse_vdf(read_file(path));

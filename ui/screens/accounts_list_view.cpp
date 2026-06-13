@@ -14,7 +14,7 @@
 
 #include <imgui.h>
 
-#include "core/account_store/group.hpp"
+#include "core/account_store/account_meta.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
 #include "ui/widgets/account_context_menu.hpp"

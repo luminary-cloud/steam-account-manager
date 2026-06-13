@@ -12,10 +12,8 @@ namespace sam::core::trade {
 // Returns ok=false when the partner id or token can't be extracted.
 TradeUrl parse_trade_url(const std::string& url);
 
-// SteamID individual-account conversions. The trade URL and the WebAPI's
-// accountid_other use the 32-bit account id; community POST bodies and the
-// inventory path use the 64-bit SteamID.
+// 32-bit account id (trade URL, WebAPI accountid_other) to 64-bit individual
+// SteamID (community POST bodies, inventory path).
 std::uint64_t account_id_to_steam_id_64(std::uint32_t account_id);
-std::uint32_t steam_id_64_to_account_id(std::uint64_t steam_id_64);
 
 }  // namespace sam::core::trade

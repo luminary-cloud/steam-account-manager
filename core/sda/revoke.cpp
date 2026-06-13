@@ -58,31 +58,6 @@ core::SteamGuardAccount sda_from_response(const json& r, const std::string& devi
 
 }  // namespace
 
-std::optional<PhoneStatus> query_phone_status(const core::Account& a) {
-    const std::string token = access_token(a);
-    if (token.empty()) return std::nullopt;
-
-    http::Request req;
-    req.method = http::Method::Get;
-    req.url = std::string{kApiHost} +
-              "/IPhoneService/QueryAccountPhoneStatus/v1/?access_token=" +
-              http::url_encode(token);
-    auto resp = http::request(req);
-    if (resp.status != 200) return std::nullopt;
-
-    try {
-        const auto j = json::parse(resp.body);
-        if (!j.contains("response")) return std::nullopt;
-        const auto& r = j["response"];
-        PhoneStatus ps;
-        ps.has_phone      = r.value("verified_phone", false);
-        ps.masked_number  = r.value("phone_number", std::string{});
-        return ps;
-    } catch (...) {
-        return std::nullopt;
-    }
-}
-
 AddAuthenticatorResult add_authenticator(const core::Account& a) {
     AddAuthenticatorResult out;
 

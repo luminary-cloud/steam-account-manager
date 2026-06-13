@@ -5,8 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "core/account_store/group.hpp"
-#include "core/account_store/tag.hpp"
+#include "core/account_store/account_meta.hpp"
 #include "core/crypto/secure_string.hpp"
 
 namespace sam::core {

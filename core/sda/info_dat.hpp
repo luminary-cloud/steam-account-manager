@@ -12,6 +12,13 @@
 
 namespace sam::sda {
 
+// Field-encryption keys baked into released export-tool builds, tried in order
+// by try_unwrap_field after any user-supplied key.
+inline constexpr std::string_view kKnownInfoDatKeys[] = {
+    "ImnsUDFnXghRF",
+    "PRIVATE_KEY",  // open-source placeholder; rebuilds that forgot to change it use this
+};
+
 // One <Account> entry from an info.dat export. Field names mirror the XML
 // schema. Any fields not present in the XML default to the values set here.
 struct InfoDatAccount {
@@ -51,7 +58,7 @@ struct InfoDatWrongPassword : InfoDatError {
 // unencrypted (plain XML). `field_key` is the per-build constant used to wrap
 // the inner <Password> / <SharedSecret> XML element values. When it is empty
 // (the typical case), the parser falls back to a built-in try-list of known
-// eKeys (see info_dat_keys.hpp). Values that do not unwrap under any of the
+// eKeys (see kKnownInfoDatKeys). Values that do not unwrap under any of the
 // attempted keys are returned verbatim so the import still surfaces something.
 //
 // Throws:

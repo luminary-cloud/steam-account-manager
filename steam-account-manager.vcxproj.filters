@@ -292,6 +292,7 @@
     <ClInclude Include="core\version.hpp"><Filter>core</Filter></ClInclude>
     <ClInclude Include="core\time_aligner.hpp"><Filter>core</Filter></ClInclude>
     <ClInclude Include="core\log.hpp"><Filter>core</Filter></ClInclude>
+    <ClInclude Include="core\strings.hpp"><Filter>core</Filter></ClInclude>
 
     <ClInclude Include="core\sda\totp.hpp"><Filter>core\sda</Filter></ClInclude>
     <ClInclude Include="core\sda\confirmation.hpp"><Filter>core\sda</Filter></ClInclude>
@@ -299,7 +300,6 @@
     <ClInclude Include="core\sda\mafile_export.hpp"><Filter>core\sda</Filter></ClInclude>
     <ClInclude Include="core\sda\conf_audit.hpp"><Filter>core\sda</Filter></ClInclude>
     <ClInclude Include="core\sda\info_dat.hpp"><Filter>core\sda</Filter></ClInclude>
-    <ClInclude Include="core\sda\info_dat_keys.hpp"><Filter>core\sda</Filter></ClInclude>
     <ClInclude Include="core\sda\revoke.hpp"><Filter>core\sda</Filter></ClInclude>
 
     <ClInclude Include="core\steam_api\web_api.hpp"><Filter>core\steam_api</Filter></ClInclude>
@@ -327,8 +327,7 @@
     <ClInclude Include="core\cs2\friend_code.hpp"><Filter>core\cs2</Filter></ClInclude>
 
     <ClInclude Include="core\account_store\account.hpp"><Filter>core\account_store</Filter></ClInclude>
-    <ClInclude Include="core\account_store\group.hpp"><Filter>core\account_store</Filter></ClInclude>
-    <ClInclude Include="core\account_store\tag.hpp"><Filter>core\account_store</Filter></ClInclude>
+    <ClInclude Include="core\account_store\account_meta.hpp"><Filter>core\account_store</Filter></ClInclude>
     <ClInclude Include="core\account_store\store.hpp"><Filter>core\account_store</Filter></ClInclude>
     <ClInclude Include="core\account_store\schema.hpp"><Filter>core\account_store</Filter></ClInclude>
     <ClInclude Include="core\account_store\filter.hpp"><Filter>core\account_store</Filter></ClInclude>
