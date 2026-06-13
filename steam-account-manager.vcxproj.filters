@@ -157,6 +157,7 @@
     <ClCompile Include="ui\widgets\avatar.cpp"><Filter>ui\widgets</Filter></ClCompile>
     <ClCompile Include="ui\widgets\tag_chip.cpp"><Filter>ui\widgets</Filter></ClCompile>
     <ClCompile Include="ui\widgets\trust_badge.cpp"><Filter>ui\widgets</Filter></ClCompile>
+    <ClCompile Include="ui\widgets\title_bar.cpp"><Filter>ui\widgets</Filter></ClCompile>
     <ClCompile Include="ui\widgets\code_display.cpp"><Filter>ui\widgets</Filter></ClCompile>
     <ClCompile Include="ui\widgets\search_bar.cpp"><Filter>ui\widgets</Filter></ClCompile>
     <ClCompile Include="ui\widgets\ban_pills.cpp"><Filter>ui\widgets</Filter></ClCompile>
@@ -304,6 +305,8 @@
     <ClInclude Include="core\time_aligner.hpp"><Filter>core</Filter></ClInclude>
     <ClInclude Include="core\log.hpp"><Filter>core</Filter></ClInclude>
     <ClInclude Include="core\strings.hpp"><Filter>core</Filter></ClInclude>
+    <ClInclude Include="core\json_num.hpp"><Filter>core</Filter></ClInclude>
+    <ClInclude Include="core\update_check.hpp"><Filter>core</Filter></ClInclude>
 
     <ClInclude Include="core\sda\totp.hpp"><Filter>core\sda</Filter></ClInclude>
     <ClInclude Include="core\sda\confirmation.hpp"><Filter>core\sda</Filter></ClInclude>
@@ -418,6 +421,7 @@
     <ClInclude Include="ui\widgets\avatar.hpp"><Filter>ui\widgets</Filter></ClInclude>
     <ClInclude Include="ui\widgets\tag_chip.hpp"><Filter>ui\widgets</Filter></ClInclude>
     <ClInclude Include="ui\widgets\trust_badge.hpp"><Filter>ui\widgets</Filter></ClInclude>
+    <ClInclude Include="ui\widgets\title_bar.hpp"><Filter>ui\widgets</Filter></ClInclude>
     <ClInclude Include="ui\widgets\code_display.hpp"><Filter>ui\widgets</Filter></ClInclude>
     <ClInclude Include="ui\widgets\search_bar.hpp"><Filter>ui\widgets</Filter></ClInclude>
     <ClInclude Include="ui\widgets\ban_pills.hpp"><Filter>ui\widgets</Filter></ClInclude>

@@ -313,6 +313,8 @@
     <ClInclude Include="core\time_aligner.hpp" />
     <ClInclude Include="core\log.hpp" />
     <ClInclude Include="core\strings.hpp" />
+    <ClInclude Include="core\json_num.hpp" />
+    <ClInclude Include="core\update_check.hpp" />
 
     <ClInclude Include="core\sda\totp.hpp" />
     <ClInclude Include="core\sda\confirmation.hpp" />
