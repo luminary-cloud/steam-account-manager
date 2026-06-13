@@ -16,10 +16,10 @@ codes, mobile confirmations, trade offers, and one-click login.
 <img src="assets/screenshot.png" alt="Steam Account Manager" width="820">
 </details>
 
-</div>
-
 Keep every account in one local vault encrypted with your master password. No
 installer, no telemetry, nothing leaves your machine.
+
+</div>
 
 ## Features
 
