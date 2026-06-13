@@ -143,6 +143,7 @@
     <ClCompile Include="ui\screens\confirmations_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\confirmations_modals.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\settings_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\settings_sections.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\trade_offers_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\trade_offers_modals.cpp"><Filter>ui\screens</Filter></ClCompile>
 
@@ -402,6 +403,7 @@
     <ClInclude Include="ui\screens\confirmations_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\confirmations_detail.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\settings_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\settings_sections.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\trade_offers_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\trade_offers_detail.hpp"><Filter>ui\screens</Filter></ClInclude>
 
