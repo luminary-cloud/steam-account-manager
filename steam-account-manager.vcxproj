@@ -263,6 +263,7 @@
     <ClCompile Include="ui\screens\add_account_full_login.cpp" />
     <ClCompile Include="ui\screens\add_account_imports.cpp" />
     <ClCompile Include="ui\screens\confirmations_screen.cpp" />
+    <ClCompile Include="ui\screens\confirmations_modals.cpp" />
     <ClCompile Include="ui\screens\settings_screen.cpp" />
     <ClCompile Include="ui\screens\trade_offers_screen.cpp" />
     <ClCompile Include="ui\screens\trade_offers_modals.cpp" />
@@ -408,6 +409,7 @@
     <ClInclude Include="ui\screens\add_account_screen.hpp" />
     <ClInclude Include="ui\screens\add_account_detail.hpp" />
     <ClInclude Include="ui\screens\confirmations_screen.hpp" />
+    <ClInclude Include="ui\screens\confirmations_detail.hpp" />
     <ClInclude Include="ui\screens\settings_screen.hpp" />
     <ClInclude Include="ui\screens\trade_offers_screen.hpp" />
     <ClInclude Include="ui\screens\trade_offers_detail.hpp" />
