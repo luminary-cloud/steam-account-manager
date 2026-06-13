@@ -161,6 +161,8 @@
   <ItemGroup Label="Project sources">
     <ClCompile Include="app\win_main.cpp" />
     <ClCompile Include="app\app_state.cpp" />
+    <ClCompile Include="app\app_state_refresh.cpp" />
+    <ClCompile Include="app\app_state_login.cpp" />
     <ClCompile Include="app\vault_saver.cpp" />
     <ClCompile Include="app\app_paths.cpp" />
     <ClCompile Include="app\gamesense_loader.cpp" />
@@ -299,6 +301,7 @@
   <ItemGroup Label="Project headers">
     <ClInclude Include="app\resource.h" />
     <ClInclude Include="app\app_state.hpp" />
+    <ClInclude Include="app\app_state_internal.hpp" />
     <ClInclude Include="app\settings.hpp" />
     <ClInclude Include="app\vault_saver.hpp" />
     <ClInclude Include="app\app_paths.hpp" />
