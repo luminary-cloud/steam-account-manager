@@ -265,6 +265,7 @@
     <ClCompile Include="ui\screens\confirmations_screen.cpp" />
     <ClCompile Include="ui\screens\settings_screen.cpp" />
     <ClCompile Include="ui\screens\trade_offers_screen.cpp" />
+    <ClCompile Include="ui\screens\trade_offers_modals.cpp" />
 
     <ClCompile Include="ui\widgets\rail_nav.cpp" />
     <ClCompile Include="ui\widgets\title_bar.cpp" />
@@ -409,6 +410,7 @@
     <ClInclude Include="ui\screens\confirmations_screen.hpp" />
     <ClInclude Include="ui\screens\settings_screen.hpp" />
     <ClInclude Include="ui\screens\trade_offers_screen.hpp" />
+    <ClInclude Include="ui\screens\trade_offers_detail.hpp" />
 
     <ClInclude Include="ui\widgets\rail_nav.hpp" />
     <ClInclude Include="ui\widgets\title_bar.hpp" />

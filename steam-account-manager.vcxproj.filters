@@ -143,6 +143,7 @@
     <ClCompile Include="ui\screens\confirmations_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\settings_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\trade_offers_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\trade_offers_modals.cpp"><Filter>ui\screens</Filter></ClCompile>
 
     <ClCompile Include="ui\widgets\rail_nav.cpp"><Filter>ui\widgets</Filter></ClCompile>
     <ClCompile Include="ui\widgets\account_card.cpp"><Filter>ui\widgets</Filter></ClCompile>
@@ -400,6 +401,7 @@
     <ClInclude Include="ui\screens\confirmations_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\settings_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\trade_offers_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\trade_offers_detail.hpp"><Filter>ui\screens</Filter></ClInclude>
 
     <ClInclude Include="ui\widgets\rail_nav.hpp"><Filter>ui\widgets</Filter></ClInclude>
     <ClInclude Include="ui\widgets\account_card.hpp"><Filter>ui\widgets</Filter></ClInclude>
