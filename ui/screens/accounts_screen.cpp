@@ -106,9 +106,7 @@ void draw_grid_body(app::AppState& state,
     const float card_w = (avail - kGap * static_cast<float>(columns - 1)) /
                          static_cast<float>(columns);
 
-    // Cards are a fixed height, so virtualize: only the rows currently on
-    // screen get built. The clipper seeks past the rest, keeping per-frame
-    // work proportional to what's visible rather than to the account count.
+    // Fixed card height lets the clipper virtualize: only on-screen rows get built.
     const int rows = (static_cast<int>(visible.size()) + columns - 1) / columns;
     const float row_pitch =
         widgets::kAccountCardHeight + ImGui::GetStyle().ItemSpacing.y;
@@ -137,11 +135,9 @@ void draw_grid_body(app::AppState& state,
     ImGui::Unindent(kGridInset);
 }
 
-// "Change username" modal. The account context menu sets
-// state.persona_change_requested + selected_account_id; we own the popup here so
-// it lives at a stable ImGui ID scope (the per-card context menu is nested under
-// PushID(account) and can't host the modal itself). The rename runs on a worker
-// thread; the result is reported in-modal.
+// Owned here, not in the per-card context menu: that menu is nested under
+// PushID(account), so a modal there would get an unstable ID scope. The context menu
+// signals via state.persona_change_requested + selected_account_id.
 void draw_change_username_modal(app::AppState& state) {
     static std::array<char, 128> name_buf{};
     static bool busy = false;
@@ -238,9 +234,8 @@ void draw_change_username_modal(app::AppState& state) {
                             state.vault_dirty = true;
                             state.save_vault_if_dirty();
                         }
-                        // Only surface the result if this account's modal is
-                        // still the one showing, so a cancel+reopen on another
-                        // account doesn't inherit a stale message.
+                        // Skip if the modal switched accounts, so a stale result
+                        // doesn't show on a different account.
                         if (state.selected_account_id != snapshot.id) return;
                         busy = false;
                         if (res.ok) {
@@ -435,10 +430,7 @@ void draw_accounts(app::AppState& state) {
         draw_grid_body(state, visible);
     }
 
-    // A login-method menu asked to (re)install the gamesense loader. Run the file
-    // dialog here, at a stable scope: a Win32 modal can't be opened from inside
-    // the per-card ImGui popup. On success, flip the requesting account (if any)
-    // to "CS2 + gamesense"; on failure, surface the reason in the launch modal.
+    // Run here, not inside the per-card ImGui popup: a Win32 modal can't open from there.
     if (state.gamesense_pick_request.has_value()) {
         const std::string acc_id = *state.gamesense_pick_request;
         state.gamesense_pick_request.reset();

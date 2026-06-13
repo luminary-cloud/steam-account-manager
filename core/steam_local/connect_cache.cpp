@@ -14,7 +14,7 @@
 #include "core/log.hpp"
 #include "core/steam_local/crc32.hpp"
 #include "core/strings.hpp"
-#include "core/steam_local/loginusers.hpp"   // VdfNode + tree helpers
+#include "core/steam_local/loginusers.hpp"
 #include "platform/dpapi.hpp"
 #include "platform/fs.hpp"
 #include "platform/paths.hpp"
@@ -31,8 +31,7 @@ std::string read_file(const std::filesystem::path& p) {
     return ss.str();
 }
 
-// Walks (creating as needed) a chain of nested block keys, returning the
-// deepest one. Used to reach Steam's deeply-nested ConnectCache block.
+// Walks (creating as needed) a chain of nested block keys, returning the deepest.
 VdfNode* ensure_block_path(VdfNode& root, std::initializer_list<const char*> path) {
     VdfNode* cur = &root;
     for (const char* key : path) {
@@ -71,8 +70,8 @@ bool write_connect_cache_token(const std::string& account_name,
 
     const std::string name = core::to_lower(account_name);
 
-    // ConnectCache entry key: hex(crc32(name)) + "1". Built as a string (not
-    // (crc<<4)|1, which overflows uint32 when the top nibble is set).
+    // Key is the string hex(crc32(name)) + "1", not (crc<<4)|1 which overflows
+    // uint32 when the top nibble is set.
     char hexbuf[16];
     std::snprintf(hexbuf, sizeof(hexbuf), "%x",
                   static_cast<unsigned>(crc32_ieee(name)));
@@ -97,8 +96,7 @@ bool write_connect_cache_token(const std::string& account_name,
 
     const std::string value = core::to_hex_lower(blob);
 
-    // read_file returns "" if local.vdf is absent; we then build the tree fresh.
-    VdfNode root = parse_vdf(read_file(path));
+    VdfNode root = parse_vdf(read_file(path));  // "" when local.vdf is absent
     VdfNode* connect_cache = ensure_block_path(
         root, {"MachineUserConfigStore", "Software", "Valve", "Steam", "ConnectCache"});
     upsert_scalar(*connect_cache, key, value);

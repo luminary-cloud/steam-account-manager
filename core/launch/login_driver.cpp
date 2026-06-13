@@ -34,10 +34,8 @@ constexpr auto kClassifyInterval   = 100ms;
 constexpr auto kDigitInterval      = 50ms;
 constexpr auto kOverallTimeout     = 90s;
 
-// Monotonically increasing. Each run_async() call bumps the counter and
-// captures its own value; workers compare against the latest value on every
-// poll iteration so a new run can supersede an in-flight one (e.g. user
-// clicks Login on a different account before the prior worker exited).
+// Each run_async() bumps this and captures its own value; workers compare against
+// the latest on every poll so a newer run supersedes an in-flight one.
 std::atomic<std::uint64_t> g_current_gen{0};
 
 bool ieq(std::wstring_view a, std::wstring_view b) {
@@ -115,9 +113,9 @@ std::wstring get_window_title(HWND h) {
     return out;
 }
 
-// The login UI is hosted by a steamwebhelper.exe child of the main steam.exe;
-// its title contains "Steam" with length > 5 (which excludes the plain "Steam"
-// main-client title). Also accepts the Chinese localised title.
+// The login UI is hosted by a steamwebhelper.exe child of steam.exe; its title
+// contains "Steam" with length > 5 (excludes the plain "Steam" main-client title).
+// Also accepts the Chinese localised title.
 HWND find_login_window(std::uint32_t main_pid) {
     const auto helpers = find_webhelper_children(main_pid);
     if (helpers.empty()) return nullptr;
@@ -261,8 +259,8 @@ bool drive_code_state(const Elt& doc, std::string_view shared_secret) {
             std::this_thread::sleep_for(20ms);
             send_unicode_char(static_cast<wchar_t>(code[i]));
 
-            // A filled slot button grows a child element (the rendered digit).
-            // Poll until it appears before moving on to the next digit.
+            // A filled slot button grows a child element (the rendered digit);
+            // poll until it appears before moving to the next digit.
             using clk = std::chrono::steady_clock;
             const auto deadline = clk::now() + kSlotSettleTimeout;
             while (clk::now() < deadline) {
@@ -307,7 +305,6 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
         return g_current_gen.load(std::memory_order_acquire) != gen;
     };
 
-    // Wait for the login window to appear.
     HWND login_hwnd = nullptr;
     while (clk::now() < deadline) {
         if (superseded()) {
@@ -326,7 +323,6 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
     SAM_LOG_INFO("login_driver: login window acquired hwnd=0x{:x}",
                  reinterpret_cast<std::uintptr_t>(login_hwnd));
 
-    // State-machine loop.
     bool entered_creds = false;
     bool entered_code  = false;
     while (clk::now() < deadline) {
@@ -334,10 +330,9 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
             SAM_LOG_INFO("login_driver: superseded by newer run; exiting");
             return;
         }
-        // Confirm success via the registry, but only once we've actually
-        // submitted credentials — gating on entered_creds prevents a stale
-        // ActiveUser (e.g. after a hard-kill of the previous session) from
-        // ending the run before we've typed anything.
+        // Gate the registry success check on entered_creds: prevents a stale
+        // ActiveUser (e.g. after hard-killing the previous session) from ending
+        // the run before we've typed anything.
         if (entered_creds) {
             const auto au = sam::platform::registry::read_active_user();
             if (au && *au != 0 &&
@@ -379,10 +374,9 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
                     } else if (creds.shared_secret.empty()) {
                         return;   // user has to type the code themselves
                     } else {
-                        // Per-digit retries already exhausted inside
-                        // drive_code_state. Don't re-run the whole sequence:
-                        // slots are partially filled and we'd type on top of
-                        // an unknown state. Bow out and let the user finish.
+                        // Per-digit retries already exhausted in drive_code_state.
+                        // Don't re-run: slots are partially filled and we'd type on
+                        // top of an unknown state. Bow out and let the user finish.
                         entered_code = true;
                         SAM_LOG_WARN("login_driver: 2FA entry failed after "
                                      "retries; finish in Steam manually");

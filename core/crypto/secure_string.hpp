@@ -8,8 +8,7 @@
 
 namespace sam::crypto {
 
-// Zeroes the memory it owns when freed. Used for any string that holds a secret
-// (master password, refresh token, identity_secret, etc).
+// Zeroes the memory it owns when freed.
 template <class T>
 struct SecureAllocator {
     using value_type = T;
@@ -33,9 +32,8 @@ struct SecureAllocator {
 
     void deallocate(T* p, size_type n) noexcept {
         if (!p) return;
-        // Manual zero loop. memset_s isn't on MSVC; SecureZeroMemory is, but pulling
-        // in <windows.h> from a low-level header is ugly. The volatile pointer
-        // pattern below is what SecureZeroMemory itself does.
+        // Volatile write so the compiler can't optimize the zeroing away
+        // (memset_s isn't on MSVC); this is what SecureZeroMemory does.
         volatile unsigned char* v = reinterpret_cast<volatile unsigned char*>(p);
         const std::size_t bytes = n * sizeof(T);
         for (std::size_t i = 0; i < bytes; ++i) {

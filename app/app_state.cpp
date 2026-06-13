@@ -35,21 +35,16 @@
 namespace sam::app {
 
 namespace {
-// Per-account refresh cooldowns. The GCPD scrape is rate-limited
-// independently so the cheap Web API portion can still run more often.
+// GCPD scrape is rate-limited independently so the cheap Web API can run more often.
 constexpr std::int64_t kMinAccountRefreshSeconds = 30;
 constexpr std::int64_t kMinBatchRefreshSeconds = 120;
 constexpr std::int64_t kMinGcpdRefreshSeconds = 90;
 
-// Per-account cooldown between display-name changes. Steam can flag accounts
-// for rapid persona renames, so a successful change locks the action out for
-// this long.
+// Steam can flag accounts for rapid persona renames, so lock the action out this long.
 constexpr std::int64_t kPersonaChangeCooldownSeconds = 300;
 
-// Overwrite the secret bytes a removed or locked account leaves in the heap.
-// The password and token fields are crypto::SecureString and wipe themselves;
-// the SteamGuard secrets and session id are plain std::string, so wipe them
-// here before their storage is freed.
+// password/tokens are SecureString and self-wipe; the SteamGuard secrets and
+// session id are plain std::string, so wipe them before their storage is freed.
 void scrub_account_secrets(core::Account& a) {
     const auto wipe = [](std::string& s) {
         if (!s.empty()) crypto::zero_buffer(&s[0], s.size());
@@ -83,9 +78,8 @@ bool event_enabled(const Settings::NotificationToggles& t, core::BanEventKind k)
     return false;
 }
 
-// Diffs the about-to-be-written ban/cs2 state, persists every enabled event,
-// and updates a.prev_snapshot. Returns the persisted events so the caller
-// can decide how to surface them (individual toasts vs a summary).
+// Diffs the about-to-be-written ban/cs2 state, persists every enabled event, and
+// updates a.prev_snapshot. Returns the persisted events for the caller to surface.
 std::vector<core::BanEvent>
 apply_diff_and_snapshot(AppState& state, core::Account& a,
                         const core::BanStatus& new_bans,
@@ -134,9 +128,8 @@ bool ban_event_is_cooldown(core::BanEventKind k) {
            k == core::BanEventKind::CooldownEnded;
 }
 
-// Immediate one-shot balloon for a single manual refresh. Gated by the
-// Windows-notification setting and suppressed while the main window is focused
-// (the in-app toast already covers that case).
+// One-shot balloon for a manual refresh. Suppressed while the main window is
+// focused (the in-app toast covers that).
 void push_native_notification(AppState& state, const std::string& message, bool warning) {
     if (!state.settings.notifications.enabled ||
         !state.settings.notifications.surface_windows_notification) {
@@ -148,7 +141,7 @@ void push_native_notification(AppState& state, const std::string& message, bool 
     }
 }
 
-// Records events from a batch refresh so they can be coalesced into one balloon.
+// Records batch events so they coalesce into one balloon.
 void note_session_event(AppState& state, const core::Account& a,
                         const std::vector<core::BanEvent>& events) {
     if (events.empty()) return;
@@ -159,8 +152,7 @@ void note_session_event(AppState& state, const core::Account& a,
     state.session_event_count += static_cast<int>(events.size());
 }
 
-// Shows the accumulated batch events as a single balloon, then clears the
-// accumulator. No-op if nothing accumulated or the window is focused.
+// Shows the accumulated batch events as one balloon, then clears the accumulator.
 void flush_native_notification(AppState& state) {
     if (!state.settings.notifications.enabled ||
         !state.settings.notifications.surface_windows_notification) {
@@ -196,8 +188,7 @@ void AppState::save_vault_if_dirty() {
 }
 
 void AppState::flush_pending_save() {
-    // If a UI-thread dirty flag is still set (caller forgot to call
-    // save_vault_if_dirty), schedule it now so it gets flushed.
+    // Schedule a still-dirty vault so it gets flushed.
     if (vault_dirty && !master_password.empty()) {
         vault_saver.start(vault_path());
         vault_saver.schedule(vault, master_password);
@@ -233,9 +224,8 @@ void AppState::refresh_account_data() {
         return;
     }
 
-    // Batch refresh rate limit: stops the user (or rapid re-locks) from
-    // repeatedly hammering Steam at startup. The per-account GCPD scrape has
-    // its own cooldown applied inside refresh_single_account.
+    // Batch rate limit: stops rapid re-locks hammering Steam at startup. The
+    // per-account GCPD scrape has its own cooldown in refresh_single_account.
     {
         const auto now = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
@@ -249,8 +239,8 @@ void AppState::refresh_account_data() {
         last_batch_refresh_unix = now;
     }
 
-    // Opportunistically resolve missing steam_ids from <SteamInstall>/config/loginusers.vdf
-    // so accounts added manually or via maFile can still be refreshed.
+    // Resolve missing steam_ids from loginusers.vdf so manually/maFile-added
+    // accounts can still be refreshed.
     int filled = 0;
     for (auto& a : vault.accounts) {
         if (a.steam_id_64 == 0 && !a.login.empty()) {
@@ -326,8 +316,7 @@ void AppState::refresh_account_data() {
             vault_dirty = true;
             save_vault_if_dirty();
 
-            // Toast surface: coalesce across accounts if the batch produced
-            // more than `coalesce_threshold` events; otherwise emit per-account.
+            // Coalesce across accounts past coalesce_threshold; else per-account.
             if (settings.notifications.surface_toast && accounts_with_events > 0) {
                 if (accounts_with_events >= settings.notifications.coalesce_threshold) {
                     char buf[96];
@@ -344,17 +333,15 @@ void AppState::refresh_account_data() {
                 }
             }
 
-            // Accumulate web-side events for a single coalesced Windows balloon;
-            // flushed below if no GCPD pass runs, otherwise after the last GCPD
-            // account so the balloon also covers cooldown changes.
+            // Accumulate web events for one balloon; flushed below if no GCPD pass
+            // runs, else after the last GCPD account so it covers cooldown changes.
             for (const auto& [acc_id, evs] : per_account_events) {
                 if (auto* a = find_account(acc_id)) note_session_event(*this, *a, evs);
             }
             refresh_web_phase_done.store(true, std::memory_order_relaxed);
 
-            // GCPD coverage on launch: per-account scrape for any account
-            // with usable session credentials, staggered ~2s apart so 30+
-            // accounts don't hammer Steam in a burst.
+            // Per-account GCPD scrape for any account with usable session creds,
+            // staggered ~2s apart so 30+ accounts don't hammer Steam in a burst.
             if (!gcpd_enabled) { flush_native_notification(*this); return; }
             std::vector<std::string> gcpd_ids;
             for (const auto& a : vault.accounts) {
@@ -412,9 +399,8 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
     if (settings.web_api_key.empty()) { SAM_LOG_WARN("refresh: no web API key configured"); return; }
     if (refreshing_ids.count(id)) { return; }
 
-    // Per-account rate limit: keep the user from spamming the button and
-    // tripping Steam's per-IP throttle. Workers ignore this on auto-relogin
-    // (that has its own 5-minute cooldown).
+    // Per-account rate limit against Steam's per-IP throttle. auto-relogin has
+    // its own 5-minute cooldown.
     {
         auto it = last_refresh_unix.find(id);
         if (it != last_refresh_unix.end()) {
@@ -430,9 +416,7 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
 
     SAM_LOG_INFO("refresh: starting for '{}' (steam_id={})", acc->login, acc->steam_id_64);
 
-    // If the account is missing a steam_id, try the local loginusers.vdf before
-    // submitting the network job. This is a fast local file read and avoids
-    // dispatching a worker just to give up.
+    // Resolve a missing steam_id from loginusers.vdf before dispatching a worker.
     if (acc->steam_id_64 == 0 && !acc->login.empty()) {
         auto sid = steam_local::lookup_steam_id(acc->login);
         if (sid != 0) {
@@ -452,9 +436,8 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
     const std::uint64_t resolved = acc->steam_id_64;
     std::string aid = id;
 
-    // Capture session credentials for the GCPD scraper.
-    // We rebuild a thin Account on the worker side rather than holding a pointer
-    // into the vault, since the vault lives on the UI thread.
+    // Thin Account copy for the worker: the vault lives on the UI thread, so
+    // never hold a pointer into it.
     core::Account creds;
     creds.steam_id_64 = acc->steam_id_64;
     creds.login = acc->login;
@@ -465,19 +448,16 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
     creds.access_token_expires = acc->access_token_expires;
     creds.proxy = acc->proxy;
 
-    // Credentials for silent auto-relogin: only sent into the worker if we
-    // actually have both the password and (for Steam-Guard-enrolled accounts)
-    // the shared_secret. The default_guard_provider helper inside the worker
-    // refuses to do anything without a usable TOTP source.
+    // Silent auto-relogin needs the password and (for SDA accounts) the
+    // shared_secret; default_guard_provider does nothing without a TOTP source.
     crypto::SecureString relogin_password = acc->password;
     std::optional<core::SteamGuardAccount> relogin_sda = acc->sda;
     const bool is_nfa = acc->is_nfa;
 
     bool gcpd_enabled = settings.gcpd_enabled;
     if (gcpd_enabled) {
-        // GCPD scrape is heavier than the Web API batch and uses a separate
-        // per-account cooldown so launch-wide refreshes don't crawl the
-        // gcpd page every time.
+        // GCPD scrape is heavy; separate per-account cooldown so launch-wide
+        // refreshes don't crawl the gcpd page every time.
         auto it = last_gcpd_refresh_unix.find(id);
         if (it != last_gcpd_refresh_unix.end()) {
             const auto now = std::chrono::duration_cast<std::chrono::seconds>(
@@ -501,24 +481,21 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
         auto games = steam_api::fetch_owned_games(cfg, resolved);
 
         // Web-session maintenance for the GCPD scraper:
-        //  1. If we have a refresh_token and the access_token is stale, mint
-        //     a fresh community-scoped access_token via GenerateAccessTokenForApp.
-        //  2. If that fails (or we never had a refresh_token), attempt a
-        //     silent auto-relogin using the stored password + shared_secret.
-        //  3. Run transfer_login (finalizelogin + settoken) to mint a fresh
-        //     steamLoginSecure cookie: these expire after ~24h even when
-        //     the access_token is still valid.
-        //  4. If everything fails AND no usable cookie remains, queue a UI
-        //     re-login prompt as the last resort.
+        //  1. refresh_token + stale access_token: mint a fresh community-scoped
+        //     access_token via GenerateAccessTokenForApp.
+        //  2. on failure: silent auto-relogin with stored password + shared_secret.
+        //  3. transfer_login (finalizelogin + settoken) for a fresh
+        //     steamLoginSecure cookie (these expire ~24h even with a valid token).
+        //  4. all failed and no cookie left: queue a UI re-login prompt.
         bool token_refreshed = false;
         bool need_relogin = false;
         bool nfa_token_dead = false;
         std::optional<steam_gcpd::MatchmakingData> mm_parsed;
         std::optional<steam_gcpd::AccountMainData> am_parsed;
 
-        // NFA accounts authenticate by a client-scoped refresh token, which Steam
-        // refuses to exchange for a web session over HTTP (AccessDenied). Skip
-        // token refresh + GCPD entirely and read liveness from the JWT itself.
+        // NFA = client-scoped refresh token, which Steam won't exchange for a web
+        // session over HTTP (AccessDenied). Skip token refresh + GCPD; read
+        // liveness from the JWT itself.
         if (is_nfa) {
             const std::int64_t now_s = std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
@@ -529,10 +506,9 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
         }
 
         if (!is_nfa) {
-        // Silent auto-relogin. Returns true iff we now hold a fresh
-        // refresh_token + access_token from a successful credentials login.
-        // Rate-limited to one attempt / 5 min / account so a bad stored
-        // password can't pin Steam's IP rate-limiter.
+        // True iff we now hold a fresh refresh_token + access_token. Rate-limited
+        // to one attempt / 5 min / account so a bad password can't pin Steam's
+        // IP rate-limiter.
         auto try_auto_relogin = [&]() -> bool {
             if (relogin_password.empty()) {
                 SAM_LOG_INFO("auto-relogin: skipped for '{}' (no stored password)", creds.login);
@@ -561,8 +537,8 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
             auto result = steam_login::run_full_login(
                 login,
                 [&](const std::vector<steam_login::GuardKind>& allowed) {
-                    // No UI prompt available from a worker thread; only the
-                    // shared_secret TOTP path can succeed silently.
+                    // No UI prompt from a worker thread; only the shared_secret
+                    // TOTP path can succeed silently.
                     return steam_login::default_guard_provider(
                         relogin_sda, allowed, /*on_prompt=*/{});
                 },
@@ -578,10 +554,8 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
             creds.refresh_token        = std::move(result.account.refresh_token);
             creds.access_token         = std::move(result.account.access_token);
             creds.access_token_expires = result.account.access_token_expires;
-            // run_full_login already registered the community session via
-            // finalizelogin + settoken; mint_cookie below becomes a no-op
-            // for this call (the cookie is fresh) but is still load-bearing
-            // for the steady-state 24h-expiry refresh path.
+            // run_full_login already registered the community session; mint_cookie
+            // is a no-op here but load-bearing for the steady-state 24h refresh.
             creds.steam_login_secure   = std::move(result.account.steam_login_secure);
             if (!result.account.session_id.empty()) {
                 creds.session_id = std::move(result.account.session_id);
@@ -591,7 +565,6 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
             return true;
         };
 
-        // Ensure we have a fresh access_token.
         if (creds.refresh_token.empty()) {
             SAM_LOG_INFO("refresh: no refresh_token for '{}', trying auto-relogin", creds.login);
             if (try_auto_relogin()) token_refreshed = true;
@@ -607,15 +580,13 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
             }
         }
 
-        // Mint a fresh community-domain steamLoginSecure cookie.
-        // If transfer_login fails (typically because the access_token was
-        // minted from an old wrong-audience refresh_token), try one
-        // auto-relogin to get a token whose `aud` includes web:community.
+        // Mint a fresh community-domain steamLoginSecure cookie. transfer_login
+        // failure usually means a wrong-audience refresh_token; one auto-relogin
+        // below gets a token whose `aud` includes web:community.
         auto mint_cookie = [&]() -> bool {
             if (creds.refresh_token.empty() || creds.session_id.empty()) return false;
             std::string new_cookie;
-            // finalizelogin takes the refresh_token (not the access_token)
-            // as nonce: see session.hpp.
+            // finalizelogin takes the refresh_token (not the access_token) as nonce.
             if (steam_login::transfer_login(creds.steam_id_64,
                                             creds.refresh_token,
                                             creds.session_id,
@@ -639,16 +610,13 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
             }
         }
 
-        // GCPD HTML scraper: populates premier_rating, wingman_rank,
-        // cooldown_* from matchmaking; CS2 player level + XP from
-        // accountmain (prime_status is inferred from these, see merge).
+        // GCPD HTML scraper: premier_rating, wingman_rank, cooldown_* from
+        // matchmaking; CS2 level + XP from accountmain (prime_status inferred).
         const bool gcpd_creds_ok = !creds.session_id.empty() && !creds.steam_login_secure.empty();
         if (gcpd_enabled && gcpd_creds_ok) {
-            // Session-expired detection is content-based, not status-based:
-            // Steam 302-rewrites `/profiles/{steamid}/gcpd/730` to
-            // `/id/{vanity}/gcpd/730` for any account with a vanity URL,
-            // which is the common case. The scraper follows redirects;
-            // here we check the body shape.
+            // Session-expired detection is content-based: Steam 302-rewrites
+            // /profiles/{id}/gcpd/730 to /id/{vanity}/gcpd/730 for vanity accounts,
+            // so status alone doesn't tell us. Check the body shape.
             auto run_tab = [&](steam_gcpd::Tab tab, auto parser) {
                 const auto resp = steam_gcpd::fetch_gcpd(creds, tab);
                 if (resp.status != 200) {
@@ -682,8 +650,7 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
         }
         }  // if (!is_nfa)
 
-        // Snapshot any refreshed-token values so the UI thread can update the
-        // vault Account. Copy SecureStrings out: they're cheap.
+        // Snapshot refreshed-token values for the UI thread to write to the vault.
         crypto::SecureString refreshed_at, refreshed_rt, refreshed_ls;
         std::string refreshed_sid;
         std::int64_t refreshed_exp = 0;
@@ -691,20 +658,16 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
             refreshed_at = creds.access_token;
             refreshed_rt = creds.refresh_token;       // GenerateAccessTokenForApp can rotate this
             refreshed_ls = creds.steam_login_secure;
-            // Auto-relogin can mint a fresh session_id when the vault was missing one.
-            // Persist it so the next refresh hits mint_cookie() instead of getting
-            // stuck on the 5-minute auto-relogin cooldown.
+            // Persist any auto-relogin-minted session_id so the next refresh hits
+            // mint_cookie() instead of the 5-minute auto-relogin cooldown.
             refreshed_sid = creds.session_id;
             refreshed_exp = creds.access_token_expires;
         }
         std::string relogin_login;
         if (need_relogin) {
-            // Launch/batch refresh can never silently log a non-SDA account back in
-            // (default_guard_provider has no shared_secret to satisfy the mobile
-            // guard, and there's no prompt callback from a worker thread). Suppress
-            // the popup in this case so launch doesn't shove a Full Login wizard at
-            // the user. SDA accounts keep the current behaviour as a fallback.
-            // Manual single-account refresh (batch_refresh=false) is unchanged.
+            // Batch refresh can't silently re-login a non-SDA account (no
+            // shared_secret, no worker-thread prompt), so suppress the popup; don't
+            // shove a Full Login wizard at launch. Manual refresh is unchanged.
             if (batch_refresh && !relogin_sda.has_value()) {
                 SAM_LOG_INFO("refresh: skipping launch login prompt for non-SDA '{}'",
                              creds.login);
@@ -774,10 +737,9 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
                 if (am_parsed->cs2_player_xp >= 0) {
                     a->cs2.cs2_player_xp = am_parsed->cs2_player_xp;
                 }
-                // Prime inference: in CS2 you can't earn XP on a non-Prime
-                // account. So if level > 1, or level == 1 with any XP earned,
-                // the account has Prime. The dedicated `primeaccount` GCPD
-                // tab is no longer reliable for this signal in CS2.
+                // Prime inference: non-Prime CS2 accounts can't earn XP, so
+                // level > 1 (or level 1 with any XP) means Prime. The primeaccount
+                // GCPD tab is no longer reliable for this in CS2.
                 const bool level_above_1 = am_parsed->cs2_player_level > 1;
                 const bool has_any_xp    = am_parsed->cs2_player_xp > 0;
                 a->cs2.prime_status = level_above_1 || has_any_xp;
@@ -817,9 +779,8 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh)
                 pending_relogin_login = relogin_login;
             }
 
-            // NFA token expired/invalid: notify once per dead token. Detection is
-            // from the JWT (not an API result), so it can't false-positive on the
-            // expected AccessDenied. Cleared on re-import so a fresh token re-arms.
+            // Notify once per dead NFA token. Detection is from the JWT, not an
+            // API result, so it can't false-positive on the expected AccessDenied.
             if (nfa_token_dead && nfa_dead_notified.insert(aid).second) {
                 const std::string who = a->web.persona_name.empty()
                                             ? a->login : a->web.persona_name;
@@ -875,7 +836,7 @@ void AppState::refresh_spend(const std::string& id, bool quiet) {
     if (spend_fetching_ids.count(id)) return;
     spend_fetching_ids.insert(id);
 
-    // Snapshot credentials for the worker; the vault Account lives on the UI thread.
+    // Credentials snapshot for the worker; the vault lives on the UI thread.
     core::Account creds;
     creds.login                = acc->login;
     creds.password             = acc->password;
@@ -893,10 +854,9 @@ void AppState::refresh_spend(const std::string& id, bool quiet) {
 
     job_pump::submit([this, aid, login_name, creds, toast]() mutable {
         http::ScopedProxy proxy_guard(std::string(creds.proxy.data(), creds.proxy.size()));
-        // AccountSpend is gated behind a freshly-password-authenticated web:help
-        // session (step-up auth). A full credentials login gives a fresh-oat
-        // session; the scraper then lets help.steampowered.com bootstrap its own
-        // cookie across the redirect chain.
+        // AccountSpend needs a freshly-password-authed web:help session (step-up
+        // auth). The full login gives a fresh-oat session; the scraper then lets
+        // help.steampowered.com bootstrap its own cookie across the redirects.
         std::string err;
         if (!auto_relogin(aid, creds, &err)) {
             SAM_LOG_WARN("spend: sign-in failed for '{}': {}", login_name, err);
@@ -921,7 +881,7 @@ void AppState::refresh_spend(const std::string& id, bool quiet) {
             fail_msg = "Spend: unexpected response (status " + std::to_string(resp.status) + ")";
         }
 
-        // The login wasn't wasted; carry the fresh session back to persist it.
+        // Carry the fresh session back to persist it.
         crypto::SecureString rt = creds.refresh_token;
         crypto::SecureString at = creds.access_token;
         crypto::SecureString ls = creds.steam_login_secure;
@@ -974,10 +934,8 @@ void AppState::refresh_all_spend(bool only_missing) {
         return;
     }
 
-    // Eligible = full-access account with stored credentials and a known
-    // SteamID. only_missing additionally skips accounts that already have a
-    // figure (the one-time automatic fill); a manual "Refresh funds" re-pulls
-    // everything.
+    // Eligible = full-access account with stored credentials and a SteamID.
+    // only_missing skips accounts that already have a figure (the launch fill).
     std::vector<std::string> ids;
     for (const auto& a : vault.accounts) {
         if (a.is_nfa || a.password.empty() || a.steam_id_64 == 0) continue;
@@ -1013,9 +971,8 @@ void AppState::refresh_all_spend(bool only_missing) {
                  ids.size(), only_missing);
     spend_bulk_running.store(true, std::memory_order_release);
 
-    // One outer worker paces the per-account fetches a few seconds apart so we
-    // never fire many sign-ins at once. Each scheduled refresh_spend runs in its
-    // own worker (quiet: no per-account toasts; the figures appear as they land).
+    // One outer worker paces per-account fetches seconds apart so we never fire
+    // many sign-ins at once. Each refresh_spend runs quiet (no per-account toasts).
     job_pump::submit([this, ids = std::move(ids)] {
         for (const auto& aid : ids) {
             {
@@ -1084,11 +1041,9 @@ bool AppState::auto_relogin(const std::string& account_id,
     creds.refresh_token        = std::move(result.account.refresh_token);
     creds.access_token         = std::move(result.account.access_token);
     creds.access_token_expires = result.account.access_token_expires;
-    // run_full_login runs finalizelogin + settoken internally and ships
-    // back both steam_login_secure and session_id bound to the registered
-    // community session. The cookie may be the manual fallback if settoken
-    // failed; mobileconf writes will then trip success=false until the
-    // next relogin retries the registration.
+    // run_full_login ships back steam_login_secure + session_id bound to the
+    // registered community session. If settoken failed the cookie is the manual
+    // fallback, and mobileconf writes trip success=false until the next relogin.
     creds.steam_login_secure   = std::move(result.account.steam_login_secure);
     if (!result.account.session_id.empty()) {
         creds.session_id = std::move(result.account.session_id);
@@ -1241,7 +1196,7 @@ void AppState::save_settings() {
     vj["mode"]                = static_cast<int>(settings.cs2_video.mode);
     vj["source_label"]        = settings.cs2_video.source_label;
     vj["folder_source_label"] = settings.cs2_video.folder_source_label;
-    // Downgrade-safe: an older build keys off this bool for video.txt mode.
+    // Downgrade-safe: older builds key off this bool for video.txt mode.
     vj["auto_apply_on_login"] = (settings.cs2_video.mode == CS2ConfigMode::VideoTxt);
 
     auto path = settings_path();
@@ -1253,8 +1208,7 @@ void AppState::save_settings() {
 }
 
 void AppState::load_settings() {
-    // A settings reload is a lock-equivalent transition: any privacy_mode
-    // reveals from before the reload should not survive it.
+    // A reload is lock-equivalent: privacy_mode reveals must not survive it.
     clear_session_secrets();
 
     auto path = settings_path();
@@ -1449,7 +1403,7 @@ void AppState::load_settings() {
     }
 }
 
-// Builds the post-deploy toast. Must run on the UI thread (touches `toasts`).
+// UI thread only (touches `toasts`).
 static void push_cs2_toast(AppState& state, const std::string& aid,
                            const std::string& login,
                            const cs2_config::DeployResult& result, const char* prefix) {
@@ -1474,8 +1428,7 @@ void AppState::apply_cs2_video_config(const core::Account& a) {
     const auto mode = settings.cs2_video.mode;
     if (mode == CS2ConfigMode::None) return;
 
-    // Copy the account fields by value; the Account& may be invalidated by a
-    // vault mutation before a worker job runs.
+    // By value: the Account& may be invalidated by a vault mutation before a job runs.
     const std::string aid = a.id;
     const std::string login = a.login;
     const std::uint64_t sid = a.steam_id_64;
@@ -1487,8 +1440,8 @@ void AppState::apply_cs2_video_config(const core::Account& a) {
         return;
     }
 
-    // Folder730: a recursive copy can be large, so run it off the UI thread and
-    // marshal the toast back to the main thread.
+    // Folder730 recursive copy can be large; run off the UI thread, marshal the
+    // toast back.
     job_pump::submit([this, aid, login, sid, tdir = cs2_730_template_dir()]() {
         const auto result = cs2_config::deploy_730_folder(sid, tdir);
         post_ui_callback([this, aid, login, result]() {
@@ -1498,17 +1451,15 @@ void AppState::apply_cs2_video_config(const core::Account& a) {
 }
 
 void AppState::open_account_in_browser(const core::Account& a) {
-    // NFA accounts hold a client-scoped refresh token Steam won't exchange for a
-    // web session, and an account with no SteamID has no profile to open. The
-    // context menu disables the item in both cases; guard again here.
+    // NFA can't mint a web session; no SteamID = no profile. Context menu disables
+    // both, but guard again here.
     if (a.steam_id_64 == 0 || a.is_nfa) return;
 
     const std::string aid = a.id;
     const std::string login_name = a.login;
     const std::uint64_t sid64 = a.steam_id_64;
 
-    // Thin copy for the worker; the Account& may be invalidated by a vault
-    // mutation before the job runs (same pattern as refresh/spend).
+    // Thin copy for the worker; the Account& may be invalidated before the job runs.
     core::Account creds;
     creds.steam_id_64 = a.steam_id_64;
     creds.login = a.login;
@@ -1528,9 +1479,8 @@ void AppState::open_account_in_browser(const core::Account& a) {
 
         if (creds.session_id.empty()) creds.session_id = crypto::random_session_id();
 
-        // finalizelogin consumes the refresh_token. Refresh the (cheap)
-        // access_token first; if the refresh_token is missing or rejected, fall
-        // back to a full credentials re-login to mint a fresh pair.
+        // finalizelogin consumes the refresh_token. Refresh the cheap access_token
+        // first; if the refresh_token is missing or rejected, full re-login.
         if (creds.refresh_token.empty()) {
             std::string err;
             auto_relogin(aid, creds, &err);
@@ -1541,7 +1491,6 @@ void AppState::open_account_in_browser(const core::Account& a) {
             }
         }
 
-        // Land the browser on the profile once the community cookie is set.
         const std::string profile_url =
             "https://steamcommunity.com/profiles/" + std::to_string(sid64);
         const std::string redir = "https://steamcommunity.com/login/home/?goto=" +
@@ -1554,13 +1503,13 @@ void AppState::open_account_in_browser(const core::Account& a) {
 
         std::vector<steam_login::TransferTarget> targets;
         if (!build_targets(targets)) {
-            // The refresh_token may be expired; one credentials re-login + retry.
+            // refresh_token may be expired; one re-login + retry.
             std::string err;
             if (auto_relogin(aid, creds, &err)) build_targets(targets);
         }
 
-        // Replicate Steam's per-domain transfer in the browser: each target's
-        // cookies are set (in hidden frames), then the page lands on the profile.
+        // Replicate Steam's per-domain transfer: each target's cookies are set in
+        // hidden frames, then the page lands on the profile.
         bool ready = false;
         if (!targets.empty()) {
             const std::string html =
@@ -1577,7 +1526,7 @@ void AppState::open_account_in_browser(const core::Account& a) {
             SAM_LOG_WARN("browser-login: could not mint a web session for '{}'", login_name);
         }
 
-        // Carry any rotated tokens back to persist them.
+        // Carry rotated tokens back to persist them.
         crypto::SecureString rt = creds.refresh_token;
         crypto::SecureString at = creds.access_token;
         crypto::SecureString ls = creds.steam_login_secure;

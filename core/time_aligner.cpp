@@ -51,7 +51,7 @@ bool query_steam_time(std::int64_t& out_server_unix) {
         const auto& r = j.at("response");
         if (r.contains("server_time")) {
             const auto& st = r["server_time"];
-            // QueryTime returns server_time either as a string or a number depending on version.
+            // QueryTime returns server_time as a string or a number depending on version.
             if (st.is_string()) {
                 out_server_unix = std::stoll(st.get<std::string>());
             } else {

@@ -37,9 +37,8 @@ void draw_settings(app::AppState& state) {
     ImGui::TextUnformatted("Settings");
     ImGui::Spacing();
 
-    // Writes the DPAPI-wrapped master password so the next launch (or the
-    // headless logon run) can open the vault without a prompt. Returns false if
-    // the password isn't available or the write fails.
+    // Writes the DPAPI-wrapped master password so the next launch (or headless logon
+    // run) opens the vault without a prompt. False if unavailable or the write fails.
     auto write_master_pw_cache = [&state]() -> bool {
         try {
             std::span<const std::uint8_t> pw_bytes{
@@ -55,11 +54,9 @@ void draw_settings(app::AppState& state) {
         }
     };
 
-    // Pin the footer to the bottom: the body scrolls inside a child that reserves
-    // room for everything drawn after it, so the parent content region doesn't
-    // grow a second scrollbar. That trailing content is the gap + button row here
-    // plus the three item-spacings around them and main_window's Dummy(0,24) added
-    // after this screen returns.
+    // Pin the footer: the body scrolls in a child that reserves room for everything
+    // drawn after it, so the parent doesn't grow a second scrollbar. Trailing content
+    // is the gap + button row plus three item-spacings and main_window's Dummy(0,24).
     constexpr float kButtonRowHeight = 26.0F;  // action_button height
     constexpr float kTrailingDummy   = 24.0F;  // main_window's Dummy after draw_screen
     const float footer_reserved = ImGui::GetStyle().ItemSpacing.y * 3.0F +
@@ -67,8 +64,7 @@ void draw_settings(app::AppState& state) {
 
     ImGui::BeginChild("##settings-body", ImVec2(0, -footer_reserved),
                       ImGuiChildFlags_NavFlattened);
-    // The parent's PushItemWidth(-kContentPaddingX) doesn't carry across the
-    // child boundary; re-apply it so widget and separator right edges match.
+    // PushItemWidth doesn't carry across the child boundary; re-apply so right edges match.
     ImGui::PushItemWidth(-kContentPaddingX);
 
     separator_text("General");
@@ -105,8 +101,7 @@ void draw_settings(app::AppState& state) {
     ImGui::Spacing();
     separator_text("Privacy");
     if (ImGui::Checkbox("Privacy mode - hide login names", &state.settings.privacy_mode)) {
-        // Switching the toggle - either direction - resets any per-account
-        // reveals so the new mode starts from a clean state.
+        // Reset per-account reveals on either toggle direction.
         state.clear_session_secrets();
     }
     hover_tooltip("Replaces account login names with <hidden> everywhere they appear. Click a "
@@ -124,9 +119,7 @@ void draw_settings(app::AppState& state) {
         ImGui::TableNextColumn(); ImGui::Checkbox("Steam level",        &state.settings.info.show_steam_level);
         ImGui::TableNextColumn(); ImGui::Checkbox("Owned games count",  &state.settings.info.show_owned_games);
 
-        // Premier/Wingman/MapRanks/Prime/Cooldown are populated by the
-        // GCPD scraper (gcpd_enabled below). Requires a valid login so
-        // the steamLoginSecure cookie is fresh; see Full Login wizard.
+        // Populated by the GCPD scraper (gcpd_enabled below); needs a fresh login.
         ImGui::TableNextColumn(); ImGui::Checkbox("Premier rating",     &state.settings.info.show_premier);
         ImGui::TableNextColumn(); ImGui::Checkbox("Wingman rank",       &state.settings.info.show_wingman);
 
@@ -161,8 +154,7 @@ void draw_settings(app::AppState& state) {
     ImGui::Spacing();
     separator_text("Proxy");
 
-    // Shared async probe for both Test buttons: forces the given proxy regardless of
-    // the active mode and reports the exit IP (or the transport error).
+    // Shared by both Test buttons: forces the given proxy regardless of mode, reports exit IP.
     static std::string single_test_result;
     static bool        single_testing = false;
     static std::string acct_test_result;
@@ -232,7 +224,6 @@ void draw_settings(app::AppState& state) {
         }
     }
 
-    // Per-account proxy editor (rendered every frame; a no-op until opened above).
     {
         static std::string sel_id;
         static std::string proxy_buf;
@@ -315,7 +306,7 @@ void draw_settings(app::AppState& state) {
         if (ImGui::Checkbox("Start with Windows (refresh in the background at logon)",
                             &state.settings.start_with_windows)) {
             if (state.settings.start_with_windows && !prev) {
-                // Background refresh needs the vault to auto-unlock, so enable
+                // Background refresh needs the vault to auto-unlock: enable
                 // refresh-on-launch and the DPAPI password cache alongside it.
                 state.settings.refresh_on_launch = true;
                 if (write_master_pw_cache()) state.settings.remember_master_password = true;
@@ -560,13 +551,12 @@ void draw_settings(app::AppState& state) {
         if (ImGui::Checkbox("Skip master-password prompt on launch (DPAPI)",
                             &state.settings.remember_master_password)) {
             if (state.settings.remember_master_password && !prev) {
-                // Just enabled: write the cache now using the unlocked master
-                // password. If we can't, revert the toggle.
+                // Revert the toggle if the cache write fails.
                 if (!write_master_pw_cache()) {
                     state.settings.remember_master_password = false;
                 }
             } else if (!state.settings.remember_master_password && prev) {
-                // Just disabled: delete the cache so the next launch prompts.
+                // Delete the cache so the next launch prompts.
                 std::error_code ec;
                 std::filesystem::remove(app::master_pw_cache_path(), ec);
                 SAM_LOG_INFO("auto-unlock: DPAPI cache removed");
@@ -610,8 +600,7 @@ void draw_settings(app::AppState& state) {
                             {L"All files (*.*)", L"*.*"}};
             const auto res = platform::file_dialog::open_file(opts);
             if (res.ok) {
-                // Keep our own copy so the imported file survives the original
-                // being moved or deleted.
+                // Keep our own copy so it survives the original being moved or deleted.
                 std::error_code ec;
                 std::filesystem::copy_file(res.path, app::cs2_video_template_path(),
                                            std::filesystem::copy_options::overwrite_existing, ec);
@@ -648,8 +637,7 @@ void draw_settings(app::AppState& state) {
             opts.title = L"Select CS2 730 folder";
             const auto res = platform::file_dialog::pick_folder(opts);
             if (res.ok) {
-                // Snapshot the folder into app data so it survives the original
-                // being moved or deleted.
+                // Snapshot into app data so it survives the original being moved or deleted.
                 const auto imp = cs2_config::import_730_template(
                     res.path, app::cs2_730_template_dir());
                 if (!imp.ok) {
@@ -672,7 +660,7 @@ void draw_settings(app::AppState& state) {
         hover_tooltip("Pick a 730 folder (the CS2 userdata settings folder). A copy is taken "
                       "now and, on login, merged into userdata/<id>/730. Re-choose to update "
                       "the copy.");
-        // Soft check: the snapshot should contain local/cfg if it is really a 730 folder.
+        // A real 730 folder should contain local/cfg.
         if (!state.settings.cs2_video.folder_source_label.empty()) {
             std::error_code vec;
             if (!std::filesystem::is_directory(
@@ -816,8 +804,7 @@ void draw_settings(app::AppState& state) {
                 std::string err;
                 if (platform::relocate_data_dir(s_pending_dir, &err)) {
                     if (s_pending_is_default) {
-                        // No pointer == default location.
-                        platform::clear_custom_data_dir(nullptr);
+                        platform::clear_custom_data_dir(nullptr);  // nullptr = default location
                     }
                     s_restart_pending = true;
                 } else {

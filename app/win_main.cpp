@@ -52,9 +52,8 @@
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-// Not declared in the public SDK headers. One of the messages an elevated window
-// must allow through the UIPI filter for a normal-integrity Explorer to deliver a
-// drag-drop payload.
+// Not in the public SDK. An elevated window must allow this through the UIPI
+// filter for normal-integrity Explorer to deliver a drag-drop payload.
 #ifndef WM_COPYGLOBALDATA
 #define WM_COPYGLOBALDATA 0x0049
 #endif
@@ -72,23 +71,20 @@ IDXGISwapChain*         g_swap_chain = nullptr;
 ID3D11RenderTargetView* g_rtv = nullptr;
 UINT                    g_resize_w = 0;
 UINT                    g_resize_h = 0;
-// Set when Present reports the window is occluded/minimized; the main loop
-// throttles instead of spinning at full speed while hidden in the tray.
+// Set when Present reports occlusion/minimized; the loop throttles instead of
+// spinning at full speed while hidden in the tray.
 bool                    g_occluded = false;
 
-// Set after AppState is constructed so the WM_DROPFILES handler can route
-// dropped .maFile paths into the AddAccount screen. Cleared before AppState
+// Set after AppState is constructed (WM_DROPFILES routing), cleared before it
 // is destroyed.
 sam::app::AppState* g_state = nullptr;
 
-// True once Dear ImGui is initialised. The shared wnd_proc must not forward to
-// the ImGui Win32 handler before then; the headless --startup run never inits
-// ImGui at all.
+// wnd_proc must not forward to the ImGui Win32 handler before this is true; the
+// headless --startup run never inits ImGui at all.
 bool g_imgui_ready = false;
 
-// Posted to the running primary instance when a --startup launch arrives while
-// the app is already open, asking it to refresh in place instead of opening a
-// second window.
+// Posted to the primary instance when a --startup launch arrives while open, so
+// it refreshes in place instead of opening a second window.
 constexpr UINT WM_APP_STARTUP_REFRESH = WM_APP + 1;
 
 void create_render_target() {
@@ -147,8 +143,7 @@ void destroy_device() {
     if (g_device)     { g_device->Release();     g_device = nullptr; }
 }
 
-// Case-insensitive trailing extension match. `ext` includes the leading dot
-// and must be lowercase.
+// `ext_lower` includes the leading dot and must be lowercase.
 bool has_extension(const std::wstring& path, std::wstring_view ext_lower) {
     if (path.size() < ext_lower.size()) return false;
     for (std::size_t i = 0; i < ext_lower.size(); ++i) {
@@ -167,7 +162,7 @@ DropKind classify_path(const std::wstring& path) {
     return DropKind::Skip;
 }
 
-// Non-recursive directory scan: yields each `*.maFile` / `*.dat` child.
+// Non-recursive: yields each *.maFile / *.dat child.
 void scan_directory(const std::wstring& dir_w,
                     std::vector<std::string>& out_mafiles,
                     std::vector<std::string>& out_info_dat) {
@@ -223,9 +218,7 @@ void handle_dropped_files(HDROP hdrop) {
                                               mafiles.begin(), mafiles.end());
         g_state->pending_info_dat_drops.insert(g_state->pending_info_dat_drops.end(),
                                                 info_dat.begin(), info_dat.end());
-        // Focus the tab matching the dominant queue; mafile wins on tie so a
-        // mixed drop lands on the more common surface (the tab bar is still
-        // visible if the user wants to switch).
+        // Focus the dominant queue's tab; mafile wins on tie.
         if (!mafiles.empty() && mafiles.size() >= info_dat.size()) {
             g_state->pending_mafile_focus = true;
         } else if (!info_dat.empty()) {
@@ -248,7 +241,7 @@ LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         case WM_NCCALCSIZE:
             // Collapse the standard frame so the client covers the whole window;
-            // when maximized, inset by the (DPI-aware) frame so content isn't clipped.
+            // when maximized, inset by the DPI-aware frame so content isn't clipped.
             if (wp == TRUE) {
                 auto* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lp);
                 if (IsZoomed(hwnd)) {
@@ -267,7 +260,7 @@ LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             break;
 
         case WM_NCHITTEST: {
-            // Resize borders and the caption strip are non-client so Windows drives
+            // Resize borders + caption are non-client so Windows drives
             // drag/snap/maximize; the title-bar button block stays client for ImGui.
             POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             RECT wr;
@@ -349,7 +342,6 @@ LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
 
         case sam::platform::tray_icon::kCallbackMessage:
-            // A click on the icon or its balloon brings the main window back.
             if (LOWORD(lp) == WM_LBUTTONUP || LOWORD(lp) == NIN_SELECT ||
                 LOWORD(lp) == NIN_BALLOONUSERCLICK) {
                 ShowWindow(hwnd, SW_RESTORE);
@@ -371,8 +363,8 @@ LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
-// True once the background refresh has finished its Web API phase and (when GCPD
-// scraping is on) the staggered per-account pass has completed too.
+// True once the Web API phase finished and (with GCPD on) the staggered
+// per-account pass too.
 bool startup_refresh_complete(const sam::app::AppState& state) {
     if (!state.refresh_web_phase_done.load(std::memory_order_relaxed)) return false;
     if (!state.settings.gcpd_enabled) return true;
@@ -381,9 +373,9 @@ bool startup_refresh_complete(const sam::app::AppState& state) {
     return state.refresh_all_done.load(std::memory_order_relaxed) >= total;
 }
 
-// Headless logon run (launched by the scheduled task with --startup): refresh in
-// the background with the window hidden, raise a Windows balloon for any new
-// ban/cooldown, then exit. No D3D or ImGui is created. Tears down `hwnd` itself.
+// Headless logon run (scheduled task, --startup): refresh with the window hidden,
+// raise a balloon for any new ban/cooldown, then exit. No D3D or ImGui. Tears
+// down `hwnd` itself.
 int run_startup_refresh(HINSTANCE inst, HWND hwnd) {
     sam::time_aligner::start();
     sam::app::job_pump::start_workers(4);
@@ -479,8 +471,8 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
 
     sam::platform::SingleInstance one(L"luminary-sam-mutex-v1");
     if (!one.is_primary()) {
-        // A --startup launch arriving while the app is already open just asks the
-        // running instance to refresh; it does not open a second window.
+        // A --startup launch while already open just asks the running instance to
+        // refresh; no second window.
         if (startup_mode) {
             if (HWND existing = FindWindowW(kWindowClass, nullptr)) {
                 PostMessageW(existing, WM_APP_STARTUP_REFRESH, 0, 0);
@@ -492,8 +484,7 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     }
 
     sam::app::ensure_data_dirs();
-    // If a previous run relocated the data folder, drop the now-stale old copy
-    // before we open the log in the new location.
+    // Drop a relocated-away old data folder before opening the log in the new one.
     sam::platform::cleanup_relocated_old_dir();
     sam::log::init(sam::app::log_dir());
     SAM_LOG_INFO("starting up");
@@ -519,9 +510,8 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
 
     DragAcceptFiles(hwnd, TRUE);
 
-    // The app runs elevated, so UIPI blocks drop messages posted from a
-    // normal-integrity Explorer and the WM_DROPFILES payload never arrives. Opt
-    // the drag-drop messages through so dropping maFiles / info.dat works.
+    // App runs elevated, so UIPI blocks drop messages from normal-integrity
+    // Explorer; opt the drag-drop messages through so maFile/info.dat drops work.
     ChangeWindowMessageFilterEx(hwnd, WM_DROPFILES, MSGFLT_ALLOW, nullptr);
     ChangeWindowMessageFilterEx(hwnd, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
     ChangeWindowMessageFilterEx(hwnd, WM_COPYGLOBALDATA, MSGFLT_ALLOW, nullptr);
@@ -533,18 +523,17 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         return 1;
     }
 
-    // We collapse the standard frame in WM_NCCALCSIZE; a thin DWM frame
-    // extension keeps the system drop shadow and rounded corners.
+    // Frame collapsed in WM_NCCALCSIZE; a thin DWM extension keeps the system drop
+    // shadow and rounded corners.
     const MARGINS frame_margins{0, 0, 1, 0};
     DwmExtendFrameIntoClientArea(hwnd, &frame_margins);
 
-    // Force a non-client recompute through wnd_proc so the collapsed frame
-    // (WM_NCCALCSIZE) takes effect before the window is first shown.
+    // Force a non-client recompute so the collapsed frame takes effect before show.
     SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
                  SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 
-    // Cloak the window, then show it: DWM plays the open animation off-screen
-    // during heavy init. We uncloak after the first frame (instant, no flash).
+    // Cloak then show: DWM plays the open animation off-screen during heavy init;
+    // uncloak after the first frame so there's no flash.
     BOOL cloak = TRUE;
     DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &cloak, sizeof(cloak));
     ShowWindow(hwnd, SW_SHOW);
@@ -572,9 +561,8 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
 
     sam::app::AppState state;
     state.load_settings();
-    // Keep the logon task in lockstep with the setting: re-register when on (also
-    // repairs the stored exe path if the app moved), or remove an orphaned task
-    // when off.
+    // Keep the logon task in lockstep: re-register when on (also repairs a moved
+    // exe path), remove an orphaned task when off.
     if (state.settings.start_with_windows) {
         sam::platform::startup_task::set_run_at_logon(true);
     } else if (sam::platform::startup_task::is_run_at_logon_enabled()) {
@@ -605,10 +593,8 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     g_state = &state;
     sam::app::conf_poller::start(state);
 
-    // Auto-unlock: if the user opted in (Settings -> "Skip master-password
-    // prompt on launch") and a DPAPI-wrapped password is cached, try it. On
-    // failure we silently fall through to the regular Unlock screen; the
-    // cache is wiped so it doesn't keep failing every launch.
+    // Auto-unlock with the cached DPAPI-wrapped password if opted in. On failure
+    // fall through to the Unlock screen and wipe the cache so it stops failing.
     if (state.settings.remember_master_password &&
         sam::core::store::vault_exists(sam::app::vault_path())) {
         const auto cache_path = sam::app::master_pw_cache_path();
@@ -628,9 +614,7 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
                 state.last_interaction = std::chrono::steady_clock::now();
                 state.current_screen = sam::app::Screen::Accounts;
                 if (state.settings.refresh_on_launch) state.refresh_account_data();
-                // One-time automatic fill of external funds for accounts missing
-                // a figure (skipped when the feature is off); no-op once every
-                // eligible account has been fetched.
+                // One-time fill of external funds for accounts missing a figure.
                 if (state.settings.info.show_external_funds) {
                     state.refresh_all_spend(/*only_missing=*/true);
                 }
@@ -665,9 +649,8 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         }
         if (quit) break;
 
-        // Minimized or fully occluded: Present stops blocking on vsync, so cap
-        // the loop instead of burning a core. Wakes immediately on any message
-        // (tray restore, hotkey) and still drains background jobs ~10x/sec.
+        // Minimized/occluded: Present stops blocking on vsync, so cap the loop
+        // instead of burning a core. Wakes on any message, still drains jobs ~10x/sec.
         if (g_occluded || IsIconic(hwnd)) {
             MsgWaitForMultipleObjects(0, nullptr, FALSE, 100, QS_ALLINPUT);
         }
@@ -731,7 +714,7 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         const HRESULT pr = g_swap_chain->Present(1, 0);
         g_occluded = (pr == DXGI_STATUS_OCCLUDED);
 
-        // First frame is on screen; uncloak so the window appears already painted.
+        // Uncloak after the first frame so the window appears already painted.
         if (!window_shown) {
             BOOL uncloak = FALSE;
             DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &uncloak, sizeof(uncloak));
@@ -739,12 +722,12 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         }
     }
 
-    // Abort in-flight HTTP so the worker, time-aligner, and update-check threads
-    // joined below return immediately instead of blocking on a WinHTTP timeout.
+    // Abort in-flight HTTP so the threads joined below return immediately instead
+    // of blocking on a WinHTTP timeout.
     sam::http::cancel_all();
 
-    // Flush any debounced vault save before tearing down the worker so the
-    // last edit isn't lost (e.g. trust-label change right before quit).
+    // Flush the debounced vault save before tearing down the worker so the last
+    // edit isn't lost.
     state.flush_pending_save();
     state.scrub_vault_secrets();
     g_state = nullptr;

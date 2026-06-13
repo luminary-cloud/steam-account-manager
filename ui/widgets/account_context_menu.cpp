@@ -20,7 +20,7 @@ namespace sam::ui::widgets {
 void draw_account_context_menu(app::AppState& state, const core::Account& a) {
     const auto secs = std::chrono::seconds(state.settings.clipboard_clear_seconds);
 
-    // Items that don't apply to this account are hidden rather than greyed out.
+    // Inapplicable items are hidden, not greyed out.
     if (!a.login.empty() && ImGui::MenuItem("Copy login")) {
         platform::clipboard::set_text(a.login);
     }
@@ -58,17 +58,15 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         if (!code.empty()) platform::clipboard::set_text(code);
     }
 
-    // Sign the default browser in to this account and open its profile in a
-    // private window. Needs a web-capable refresh token (or a saved password to
-    // mint one), so it's hidden for token-only (NFA) accounts.
+    // Needs a web-capable refresh token (or a saved password to mint one), so
+    // it's hidden for token-only (NFA) accounts.
     const bool can_browser = has_sid && !a.is_nfa &&
                              (!a.refresh_token.empty() || !a.password.empty());
     if (can_browser && ImGui::MenuItem("Open in browser (signed in)")) {
         state.open_account_in_browser(a);
     }
 
-    // Video config + Change username both need a SteamID, so the whole group
-    // (and its separator) only shows once we have one.
+    // Video config + Change username both need a SteamID.
     if (has_sid) {
         ImGui::Separator();
 
@@ -93,8 +91,8 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         }
     }
 
-    // NFA accounts can't scrape their CS2 cooldown from GCPD, so let the user set
-    // it by hand from the known cooldown tiers.
+    // NFA accounts can't scrape their cooldown from GCPD, so allow setting it by
+    // hand from the known tiers.
     if (a.is_nfa) {
         ImGui::Separator();
         if (ImGui::BeginMenu("Competitive cooldown")) {
@@ -110,7 +108,7 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
                     acc->cs2.cooldown_expires_unix = expires;
                     acc->cs2.cooldown_reason = expires > 0 ? "Competitive cooldown" : "";
                     // Mirror the snapshot so the next refresh diff doesn't fire a
-                    // cooldown notification for a value we set ourselves.
+                    // notification for a value we set ourselves.
                     acc->prev_snapshot.cooldown_expires_unix = expires;
                     state.vault_dirty = true;
                     state.save_vault_if_dirty();
@@ -130,9 +128,8 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         }
     }
 
-    // Weekly XP drop is set purely by hand (there's no scrape source), so offer it
-    // for every account. Marking it claimed stores the next weekly reset time; the
-    // marker auto-clears once that moment passes.
+    // No scrape source, so this is hand-set for every account. Marking claimed
+    // stores the next weekly reset; the marker auto-clears once it passes.
     ImGui::Separator();
     if (ImGui::BeginMenu("Weekly XP drop")) {
         auto set_drop = [&](std::int64_t reset_unix) {
@@ -144,8 +141,6 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         };
         const std::int64_t now = now_seconds();
         const bool claimed = a.cs2.weekly_drop_reset_unix > now;
-        // Show only the action that applies: mark it when unclaimed (or after it
-        // has expired), clear it only while there's an active claim to remove.
         if (!claimed && ImGui::MenuItem("Mark claimed")) {
             set_drop(next_weekly_reset(now));
         }

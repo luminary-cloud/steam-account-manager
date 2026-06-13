@@ -42,8 +42,8 @@ constexpr float kButtonRowH   = 36.0F;
 constexpr float kItemIcon     = 40.0F;
 constexpr float kBtnW         = 112.0F;
 constexpr float kStatePillW   = 132.0F;
-constexpr float kTile         = 56.0F;   // inventory tile box
-constexpr float kIconInset    = 7.0F;    // icon padding inside the tile box
+constexpr float kTile         = 56.0F;
+constexpr float kIconInset    = 7.0F;
 
 struct AccountTradeState {
     std::vector<trade::TradeOffer> sent;
@@ -58,8 +58,7 @@ struct AccountTradeState {
     std::int64_t inv_loaded_unix = 0;
 };
 
-// Lightweight per-frame copy for drawing: just the offer lists, never the
-// inventory. Keeps the 100-account list cheap to render.
+// Per-frame draw copy: offer lists only, never inventory, to keep the 100-account list cheap.
 struct DrawSnap {
     std::vector<trade::TradeOffer> sent;
     std::vector<trade::TradeOffer> received;
@@ -71,26 +70,23 @@ std::mutex g_mtx;
 std::unordered_map<std::string, AccountTradeState> g_states;
 std::unordered_set<std::string> g_in_flight;  // offer ids with an action running
 
-// One tradable item in the picker, with its name pre-lowercased for filtering.
 struct PickItem {
     trade::InventoryItem item;
-    std::string lname;
+    std::string lname;  // pre-lowercased for filtering
 };
 
-// State for the create-trade modal. UI-thread only. One account selected =
-// pick specific items; several selected = bulk send-all-tradable.
+// UI-thread only. One account selected = pick specific items; several = bulk send-all-tradable.
 struct SendModal {
     bool open_request = false;
-    std::unordered_set<std::string> accounts;  // selected source accounts
+    std::unordered_set<std::string> accounts;
     char url_buf[256] = {};
     char msg_buf[160] = {};
-    char acct_search[64] = {};                 // account-list filter
-    char search_buf[64] = {};                  // item filter
+    char acct_search[64] = {};
+    char search_buf[64] = {};
     std::unordered_set<std::uint64_t> selected;  // chosen item asset ids (single mode)
-    bool bulk_ack = false;                      // "I understand" for bulk send
+    bool bulk_ack = false;
 
-    // Cache of the single picked account's tradable inventory, rebuilt only when
-    // the underlying inventory changes (not every frame).
+    // Rebuilt only when the underlying inventory changes, not every frame.
     std::vector<PickItem> inv_cache;
     std::int64_t inv_cache_unix = -1;
     std::string inv_cache_aid;
@@ -112,8 +108,7 @@ std::string account_label(app::AppState& state, const core::Account& a) {
                                       : a.web.persona_name;
 }
 
-// A full web trade needs a password-backed session. NFA token-injection
-// accounts get AccessDenied on community endpoints, so trades are unavailable.
+// NFA token-injection accounts get AccessDenied on community endpoints, so they can't trade.
 bool account_can_trade(const core::Account& a) {
     return !a.is_nfa && a.steam_id_64 != 0 && !a.refresh_token.empty();
 }
@@ -214,16 +209,14 @@ std::int64_t refresh_cooldown_remaining(const app::AppState& state, const std::s
     return cooldown_remaining(last, state.settings.trade.per_account_cooldown_seconds);
 }
 
-// Outgoing offers worth showing: still cancellable. Terminal states (accepted,
-// declined, canceled, expired, invalid items, escrow) are hidden.
+// Still cancellable; terminal states (accepted/declined/canceled/expired/escrow) are hidden.
 bool is_outgoing_actionable(trade::TradeOfferState s) {
     return s == trade::TradeOfferState::Active ||
            s == trade::TradeOfferState::CreatedNeedsConfirmation;
 }
 
-// Returns false (account hidden) unless it has actionable offers, is refreshing,
-// or has an error worth showing - mirroring the Confirmations page. Uses find()
-// so the 100-account draw loop never inserts entries for never-refreshed accounts.
+// False (account hidden) unless it has actionable offers, is refreshing, or has an error.
+// Uses find() so the draw loop never inserts entries for never-refreshed accounts.
 bool snapshot_for_draw(const std::string& aid, DrawSnap& out) {
     std::lock_guard lk(g_mtx);
     const auto it = g_states.find(aid);
@@ -452,7 +445,7 @@ void submit_send(app::AppState& state, const core::Account& acc, trade::TradeUrl
             if (outcome == trade::TradeAuditOutcome::NeedsConfirmation) e.detail = conf_note;
             e.source = trade::TradeAuditSource::UserSingle;
             state.trade_audit.record(std::move(e));
-            // Force the new outgoing offer to show on the next refresh.
+            // Clear cooldown so the next refresh shows the new outgoing offer immediately.
             {
                 std::lock_guard lk(g_mtx);
                 g_states[aid].last_refresh_unix = 0;
@@ -503,8 +496,7 @@ void submit_action(app::AppState& state, const core::Account& acc,
             }
         }
 
-        // Web actions re-mint the session cookie via ensure_web_session, so
-        // persist the refreshed token/cookie/session id.
+        // ensure_web_session may have re-minted the cookie/token; persist it.
         apply_refreshed_tokens(state, cap_acc);
 
         {
@@ -650,8 +642,7 @@ void draw_offer_grid(app::AppState& state, core::Account& a,
     }
 }
 
-// Opens the send dialog. account_id empty -> no preselection (header "Send
-// offer"); otherwise preselect just that account.
+// account_id empty -> no preselection; otherwise preselect just that account.
 void open_send_modal(app::AppState& state, const std::string& account_id) {
     g_send.accounts.clear();
     if (!account_id.empty()) g_send.accounts.insert(account_id);
@@ -738,16 +729,13 @@ void draw_send_modal(app::AppState& state) {
         return;
     }
 
-    // Layout: the inventory grid is fixed at 3 rows; the account grid flexes to
-    // fill everything else, so any extra/resized height lands on account selection.
+    // Inventory grid fixed at 3 rows; account grid flexes to fill the rest, with the
+    // footer pinned to the bottom so the popup never scrolls.
     const float kLine  = ImGui::GetTextLineHeightWithSpacing();
     const float kFrame = ImGui::GetFrameHeightWithSpacing();
     constexpr float kChipH   = 44.0F;
     constexpr float kChipGap = 8.0F;
     const float items_h = 3.0F * (kTile + ImGui::GetStyle().ItemSpacing.y) + 10.0F;
-    // The footer (message + Send/Cancel) is pinned to the bottom of the modal; the
-    // account grid flexes to fill the space above the fixed middle, so the popup
-    // never scrolls and the buttons always sit flush at the bottom.
     const float footer_pin_y = ImGui::GetCursorPosY() + ImGui::GetContentRegionAvail().y -
                                ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.y;
     const float middle_fixed =
@@ -760,7 +748,6 @@ void draw_send_modal(app::AppState& state) {
         + items_h        // items/bulk body (fixed 3 rows)
         + ImGui::GetStyle().ItemSpacing.y * 1.5F;  // inter-section spacing + margin
 
-    // --- Section 1: source accounts (flexible height) ---
     ImGui::TextDisabled("Source accounts");
     ImGui::SameLine();
     ImGui::Text("(%zu selected)", g_send.accounts.size());
@@ -920,7 +907,6 @@ void draw_send_modal(app::AppState& state) {
     bool can_send = false;
 
     if (!single.empty()) {
-        // Single account: pick specific items.
         core::Account* acc = state.find_account(single);
 
         bool inv_loading = false;
@@ -978,8 +964,7 @@ void draw_send_modal(app::AppState& state) {
         constexpr float base_gap = 8.0F;
         const int cols =
             std::max(1, static_cast<int>((avail + base_gap) / (kTile + base_gap)));
-        // Justify: spread the leftover width into the gaps so square tiles fill
-        // the row edge-to-edge (no dead space on the right).
+        // Spread leftover width into the gaps so square tiles fill the row edge-to-edge.
         const float tile_gap =
             cols > 1 ? std::max(base_gap, (avail - static_cast<float>(cols) * kTile) /
                                               static_cast<float>(cols - 1))
@@ -990,7 +975,6 @@ void draw_send_modal(app::AppState& state) {
                                     ? "Load your inventory to pick items."
                                     : "No tradable items match.");
         } else {
-            // Clipper so only on-screen tiles draw (and download icons).
             auto* dl = ImGui::GetWindowDrawList();
             const int rows = (total + cols - 1) / cols;
             const float row_h = kTile + ImGui::GetStyle().ItemSpacing.y;
@@ -1057,7 +1041,6 @@ void draw_send_modal(app::AppState& state) {
         }
         ImGui::EndDisabled();
     } else {
-        // Bulk (2+) or nothing selected: no item picker.
         ImGui::BeginChild("##bulkbody", ImVec2(0, items_h), ImGuiChildFlags_Borders);
         if (bulk) {
             ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
@@ -1098,9 +1081,8 @@ void draw_send_modal(app::AppState& state) {
     ImGui::PopStyleVar(2);
 }
 
-// Runs `fn(creds)` once; on a session error, attempts a single auto-relogin
-// (respecting its cooldown) and retries. Works for any result type with `ok`
-// and `needs_relogin` members (accept/send/inventory results).
+// Runs fn(creds); on a session error, does one cooldown-respecting auto-relogin and retries.
+// Works for any result type with ok/needs_relogin members.
 template <typename Fn>
 auto with_relogin(app::AppState& state, core::Account& creds, Fn&& fn) {
     auto res = fn(creds);
@@ -1435,7 +1417,7 @@ void draw_trade_offers(app::AppState& state) {
         if (!matches(a)) continue;
 
         DrawSnap snap;
-        if (!snapshot_for_draw(a.id, snap)) continue;  // hide idle accounts
+        if (!snapshot_for_draw(a.id, snap)) continue;
 
         separator_text(account_label(state, a).c_str());
         draw_account_section(state, a, snap, inflight);

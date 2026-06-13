@@ -61,9 +61,8 @@ LaunchResult launch_account(const core::Account& a) {
     if (!exe_path) return out;
     if (!shutdown_running_steam(*exe_path, out)) return out;
 
-    // Force the login window. Without these, a stale AutoLoginUser from a
-    // prior session causes Steam to auto-log in as the previous account
-    // before the driver even sees the login UI.
+    // Force the login window: without this, a stale AutoLoginUser auto-logs in as
+    // the previous account before the driver even sees the login UI.
     platform::registry::set_auto_login_user(L"");
     platform::registry::set_remember_password(false);
 

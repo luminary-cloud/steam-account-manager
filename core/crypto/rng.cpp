@@ -62,9 +62,8 @@ std::string random_device_id() {
 }
 
 std::string random_session_id() {
-    // Matches SDA's GetRandomHexNumber(32): 32 uppercase hex chars from
-    // 16 random bytes. Used as both the sessionid cookie and the CSRF
-    // form value POSTed to /jwt/finalizelogin.
+    // SDA's GetRandomHexNumber(32): 32 uppercase hex from 16 bytes. Used as the
+    // sessionid cookie and the CSRF value POSTed to /jwt/finalizelogin.
     auto bytes = random_bytes(16);
     std::string out;
     out.resize(bytes.size() * 2);

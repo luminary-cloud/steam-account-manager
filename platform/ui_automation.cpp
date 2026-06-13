@@ -16,8 +16,7 @@ namespace {
 
 using Microsoft::WRL::ComPtr;
 
-// RAII for BSTR returned from UIA. ::Get() yields the raw BSTR for the
-// SysAlloc family; the dtor frees on destruction.
+// RAII for BSTR returned from UIA.
 struct BstrHolder {
     BSTR b = nullptr;
     ~BstrHolder() { if (b) SysFreeString(b); }
@@ -42,9 +41,8 @@ Session::Session() {
     if (SUCCEEDED(hr)) {
         com_owned_ = true;
     } else if (hr == RPC_E_CHANGED_MODE) {
-        // Another component on this thread already initialised COM with a
-        // different apartment. UIA calls still work; we just don't own
-        // teardown.
+        // COM already initialised on this thread with a different apartment;
+        // UIA calls still work, we just don't own teardown.
         com_owned_ = false;
     } else {
         SAM_LOG_ERROR("uia: CoInitializeEx failed: 0x{:08x}",

@@ -60,11 +60,9 @@ PersonaChangeResult change_persona_name(core::Account& a, const std::string& new
 
     try {
         const auto j = json::parse(resp.body);
-        // ajaxsetpersonaname echoes the applied name back in "success" and only
-        // populates "message" when it rejects the change, e.g.
-        //   {"success":"NewName","message":""}            -> applied
-        //   {"success":"","message":"That name is taken"} -> rejected
-        // So an empty (or absent) "message" means the rename went through.
+        // ajaxsetpersonaname echoes the applied name in "success" and only populates
+        // "message" when it rejects the change, so an empty (or absent) "message"
+        // means the rename went through.
         std::string message;
         if (j.contains("message") && j.at("message").is_string()) {
             message = j.at("message").get<std::string>();

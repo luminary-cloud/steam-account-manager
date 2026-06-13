@@ -22,8 +22,8 @@ std::wstring to_lower(std::wstring s) {
     return s;
 }
 
-// Reads a REG_SZ / REG_EXPAND_SZ value (the key's default value when
-// `value_name` is null), expanding any environment references.
+// Reads a REG_SZ/REG_EXPAND_SZ value (key's default when value_name is null),
+// expanding environment references.
 std::optional<std::wstring> read_reg_sz(HKEY root, const std::wstring& subkey,
                                         const wchar_t* value_name = nullptr) {
     WCHAR buf[2048];
@@ -34,30 +34,26 @@ std::optional<std::wstring> read_reg_sz(HKEY root, const std::wstring& subkey,
     return std::wstring(buf);
 }
 
-// The ProgId registered as the default https handler, e.g. "ChromeHTML",
-// "MSEdgeHTM", "FirefoxURL", "BraveHTML".
+// Default https handler ProgId, e.g. "ChromeHTML", "MSEdgeHTM", "FirefoxURL".
 std::optional<std::wstring> default_https_progid() {
     return registry::read_string_hkcu(
         L"Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\https\\UserChoice",
         L"ProgId");
 }
 
-// HKCR\<progid>\shell\open\command default value (the launch command line).
 std::optional<std::wstring> progid_open_command(const std::wstring& progid) {
     return read_reg_sz(HKEY_CLASSES_ROOT, progid + L"\\shell\\open\\command");
 }
 
-// Full path to `exe` from the App Paths registry (per-machine, then per-user).
-// This reliably locates a browser when its ProgId command isn't in a standard
-// place under HKEY_CLASSES_ROOT (notably Edge, which registers elsewhere).
+// App Paths (per-machine then per-user). Locates a browser when its ProgId command
+// isn't under HKEY_CLASSES_ROOT (notably Edge, which registers elsewhere).
 std::optional<std::wstring> app_path_exe(const std::wstring& exe) {
     const std::wstring sub = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\" + exe;
     if (auto p = read_reg_sz(HKEY_LOCAL_MACHINE, sub)) return p;
     return read_reg_sz(HKEY_CURRENT_USER, sub);
 }
 
-// Pulls the executable out of a shell open command. Handles the common quoted
-// form (`"C:\...\chrome.exe" --foo "%1"`) and a bare first token.
+// Pulls the exe from a shell open command: quoted first arg or bare first token.
 std::wstring exe_from_command(const std::wstring& cmd) {
     if (cmd.empty()) return {};
     if (cmd.front() == L'"') {
@@ -79,7 +75,7 @@ DefaultBrowser resolve_default_browser() {
     if (!progid) return out;
     if (auto cmd = progid_open_command(*progid)) out.exe = exe_from_command(*cmd);
 
-    // Identify the family from the ProgId, with the exe filename as a backstop.
+    // Identify the family from the ProgId, exe filename as a backstop.
     const std::wstring id = to_lower(*progid) + L"|" + to_lower(out.exe);
     auto has = [&](const wchar_t* s) { return id.find(s) != std::wstring::npos; };
 
@@ -104,8 +100,7 @@ DefaultBrowser resolve_default_browser() {
         exe_name = L"opera.exe";
     }
 
-    // Edge and some store-installed browsers don't expose a usable
-    // shell\open\command under HKEY_CLASSES_ROOT; fall back to App Paths.
+    // Edge and some store browsers lack a usable HKCR shell\open\command.
     if (out.exe.empty() && exe_name != nullptr) {
         if (auto p = app_path_exe(exe_name)) out.exe = *p;
     }
@@ -126,9 +121,7 @@ bool open_isolated_window(const std::wstring& url, const std::wstring& profile_d
     if (!b.exe.empty() && b.kind != BrowserKind::Unknown) {
         std::wstring params;
         if (b.kind == BrowserKind::Chromium) {
-            // A separate --user-data-dir is a fully isolated profile. The
-            // first-run/default-browser prompts would otherwise interrupt the
-            // sign-in page, so suppress them.
+            // Suppress first-run/default-browser prompts that would interrupt sign-in.
             params = L"--user-data-dir=\"" + profile_dir + L"\""
                      L" --no-first-run --no-default-browser-check"
                      L" \"" + url + L"\"";
@@ -137,8 +130,7 @@ bool open_isolated_window(const std::wstring& url, const std::wstring& profile_d
         }
         if (shell_open(b.exe, params)) return true;
     }
-    // Couldn't identify the browser (or the launch failed): open the URL in the
-    // default browser normally so the action still does something.
+    // Couldn't identify the browser or launch failed: open the URL normally.
     shell_open(url, L"");
     return false;
 }

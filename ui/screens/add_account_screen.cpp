@@ -81,9 +81,8 @@ void draw_manual(app::AppState& state, core::Account* editing) {
         editing && state.settings.privacy_mode &&
         state.revealed_logins.find(editing->id) == state.revealed_logins.end();
     if (editing_redacted) {
-        // Privacy mode + not revealed: stand in for the disabled InputText
-        // with a clickable redacted label. The buffer above still holds the
-        // real login so save_changes works unchanged.
+        // Clickable redacted label stands in for the InputText; the buffer above
+        // still holds the real login so save_changes works unchanged.
         widgets::draw_login_text(state, *editing);
         ImGui::SameLine();
         ImGui::TextUnformatted("Login");
@@ -133,7 +132,6 @@ void draw_manual(app::AppState& state, core::Account* editing) {
                 if (editing->sda->account_name.empty())
                     editing->sda->account_name = editing->login;
             }
-            // If we still don't have a steam_id, opportunistically look one up.
             if (editing->steam_id_64 == 0 && !editing->login.empty()) {
                 editing->steam_id_64 = steam_local::lookup_steam_id(editing->login);
                 if (editing->steam_id_64 != 0) new_id_for_refresh = editing->id;
@@ -171,8 +169,7 @@ void draw_manual(app::AppState& state, core::Account* editing) {
     ImGui::EndDisabled();
 }
 
-// Strip surrounding double-quotes and whitespace from a path the user typed
-// or pasted in (Explorer's "copy as path" wraps in quotes).
+// Explorer's "copy as path" wraps the path in quotes; strip those and surrounding space.
 std::string trim_path(std::string s) {
     while (!s.empty() && (s.front() == '"' || s.front() == ' ' || s.front() == '\t'))
         s.erase(s.begin());
@@ -182,8 +179,7 @@ std::string trim_path(std::string s) {
     return s;
 }
 
-// Non-recursive directory scan for files whose name ends (case-insensitively)
-// in `ext` (must include leading dot, lowercase).
+// Non-recursive; ext_lower must include the leading dot and be lowercase.
 std::vector<std::filesystem::path> scan_dir_for_extension(
     const std::filesystem::path& dir, std::string_view ext_lower) {
     std::vector<std::filesystem::path> out;
@@ -205,14 +201,12 @@ std::vector<std::filesystem::path> scan_dir_for_extension(
     return out;
 }
 
-// maFile single-file import.
-
 struct MafileImportResult {
     bool ok = false;
-    bool merged = false;          // true if an existing account was updated
-    std::string error;            // populated when !ok
-    std::string account_id;       // set when ok
-    std::string login;            // for the summary
+    bool merged = false;          // existing account updated rather than created
+    std::string error;
+    std::string account_id;
+    std::string login;
 };
 
 MafileImportResult import_one_mafile(app::AppState& state,
@@ -232,9 +226,7 @@ MafileImportResult import_one_mafile(app::AppState& state,
                                 !loaded.session_refresh_token.empty();
         auto access  = crypto::make_secure(loaded.session_access_token);
         auto refresh = crypto::make_secure(loaded.session_refresh_token);
-        // The maFile may carry session tokens without the steam_id (e.g. some
-        // SDA exports omit Session.SteamID). The access_token's `sub` claim
-        // is the steam_id_64, so recover it from there before giving up.
+        // Some SDA exports omit Session.SteamID; the access_token's sub claim is the steam_id_64.
         if (resolved_sid == 0 && has_tokens) {
             resolved_sid = steam_login::jwt_steam_id(access);
         }
@@ -292,16 +284,14 @@ MafileImportResult import_one_mafile(app::AppState& state,
     return r;
 }
 
-// info.dat single-file import.
-
 struct InfoDatImportResult {
     bool ok = false;
     int  created = 0;
     int  merged = 0;
     int  accounts_in_file = 0;
-    std::string error;            // populated when !ok
-    std::string file_label;       // path stem for summary line
-    std::vector<std::string> account_ids;   // for follow-up refresh
+    std::string error;
+    std::string file_label;
+    std::vector<std::string> account_ids;
 };
 
 InfoDatImportResult import_one_info_dat(app::AppState& state,
@@ -351,9 +341,8 @@ InfoDatImportResult import_one_info_dat(app::AppState& state,
                 if (!e.avatar_url.empty())
                     a.web.avatar_url_full = e.avatar_url;
 
-                // Ban snapshot from the imported file. Will be overwritten by
-                // the first online refresh, but useful immediately so VAC/etc
-                // pills show up before that completes.
+                // Ban snapshot from the file; overwritten by the first online refresh,
+                // but lets VAC/etc pills show immediately.
                 a.bans.community_banned = e.community_banned;
                 a.bans.vac_banned       = e.vac_banned;
                 a.bans.vac_ban_count    = e.vac_ban_count;
@@ -388,8 +377,6 @@ InfoDatImportResult import_one_info_dat(app::AppState& state,
     return r;
 }
 
-// NFA (JWT refresh token) import.
-
 struct JwtImportResult {
     bool ok = false;
     bool merged = false;
@@ -397,7 +384,7 @@ struct JwtImportResult {
     bool expired = false;
     std::int64_t expires = 0;
     std::uint64_t steam_id = 0;
-    std::string error;            // populated when !ok
+    std::string error;
     std::string account_id;
     std::string login;
 };
@@ -453,10 +440,8 @@ JwtImportResult import_one_jwt_token(app::AppState& state, const std::string& ra
         if (a.session_id.empty()) a.session_id = crypto::random_session_id();
         if (fresh) a.created_unix = now_seconds();
 
-        // A token-only account (no stored password) is NFA: it launches via
-        // token injection and goes into the NFA group. Importing a token onto an
-        // existing full-access account just stores the token without changing
-        // its type.
+        // No stored password = NFA (launches via token injection, lands in the NFA group).
+        // Importing a token onto a full-access account just stores it, type unchanged.
         const bool nfa = a.password.empty();
         a.is_nfa = nfa;
         if (nfa) a.group_id = group_id;
@@ -480,13 +465,11 @@ JwtImportResult import_one_jwt_token(app::AppState& state, const std::string& ra
     return r;
 }
 
-// Import maFile tab.
-
 struct MafileBatchSummary {
     int imported = 0;
     int merged = 0;
     int blank_steam_id = 0;              // imported but no steam_id_64 resolved
-    bool web_api_key_missing = false;    // captured at import time for the summary
+    bool web_api_key_missing = false;
     std::vector<std::string> failures;   // "<filename>: <error>"
 };
 
@@ -499,7 +482,7 @@ void draw_import_mafile(app::AppState& state) {
     static bool has_summary = false;
     static std::string error;
 
-    // Drain any drop queue from WM_DROPFILES.
+    // Drain the WM_DROPFILES queue.
     {
         std::lock_guard lk(state.drop_mutex);
         if (!state.pending_mafile_drops.empty()) {
@@ -573,7 +556,6 @@ void draw_import_mafile(app::AppState& state) {
         summary = {};
         has_summary = false;
 
-        // Build the work list: typed path (file or directory) + drag-drop queue.
         std::vector<std::filesystem::path> batch;
         std::string typed = trim_path(path_buf.data());
         if (!typed.empty()) {
@@ -597,9 +579,8 @@ void draw_import_mafile(app::AppState& state) {
                 auto r = import_one_mafile(state, p, mafile_password, steam_password);
                 if (r.ok) {
                     if (r.merged) ++summary.merged; else ++summary.imported;
-                    // Accounts with no resolved steam_id_64 won't auto-refresh
-                    // and will show up as blank cards until the user provides
-                    // one (e.g. by logging into Steam locally, then refreshing).
+                    // No resolved steam_id_64 means the account won't auto-refresh and
+                    // shows as a blank card until one is provided.
                     if (auto* a = state.find_account(r.account_id);
                         a && a->steam_id_64 == 0) {
                         ++summary.blank_steam_id;
@@ -611,9 +592,7 @@ void draw_import_mafile(app::AppState& state) {
             }
             state.vault_dirty = true;
             state.save_vault_if_dirty();
-            // Single-account add: refresh immediately so the user sees their
-            // card populated. Bulk add: stagger so 100+ maFiles don't fan out
-            // 16+ concurrent Web API requests as the 4-worker pool drains.
+            // Stagger bulk refreshes so a big import doesn't burst the Web API.
             if (account_ids.size() == 1) {
                 state.refresh_single_account(account_ids.front());
             } else if (!account_ids.empty()) {
@@ -621,7 +600,6 @@ void draw_import_mafile(app::AppState& state) {
             }
             has_summary = true;
 
-            // Reset inputs after a successful (non-empty) run.
             path_buf = {};
             mafile_password.clear();
             steam_password.clear();
@@ -664,8 +642,6 @@ void draw_import_mafile(app::AppState& state) {
         }
     }
 }
-
-// info.dat import tab.
 
 struct InfoDatBatchSummary {
     int files_ok = 0;
@@ -800,9 +776,7 @@ void draw_import_info_dat(app::AppState& state) {
             }
             state.vault_dirty = true;
             state.save_vault_if_dirty();
-            // info.dat files can carry many accounts each; stagger to avoid a
-            // burst on the Web API. Single-account result still refreshes
-            // immediately.
+            // info.dat files can carry many accounts each; stagger to avoid a Web API burst.
             if (all_ids.size() == 1) {
                 state.refresh_single_account(all_ids.front());
             } else if (!all_ids.empty()) {
@@ -852,8 +826,6 @@ void draw_import_info_dat(app::AppState& state) {
         }
     }
 }
-
-// NFA token import tab.
 
 void draw_import_jwt_token(app::AppState& state) {
     static std::array<char, 4096> token_buf{};
@@ -943,7 +915,7 @@ struct LoginWizard {
 
     std::array<char, 64> username{};
     std::string password;
-    std::string shared_secret;        // optional, base64; auto-generates Guard codes
+    std::string shared_secret;        // base64; if set, auto-generates Guard codes
     std::array<char, 8> guard_code{};
 
     std::string client_id;
@@ -973,8 +945,7 @@ void draw_full_login(app::AppState& state) {
     static LoginWizard wiz;
     auto* w = &wiz;
 
-    // Background refresh signalled that this account needs a fresh login;
-    // prefill the username field once and clear the signal.
+    // Background refresh flagged this account for re-login; prefill username once, clear signal.
     if (state.pending_relogin_login.has_value() &&
         wiz.phase == LoginWizard::Phase::Credentials) {
         const auto& login = *state.pending_relogin_login;
@@ -1028,9 +999,8 @@ void draw_full_login(app::AppState& state) {
             wiz.busy = true;
             wiz.status = "Requesting RSA key...";
 
-            // Stash the optional shared_secret on the wizard's pending account
-            // so the begin_session completion can auto-submit the Guard code
-            // and so it's persisted alongside the tokens on success.
+            // Stash shared_secret on the pending account so begin_session can auto-submit
+            // the Guard code and so it persists alongside the tokens on success.
             if (!wiz.shared_secret.empty()) {
                 core::SteamGuardAccount g;
                 g.account_name = wiz.username.data();
@@ -1091,9 +1061,8 @@ void draw_full_login(app::AppState& state) {
         ImGui::EndDisabled();
 
     } else if (wiz.phase == LoginWizard::Phase::GuardWait) {
-        // If we have a shared_secret + the prompt is for DeviceCode, generate
-        // the TOTP and submit on the first frame in this phase so the user
-        // never sees the manual prompt for a Steam-Guard-enrolled account.
+        // With a shared_secret and a DeviceCode prompt, generate the TOTP and submit on
+        // the first frame so a Guard-enrolled account never sees the manual prompt.
         const bool can_auto_submit = !wiz.auto_guard_submitted &&
             wiz.chosen_guard == steam_login::GuardKind::DeviceCode &&
             wiz.account.sda.has_value() &&
@@ -1120,10 +1089,8 @@ void draw_full_login(app::AppState& state) {
                 state.completed_jobs.push_back({"", [w, ok, err] {
                     w->busy = false;
                     if (!ok) {
-                        // Auto-submitted code rejected; fall back to the
-                        // manual prompt. Leave auto_guard_submitted=true so
-                        // we don't re-submit the same (likely stale) code on
-                        // every frame; the user can type a fresh one below.
+                        // Fall back to the manual prompt. auto_guard_submitted stays true
+                        // so we don't resubmit the stale code every frame.
                         w->status = "Auto-submitted code rejected: " + err;
                         return;
                     }
@@ -1209,13 +1176,10 @@ void draw_full_login(app::AppState& state) {
                         auto login_secure = crypto::make_secure(
                             steam_login::make_steam_login_secure(sid, poll.access_token));
 
-                        // Register the session in Steam's community session
-                        // table so the freshly-added account can immediately
-                        // accept confirmations without needing an auto-relogin
-                        // recovery. sess_id is the one bound to the resulting
-                        // cookie and must be the sessionid we store on the
-                        // account; mobileconf will send it back as a cookie
-                        // and Steam matches it to the registered session.
+                        // Register the session in Steam's community session table so the
+                        // new account can accept confirmations without an auto-relogin first.
+                        // sess_id must be the sessionid we store: mobileconf sends it back as
+                        // a cookie and Steam matches it to this registered session.
                         std::string sess_id = crypto::random_session_id();
                         std::string registered_cookie;
                         if (steam_login::transfer_login(sid, poll.refresh_token,
@@ -1235,11 +1199,8 @@ void draw_full_login(app::AppState& state) {
                                 sess_id = std::move(sess_id)] {
                             if (w->phase != LoginWizard::Phase::Polling) return;
 
-                            // Merge into an existing vault entry if one matches by
-                            // steam_id or login; otherwise create a new account.
-                            // Avoids duplicates when re-logging into an already-
-                            // imported account (e.g. one added via maFile with a
-                            // different login casing).
+                            // Merge by steam_id or login to avoid duplicates when re-logging
+                            // into an already-imported account (e.g. maFile with different casing).
                             core::Account* existing = core::store::find_existing_account(
                                 state.vault, w->account.steam_id_64, w->account.login);
 
@@ -1251,17 +1212,12 @@ void draw_full_login(app::AppState& state) {
                                 existing->refresh_token    = rt;
                                 existing->access_token_expires = expiry;
                                 existing->steam_login_secure   = ls;
-                                // The sessionid we used at finalizelogin is
-                                // the one bound to ls; mobileconf rejects
-                                // the cookie if the sessionid we send back
-                                // does not match the registered session.
+                                // Must match the sessionid bound to ls, or mobileconf rejects the cookie.
                                 existing->session_id = sess_id;
                                 existing->last_login_unix = now_seconds();
                                 id_for_refresh = existing->id;
-                                // If the user supplied a shared_secret on this
-                                // login attempt, carry it over. Don't blow
-                                // away a previously-imported maFile when the
-                                // user re-runs Full Login without it.
+                                // Carry over a supplied shared_secret, but don't clobber a
+                                // previously-imported maFile when Full Login is re-run without one.
                                 if (w->account.sda.has_value() &&
                                     !w->account.sda->shared_secret.empty()) {
                                     if (!existing->sda.has_value()) {
@@ -1291,9 +1247,6 @@ void draw_full_login(app::AppState& state) {
                             state.vault_dirty = true;
                             state.save_vault_if_dirty();
 
-                            // Populate avatar / level / games / CS2 rank so the
-                            // newly-saved card isn't blank when the user clicks
-                            // "Go to Accounts".
                             if (!id_for_refresh.empty()) {
                                 state.refresh_single_account(id_for_refresh);
                             }
@@ -1322,10 +1275,8 @@ void draw_full_login(app::AppState& state) {
 
         ImGui::TextWrapped("Waiting for Steam to confirm the session...");
         ImGui::Spacing();
-        // Lets the user bail out before the 2-minute deadline. The poll loop
-        // checks `phase != Polling` on every completed_jobs callback, so
-        // flipping the phase here is enough; the worker exits on its next
-        // post-back attempt and the wizard stays out of its way.
+        // The poll worker checks phase != Polling on each post-back, so flipping
+        // the phase here is enough to make it exit.
         if (action_button("Cancel", ImVec2(120, 0))) {
             wiz.busy = false;
             wiz.error = "Login cancelled.";

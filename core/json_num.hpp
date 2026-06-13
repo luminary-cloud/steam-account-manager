@@ -8,9 +8,8 @@
 namespace sam {
 
 // Steam's Web API (and some maFile exporters) serialize numeric fields as JSON
-// strings, e.g. "server_time": "1780772474". A plain json::value<int> throws
-// type_error.302 on those, so read tolerantly: accept a number or a numeric
-// string, and fall back when it is neither.
+// strings, e.g. "server_time": "1780772474", on which a plain json::value<int>
+// throws type_error.302. Accept a number or a numeric string; fall back otherwise.
 inline std::int64_t parse_json_i64(const nlohmann::json& v, std::int64_t fallback) {
     if (v.is_number_integer())  return v.get<std::int64_t>();
     if (v.is_number_unsigned()) return static_cast<std::int64_t>(v.get<std::uint64_t>());

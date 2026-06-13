@@ -19,9 +19,7 @@ namespace sam::steam_local {
 
 namespace {
 
-// Minimal text-VDF tokenizer. loginusers.vdf only uses quoted strings and
-// { } braces, with C-style line comments (//) tolerated. We don't try to be
-// a fully-general VDF parser; we just need to walk a tree of nested maps.
+// Minimal text-VDF tokenizer: quoted strings, { } braces, and // line comments.
 struct Token {
     enum Kind { String, LBrace, RBrace, End };
     Kind kind = End;
@@ -41,8 +39,7 @@ public:
         if (c == '}') { ++pos_; return {Token::RBrace, {}}; }
         if (c == '"') return read_quoted();
 
-        // Unquoted token: read until whitespace or brace. (loginusers.vdf
-        // shouldn't have these, but tolerate.)
+        // Unquoted token: read until whitespace or brace.
         const std::size_t start = pos_;
         while (pos_ < src_.size()) {
             char ch = src_[pos_];
@@ -67,7 +64,7 @@ private:
     }
 
     Token read_quoted() {
-        ++pos_;  // skip opening "
+        ++pos_;
         std::string out;
         while (pos_ < src_.size()) {
             char c = src_[pos_++];
@@ -102,8 +99,6 @@ std::string read_file_to_string(const std::filesystem::path& path) {
 
 using core::to_lower;
 
-// Skip a VDF value: either a string (already consumed by caller) or a block.
-// On entry, the next token is expected to be either { ... } or already eaten.
 void skip_block(Tokenizer& tk) {
     int depth = 1;
     while (depth > 0) {
@@ -111,27 +106,23 @@ void skip_block(Tokenizer& tk) {
         if (t.kind == Token::End) return;
         if (t.kind == Token::LBrace) ++depth;
         else if (t.kind == Token::RBrace) --depth;
-        // Strings inside the block are part of key/value pairs; just consume them.
     }
 }
 
-// Reads the children of the currently-open `"users"` block and emits LocalAccounts.
 void parse_users_block(Tokenizer& tk, std::vector<LocalAccount>& out) {
     while (true) {
         Token key = tk.next();
         if (key.kind == Token::RBrace || key.kind == Token::End) return;
-        if (key.kind != Token::String) continue;  // unexpected
+        if (key.kind != Token::String) continue;
 
         Token open = tk.next();
         if (open.kind != Token::LBrace) {
-            // Value is a scalar; shouldn't happen under "users", ignore.
             continue;
         }
 
         LocalAccount acc;
         try { acc.steam_id_64 = std::stoull(key.value); } catch (...) { acc.steam_id_64 = 0; }
 
-        // Read inner key/value pairs until matching RBrace.
         while (true) {
             Token k = tk.next();
             if (k.kind == Token::RBrace || k.kind == Token::End) break;
@@ -139,7 +130,6 @@ void parse_users_block(Tokenizer& tk, std::vector<LocalAccount>& out) {
 
             Token v = tk.next();
             if (v.kind == Token::LBrace) {
-                // Unexpected nested block; skip it.
                 skip_block(tk);
                 continue;
             }
@@ -190,8 +180,7 @@ std::vector<LocalAccount> read_loginusers() {
     std::vector<LocalAccount> out;
     Tokenizer tk(text);
 
-    // Top-level: expect "users" { ... }. Some VDF files are wrapped at the root;
-    // tolerate finding the "users" key anywhere at top level.
+    // Tolerate the "users" key appearing anywhere at top level.
     while (true) {
         Token t = tk.next();
         if (t.kind == Token::End) break;
@@ -205,7 +194,6 @@ std::vector<LocalAccount> read_loginusers() {
             parse_users_block(tk, out);
             break;
         }
-        // Not "users"; skip this block entirely and keep scanning.
         skip_block(tk);
     }
 
@@ -223,16 +211,8 @@ std::uint64_t lookup_steam_id(std::string_view login) {
     return 0;
 }
 
-// VDF round-trip writer.
-//
-// Preserves the full key/value tree so unknown fields (WantsOfflineMode,
-// SkipOfflineModeWarning, MostRecent, anything Valve adds in future builds)
-// survive a write. Only the RememberPassword / AllowAutoLogin flags on each
-// users entry are mutated.
-
 namespace {
 
-// Parses { key value-or-block }* up to a closing brace or end-of-stream.
 void parse_object_body(Tokenizer& tk, VdfNode& parent) {
     while (true) {
         Token k = tk.next();
@@ -269,9 +249,7 @@ VdfNode parse_vdf(std::string_view text) {
     return root;
 }
 
-// Escapes a VDF string value: \ and " are escaped, no others (matches what
-// Valve writes; newlines / tabs in values are unusual and we don't see them
-// in loginusers.vdf in practice).
+// Only \ and " are escaped, matching what Valve writes.
 void write_escaped(std::string& out, std::string_view s) {
     out.push_back('"');
     for (char c : s) {
@@ -360,8 +338,7 @@ bool set_remembered_account(std::uint64_t steam_id_64) {
     }
 
     std::string serialized;
-    // Top-level of loginusers.vdf is a single "users" { ... } block, not a
-    // wrapped document; write each root child at depth 0.
+    // loginusers.vdf has no wrapping root; write each root child at depth 0.
     for (const auto& c : root.children) serialize_node(c, serialized, 0);
 
     try {
@@ -390,8 +367,7 @@ bool ensure_loginusers_entry(std::uint64_t steam_id_64,
     }
     const auto path = *dir / "config" / "loginusers.vdf";
 
-    // read_file_to_string returns "" if the file doesn't exist yet; parse_vdf("")
-    // yields an empty root and we build the tree from scratch.
+    // parse_vdf("") yields an empty root when the file doesn't exist yet.
     VdfNode root = parse_vdf(read_file_to_string(path));
 
     VdfNode* users = find_child(root, "users");

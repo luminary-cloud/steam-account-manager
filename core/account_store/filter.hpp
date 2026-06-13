@@ -32,7 +32,7 @@ struct AccountFilter {
     std::int64_t now_unix = 0;              // for time-relative predicates
 };
 
-// Returns the indices into `accounts` that match `filter`, in sorted order.
+// Indices into `accounts` that match `filter`, in sorted order.
 std::vector<std::size_t> apply_filter(const std::vector<Account>& accounts,
                                       const AccountFilter& filter);
 

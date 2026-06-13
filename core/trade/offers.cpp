@@ -139,7 +139,7 @@ TradeOffersResult get_trade_offers(core::Account& a, bool active_only) {
         return out;
     }
 
-    steam_api::WebApiConfig cfg;  // host defaults to api.steampowered.com
+    steam_api::WebApiConfig cfg;
     std::map<std::string, std::string> params{
         {"access_token", token},
         {"get_sent_offers", "1"},

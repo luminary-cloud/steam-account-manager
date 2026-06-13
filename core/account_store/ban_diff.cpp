@@ -98,16 +98,15 @@ std::vector<BanEvent> diff_account_state(const std::string& account_id,
         out.push_back(make_event(account_id, BanEventKind::BanRemoved, 1, 0, now));
     }
 
-    // vac_live mirrors bans.vac_banned in the refresh pipeline; only fire it
-    // separately when the VAC ban count didn't already account for it.
+    // vac_live mirrors bans.vac_banned; fire it separately only when the VAC
+    // ban count didn't already account for it.
     const bool vac_count_jumped = new_bans.vac_ban_count > prev.vac_ban_count;
     if (new_cs2.vac_live && !prev.vac_live && !vac_count_jumped) {
         out.push_back(make_event(account_id, BanEventKind::NewVacLive, 0, 1, now));
     }
 
-    // Cooldown transitions. CS2 reports cooldown_expires_unix==0 when no
-    // cooldown is active. A non-zero expiry that's in the past means the
-    // cooldown ended; switching to zero or to a later expiry counts as well.
+    // cooldown_expires_unix == 0 means no active cooldown; a non-zero expiry in
+    // the past means it ended.
     const bool prev_cd = prev.cooldown_expires_unix > 0 &&
                          prev.cooldown_expires_unix > prev.snapshot_unix;
     const bool now_cd  = new_cs2.cooldown_expires_unix > 0 &&

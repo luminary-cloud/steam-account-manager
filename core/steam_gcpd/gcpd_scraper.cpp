@@ -28,10 +28,9 @@ http::Response fetch_gcpd(const core::Account& a, Tab tab) {
     req.method = http::Method::Get;
     req.url = "https://steamcommunity.com/profiles/" + std::to_string(a.steam_id_64) +
               "/gcpd/730?tab=" + tab_to_string(tab);
-    // Steam rewrites `/profiles/{steamid}/` to `/id/{vanity}/` for accounts
-    // that have set a vanity URL. We must follow that redirect to get the
-    // actual GCPD HTML. Session-expired detection is content-based at the
-    // caller (look for the login page signature in the body).
+    // Steam 302s `/profiles/{steamid}/` to `/id/{vanity}/` for vanity-URL
+    // accounts; follow it to reach the GCPD HTML. Session-expiry detection is
+    // content-based at the caller.
     req.follow_redirects = true;
     req.user_agent =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "

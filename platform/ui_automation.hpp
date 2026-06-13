@@ -6,9 +6,7 @@
 #include <string_view>
 #include <vector>
 
-// Forward-declare just enough of the Win32 + UIA surface to keep
-// <windows.h> and <UIAutomationClient.h> out of every translation unit
-// that wants to drive UI elements.
+// Forward declarations keep <windows.h> and <UIAutomationClient.h> out of TUs.
 struct HWND__;
 typedef HWND__* HWND;
 struct IUIAutomation;
@@ -16,13 +14,10 @@ struct IUIAutomationElement;
 
 namespace sam::platform::uia {
 
-// COM apartment + IUIAutomation lifetime. Construct ONE per worker thread,
-// keep it for as long as you intend to use any Element it hands you. All
-// Elements must be used on the same thread that created the Session
-// (apartment-threaded model).
-//
+// COM apartment + IUIAutomation lifetime. Construct ONE per worker thread and
+// use all its Elements on that same thread (apartment-threaded model).
 // Construction may fail (CoInitialize race, missing UIAutomationCore.dll,
-// elevation mismatch). Always check `ok()` before using.
+// elevation mismatch); check ok() before use.
 class Session {
 public:
     Session();
@@ -37,9 +32,7 @@ public:
 
     class Element;
 
-    // Wraps the UIA root element for the given window. Returns nullopt if
-    // the HWND is invalid or UIA refused (e.g. the window was destroyed
-    // between the EnumWindows check and now).
+    // nullopt if the HWND is invalid or UIA refused (e.g. window already destroyed).
     std::optional<Element> from_hwnd(HWND hwnd);
 
 private:
@@ -48,7 +41,7 @@ private:
 };
 
 // Owning wrapper around IUIAutomationElement. Copy = AddRef; move = transfer.
-// Methods are no-ops on a default-constructed (invalid) Element.
+// Methods are no-ops on an invalid Element.
 class Session::Element {
 public:
     Element() noexcept = default;
@@ -69,22 +62,18 @@ public:
     std::wstring class_name() const;
     bool is_enabled() const;
 
-    // SetFocus. Silently no-ops if the element is invalid.
     void focus() noexcept;
 
-    // Tree walks use the Control view (the same view FlaUI uses by default,
-    // which filters out the noise the raw view exposes).
+    // Tree walks use the Control view (filters out raw-view noise).
     std::optional<Element> first_descendant_by_control_type(int control_type_id) const;
     std::vector<Element>   all_children() const;
     std::vector<Element>   children_by_control_type(int control_type_id) const;
     std::optional<Element> first_child_by_control_type(int control_type_id) const;
 
-    // Pattern actions. Return false if the element doesn't support the
-    // pattern or the call errored.
+    // False if the pattern is unsupported or the call errored.
     bool set_value(std::wstring_view text);   // ValuePattern::SetValue
     bool invoke();                             // InvokePattern::Invoke
 
-    // Polls is_enabled() every ~10ms until true or timeout. Returns final state.
     bool wait_until_enabled(std::chrono::milliseconds timeout);
 
 private:

@@ -54,7 +54,6 @@ void draw_login_method_chip(core::LoginMethod m) {
     const ImVec2 p = ImGui::GetCursorScreenPos();
 
     auto* dl = ImGui::GetWindowDrawList();
-    // Pill background at exactly the text-line height so the row doesn't grow.
     dl->AddRectFilled(p, ImVec2(p.x + w, p.y + text_h), login_method_color(m),
                       text_h * 0.4F);
     dl->AddText(ImVec2(p.x + pad_x, p.y + (text_h - ts.y) * 0.5F),
@@ -72,7 +71,7 @@ bool draw_login_split_button(app::AppState& state, core::Account& a, float total
 
     const ImVec2 origin = ImGui::GetCursorScreenPos();
 
-    // Two hit regions; the unified button is painted on top of them.
+    // Two hit regions; the unified button is painted on top.
     const bool login_clicked = ImGui::InvisibleButton("##login-half", ImVec2(login_w, kHeight));
     const bool login_hovered = ImGui::IsItemHovered();
     const bool login_active  = ImGui::IsItemActive();
@@ -140,7 +139,7 @@ bool draw_login_split_button(app::AppState& state, core::Account& a, float total
             } else {
                 // No loader yet: defer to the Accounts screen to run the file
                 // dialog (a Win32 modal can't be opened safely from inside an
-                // ImGui popup) and flip this account to gamesense on success.
+                // ImGui popup) and flip to gamesense on success.
                 state.gamesense_pick_request = a.id;
             }
         }

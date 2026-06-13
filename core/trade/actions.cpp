@@ -18,9 +18,9 @@ namespace {
 
 using json = nlohmann::json;
 
-// Posts a steamcommunity.com tradeoffer action and parses the JSON response.
-// Adds the web session cookies + sessionid form field. Sets needs_relogin on
-// 401/403. Never auto-retries: trade endpoints are aggressively rate limited.
+// Posts a steamcommunity.com tradeoffer action and parses the JSON response. Sets
+// needs_relogin on 401/403. Never auto-retries: trade endpoints are aggressively
+// rate limited.
 OfferActionResult post_action(core::Account& a, const std::string& url,
                               const std::string& referer,
                               std::map<std::string, std::string> body) {

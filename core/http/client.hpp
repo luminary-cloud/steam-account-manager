@@ -41,32 +41,28 @@ struct Request {
     int max_retries = 2;
 };
 
-// Performs a single request. Retries on transport errors and 5xx responses up to
-// `max_retries` with jittered exponential backoff. Never throws.
+// Retries on transport errors and 5xx responses up to `max_retries` with jittered
+// exponential backoff. Never throws.
 Response request(const Request& req);
 
 // Aborts all in-flight requests and makes subsequent ones fail immediately.
 // Call once at shutdown so blocked worker threads don't wait out the timeout.
 void cancel_all();
 
-// How request() picks a proxy. Set process-wide via set_proxy_policy(); defaults to
-// Direct so an unconfigured app behaves exactly as it did before proxies existed.
+// How request() picks a proxy. Set process-wide via set_proxy_policy().
 enum class ProxyMode {
     Direct,      // never use a proxy
     Single,      // route every request through `single_proxy`
     PerAccount,  // route through the calling thread's ScopedProxy (per-account)
 };
 
-// Installs the global proxy policy. `single_proxy` is only consulted in Single mode.
-// Cheap to call repeatedly; the app calls it on settings load and whenever the user
-// changes the mode or the single proxy.
+// `single_proxy` is only consulted in Single mode.
 void set_proxy_policy(ProxyMode mode, std::string single_proxy);
 
 // RAII guard that records the calling thread's per-account proxy URL
-// (scheme://[user:pass@]host:port; socks5, http or https; empty = direct). It only
-// takes effect under ProxyMode::PerAccount, so the existing guards can stay in place
-// regardless of the active mode. Restores the previous value on destruction so guards
-// nest; the thread-local scope keeps concurrent per-account workers isolated.
+// (scheme://[user:pass@]host:port; socks5, http or https; empty = direct). Only takes
+// effect under ProxyMode::PerAccount. Restores the previous value on destruction so
+// guards nest; the thread-local scope keeps concurrent per-account workers isolated.
 class ScopedProxy {
 public:
     explicit ScopedProxy(std::string proxy_url);

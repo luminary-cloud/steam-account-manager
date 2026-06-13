@@ -6,9 +6,7 @@
 
 namespace sam::steam_gcpd {
 
-// Fields extracted from /gcpd/730?tab=matchmaking: covers everything the
-// account-manager UI consumes for CS2: premier rating, wingman rank, and
-// the active competitive cooldown (if any).
+// From /gcpd/730?tab=matchmaking.
 struct MatchmakingData {
     bool ok = false;
     int  premier_rating = -1;
@@ -19,8 +17,8 @@ struct MatchmakingData {
     std::string  cooldown_reason;
 };
 
-// Fields extracted from /gcpd/730?tab=accountmain: CS2 in-game level + XP,
-// distinct from the Steam profile level which comes from the Web API.
+// From /gcpd/730?tab=accountmain. CS2 in-game level, distinct from the Web-API
+// Steam profile level.
 struct AccountMainData {
     bool ok = false;
     int  cs2_player_level = -1;
@@ -30,11 +28,9 @@ struct AccountMainData {
 MatchmakingData parse_matchmaking(std::string_view html);
 AccountMainData parse_accountmain(std::string_view html);
 
-// Quick content-signature checks used to distinguish a real GCPD response
-// from the login page Steam serves when the session cookie is invalid.
-// Both check for short substrings that have been stable in Steam's
-// templates for years.
-bool looks_like_gcpd_page (std::string_view html);   // GCPD HTML detected
-bool looks_like_login_page(std::string_view html);   // session expired -> needs re-login
+// Content-signature checks distinguishing a real GCPD response from the login
+// page Steam serves for an invalid session cookie.
+bool looks_like_gcpd_page (std::string_view html);
+bool looks_like_login_page(std::string_view html);
 
 }  // namespace sam::steam_gcpd

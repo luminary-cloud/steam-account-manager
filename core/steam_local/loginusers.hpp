@@ -14,40 +14,29 @@ struct LocalAccount {
     std::int64_t timestamp = 0;
 };
 
-// Reads <SteamInstall>/config/loginusers.vdf. Returns empty on any failure
-// (missing file, parse error, no install detected).
+// Reads <SteamInstall>/config/loginusers.vdf. Empty on any failure.
 std::vector<LocalAccount> read_loginusers();
 
-// Case-insensitive AccountName lookup against loginusers.vdf.
-// Returns 0 if no install is present, the file is missing, or no match.
+// Case-insensitive AccountName lookup. 0 if no install, no file, or no match.
 std::uint64_t lookup_steam_id(std::string_view login);
 
-// Sets RememberPassword + AllowAutoLogin on the entry for `steam_id_64` and
-// clears those flags on every other entry, so Steam auto-logs into exactly
-// the requested account. All other fields in each entry are preserved.
-//
-// Mirrors what the Steam client itself writes when "Remember my password"
-// is checked at sign-in. Without these flags set in the VDF, Steam ignores
-// the HKCU\Software\Valve\Steam\AutoLoginUser hint and shows an empty login
-// window.
-//
-// Returns true on success. Returns false if Steam isn't installed, the file
-// is missing, the file can't be parsed, the steam_id isn't present in the
-// file, or the write fails.
+// Flags `steam_id_64` RememberPassword + AllowAutoLogin and clears them on every
+// other entry, so Steam auto-logs into exactly this account. Other fields are
+// preserved. Without these flags Steam ignores the
+// HKCU\Software\Valve\Steam\AutoLoginUser hint and shows an empty login window.
+// False if Steam isn't installed, the file is missing/unparseable, the steam_id
+// isn't present, or the write fails.
 bool set_remembered_account(std::uint64_t steam_id_64);
 
-// Ensures loginusers.vdf has an entry for `steam_id_64` with `account_name`
-// (and `persona_name`, if non-empty), flags it RememberPassword / AllowAutoLogin
-// / MostRecent, and clears those flags on every other entry. Creates the file,
-// the "users" block, or the entry if missing. Used by the NFA token-login path
-// so Steam treats the injected account as remembered. Returns true on success.
+// Ensures loginusers.vdf has an entry for `steam_id_64`, flagged remembered /
+// auto-login / most-recent, clearing those flags on every other entry. Creates
+// the file, "users" block, or entry if missing. Used by the NFA token-login path.
 bool ensure_loginusers_entry(std::uint64_t steam_id_64,
                              const std::string& account_name,
                              const std::string& persona_name);
 
-// Generic text-VDF tree, shared with the connect_cache / config writers. Only
-// the subset we need: parse, look up / upsert scalars, and re-serialize.
-// Round-trips unknown keys so a write preserves fields Valve may add.
+// Generic text-VDF tree, shared with the connect_cache writer. Round-trips
+// unknown keys so a write preserves fields Valve may add.
 struct VdfNode {
     std::string key;
     std::string value;             // populated iff !is_block

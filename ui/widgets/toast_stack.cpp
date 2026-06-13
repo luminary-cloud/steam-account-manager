@@ -45,8 +45,6 @@ void ToastStack::push(ToastItem item) {
 }
 
 void ToastStack::push_summary(std::string message) {
-    // Strip any account-scoped pending toasts from this batch and replace
-    // with a single summary line.
     items_.erase(std::remove_if(items_.begin(), items_.end(),
         [](const ToastItem& t) { return !t.account_id.empty(); }),
         items_.end());
@@ -70,12 +68,10 @@ void ToastStack::render(const std::function<void(const std::string&)>& on_click)
     const float origin_x = vp->WorkPos.x + vp->WorkSize.x - kToastWidth - kToastMargin;
     float origin_y = vp->WorkPos.y + vp->WorkSize.y - kToastMargin;
 
-    // The close ("x") button shares the message's first line; budget the text
-    // column to wrap a few pixels short of it. The font and global style match
-    // inside and outside the toast window, so computing this once keeps the
-    // height (CalcTextSize below) and the rendered wrap position in agreement.
-    // A mismatch makes a long message wrap into an extra line at render time
-    // that the fixed-height, no-scrollbar window then clips.
+    // Budget the text column to wrap short of the close ("x") button. The same
+    // wrap_w feeds both the height estimate (CalcTextSize) and the render-time
+    // wrap; a mismatch would wrap an extra line that the fixed-height,
+    // no-scrollbar window then clips.
     const float close_w =
         ImGui::CalcTextSize("x").x + ImGui::GetStyle().FramePadding.x * 2.0F;
     const float wrap_w = kToastWidth - kToastPad * 2.0F - close_w - 6.0F;
@@ -101,9 +97,8 @@ void ToastStack::render(const std::function<void(const std::string&)>& on_click)
             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing |
             ImGuiWindowFlags_NoNav;
         if (ImGui::Begin(win_name.c_str(), nullptr, flags)) {
-            // Wrap at the same width used for the height above. PushTextWrapPos
-            // takes a window-local X and the text starts at local x = kToastPad,
-            // so kToastPad + wrap_w yields an effective wrap width of wrap_w.
+            // PushTextWrapPos takes a window-local X; text starts at kToastPad,
+            // so kToastPad + wrap_w gives an effective wrap width of wrap_w.
             ImGui::PushTextWrapPos(kToastPad + wrap_w);
             ImGui::TextUnformatted(it->message.c_str());
             ImGui::PopTextWrapPos();
@@ -115,7 +110,7 @@ void ToastStack::render(const std::function<void(const std::string&)>& on_click)
             ImGui::SetCursorScreenPos(x_pos);
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
             if (ImGui::SmallButton("x")) {
-                it->expires_at_unix = now;  // mark for prune next frame
+                it->expires_at_unix = now;
             }
             ImGui::PopStyleColor();
 

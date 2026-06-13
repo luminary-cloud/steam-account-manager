@@ -21,7 +21,6 @@ std::string trim(std::string s) {
     return s;
 }
 
-// name=value from a Set-Cookie header value (everything before the first ';').
 std::pair<std::string, std::string> parse_set_cookie(const std::string& sc) {
     const std::string first = sc.substr(0, sc.find(';'));
     const auto eq = first.find('=');
@@ -29,7 +28,6 @@ std::pair<std::string, std::string> parse_set_cookie(const std::string& sc) {
     return {trim(first.substr(0, eq)), trim(first.substr(eq + 1))};
 }
 
-// "scheme://host" prefix of a url (no trailing slash).
 std::string origin_of(const std::string& url) {
     const auto p = url.find("://");
     if (p == std::string::npos) return {};
@@ -37,7 +35,6 @@ std::string origin_of(const std::string& url) {
     return slash == std::string::npos ? url : url.substr(0, slash);
 }
 
-// Host portion of a url, lowercased enough for a suffix check.
 std::string host_of(const std::string& url) {
     const auto p = url.find("://");
     const std::size_t start = (p == std::string::npos) ? 0 : p + 3;
@@ -76,21 +73,18 @@ http::Response fetch_account_spend(const core::Account& a) {
         return empty;
     }
 
-    // help.steampowered.com does not accept the community-minted steamLoginSecure
-    // directly: it bootstraps its own session via a cross-domain redirect chain
-    // that sets cookies along the way. The shared HTTP client disables WinHTTP's
-    // cookie store (and auto-following the chain there fails because those
-    // Set-Cookies are dropped), so we follow the chain ourselves with a per-call
-    // cookie jar, honoring Set-Cookie across hops the way a browser would.
+    // help.steampowered.com bootstraps its own session via a cross-domain
+    // redirect chain that sets cookies along the way. The shared HTTP client
+    // disables WinHTTP's cookie store, so we follow the chain ourselves with a
+    // per-call jar, honoring Set-Cookie across hops.
     std::map<std::string, std::string> jar{
         {"sessionid", a.session_id},
         {"steamLoginSecure", std::string(a.steam_login_secure.begin(), a.steam_login_secure.end())},
         {"Steam_Language", "english"},
     };
-    // The bootstrap chain bounces through login.steampowered.com/jwt/refresh,
-    // which mints the per-domain (web:help) cookie from the refresh-token cookie.
-    // Without it that hop sets nothing and the chain falls back to the login
-    // page. Same on-the-wire format as steamLoginSecure: <steamid>%7C%7C<jwt>.
+    // The chain's login.steampowered.com/jwt/refresh hop mints the per-domain
+    // (web:help) cookie from this refresh-token cookie; without it the hop sets
+    // nothing and falls back to the login page. Wire format: <steamid>%7C%7C<jwt>.
     if (!a.refresh_token.empty()) {
         jar["steamRefresh_steam"] = std::to_string(a.steam_id_64) + "%7C%7C" +
             std::string(a.refresh_token.begin(), a.refresh_token.end());
@@ -132,7 +126,7 @@ http::Response fetch_account_spend(const core::Account& a) {
         }
 
         const bool is_redirect = resp.status >= 300 && resp.status < 400;
-        if (!is_redirect) return resp;   // 200 (data or login page) or an error status
+        if (!is_redirect) return resp;   // 200 (data or login) or an error
 
         const auto it = resp.headers.find("location");
         if (it == resp.headers.end() || it->second.empty()) {

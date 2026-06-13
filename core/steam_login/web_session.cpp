@@ -18,8 +18,7 @@ bool ensure_web_session(core::Account& a) {
         a.session_id = crypto::random_session_id();
     }
     if (needs_refresh(a, 300)) {
-        // Best-effort: the cookie mint below is the real gate.
-        refresh_access_token(a);
+        refresh_access_token(a);  // best-effort; the cookie mint below is the gate
     }
     if (!a.refresh_token.empty()) {
         std::string cookie;

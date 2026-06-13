@@ -24,10 +24,8 @@ struct MafileWrongPassword : MafileError {
     using MafileError::MafileError;
 };
 
-// Parsed maFile contents. Beyond the bare TOTP fields, real maFiles carry a
-// "Session" block with the user's SteamID64 and (often) Steam access/refresh
-// tokens: capture those here so callers don't have to re-authenticate to learn
-// them.
+// The maFile "Session" block carries SteamID64 and (often) tokens; captured
+// here so callers don't have to re-authenticate to learn them.
 struct MafileLoadResult {
     core::SteamGuardAccount guard;
     std::uint64_t session_steam_id = 0;
@@ -35,14 +33,12 @@ struct MafileLoadResult {
     std::string   session_refresh_token;  // JWT, may be empty
 };
 
-// Reads a maFile from disk. If the file is encrypted and `password` is empty,
-// throws MafileEncrypted so the caller can prompt the user. If `password` is
-// wrong, throws MafileWrongPassword.
+// Throws MafileEncrypted if the file is encrypted and `password` is empty;
+// MafileWrongPassword if `password` is wrong.
 MafileLoadResult load_mafile(const std::filesystem::path& path,
                              const crypto::SecureString& password);
 
-// Parses an UNENCRYPTED maFile JSON blob. Throws MafileEncrypted if the blob
-// is in the encrypted layout.
+// Throws MafileEncrypted if the blob is in the encrypted layout.
 MafileLoadResult parse_mafile_json(std::string_view json_text);
 
 }  // namespace sam::sda

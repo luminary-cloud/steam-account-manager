@@ -5,10 +5,9 @@
 
 namespace sam::ui::widgets {
 
-// Fixed height of one account card, in pixels. Exposed so the grid's
-// ImGuiListClipper in accounts_screen.cpp can seek by row. Sized so the
-// rank badges keep clear of the cooldown + weekly-drop strip even when both
-// of those indicator lines show at once.
+// Exposed so the grid's ImGuiListClipper in accounts_screen.cpp can seek by
+// row. Sized so the rank badges clear the cooldown + weekly-drop strip even
+// when both indicator lines show.
 constexpr float kAccountCardHeight = 308.0F;
 
 enum class CardAction {
@@ -23,9 +22,6 @@ enum class CardAction {
     ToggleSelect,
 };
 
-// Draws one account card. Returns a non-None action if the user clicked one of
-// the card buttons. `width` is the rendered card width; the grid in
-// accounts_screen.cpp stretches this to fill the available row.
 CardAction draw_account_card(app::AppState& state, core::Account& account, float width);
 
 }  // namespace sam::ui::widgets

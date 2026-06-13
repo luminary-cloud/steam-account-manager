@@ -12,20 +12,15 @@ struct DeployResult {
     std::filesystem::path target;
 };
 
-// Copies `template_path` into the CS2 (appid 730) per-user config folder for the
-// account identified by `steam_id_64`:
-//   <Steam>/userdata/<accountid>/730/local/cfg/cs2_video.txt
-// Any existing cs2_video.txt is backed up with a UTC timestamp suffix first. The
-// cfg folder is created when CS2 has never run for that account on this machine.
+// Copies `template_path` to <Steam>/userdata/<accountid>/730/local/cfg/cs2_video.txt
+// for `steam_id_64`. Any existing cs2_video.txt is backed up with a UTC timestamp
+// suffix first.
 DeployResult deploy_video_config(std::uint64_t steam_id_64,
                                  const std::filesystem::path& template_path);
 
-// Copies the entire `template_dir` tree into the CS2 (appid 730) per-user folder
-// for the account identified by `steam_id_64`:
-//   <Steam>/userdata/<accountid>/730/
-// Files in the template overwrite matching files in the destination; other
-// existing files are left untouched. Symlinks are skipped. The 730 folder is
-// created when CS2 has never run for that account on this machine.
+// Copies the `template_dir` tree into <Steam>/userdata/<accountid>/730/ for
+// `steam_id_64`. Template files overwrite matching destination files; other existing
+// files are left untouched. Symlinks are skipped.
 DeployResult deploy_730_folder(std::uint64_t steam_id_64,
                                const std::filesystem::path& template_dir);
 

@@ -10,9 +10,9 @@ namespace sam::ui::widgets {
 struct AddSdaDialogState {
     enum class Step {
         Idle,
-        Working,          // a network call is in flight; working_text describes it
-        ShowRcode,        // displaying the revocation code, waiting for user ack
-        AwaitActivation,  // user is entering the activation code
+        Working,          // network call in flight; working_text describes it
+        ShowRcode,
+        AwaitActivation,
         Done,
         Failed,
     };
@@ -25,8 +25,8 @@ struct AddSdaDialogState {
     std::string working_text;
     bool acknowledged_rcode = false;
     bool bad_code_hint = false;
-    // Set by request_add_sda; consumed in draw_add_sda_modal so the OpenPopup
-    // call shares the modal's ID-stack scope (the button can sit in a PushID).
+    // Consumed in draw_*_modal so OpenPopup shares the modal's ID-stack scope
+    // (the triggering button may sit inside a PushID).
     bool pending_open = false;
 };
 
@@ -48,16 +48,13 @@ struct RemoveSdaDialogState {
     bool pending_open = false;
 };
 
-// Open the Add wizard. If the account already has a half-linked SDA (sda set but
-// fully_enrolled == false) the dialog jumps straight to the activation step so
-// the user can finish what they started.
+// A half-linked SDA (sda set but fully_enrolled == false) resumes at the
+// activation step instead of calling AddAuthenticator again.
 void request_add_sda(app::AppState& app, AddSdaDialogState& state, std::string account_id);
 
-// Open the Add wizard directly in "verify with Steam" mode: instead of prompting for
-// an activation code, it calls ITwoFactorService/QueryStatus and, if Steam confirms
-// the authenticator in this maFile is the one live on the account, marks it
-// fully_enrolled. For maFiles (e.g. some SDA exports) that carry a stale
-// fully_enrolled == false even though Steam Guard already works.
+// Opens straight into "verify with Steam" mode: QueryStatus confirms the maFile
+// is the live authenticator and marks it fully_enrolled, for maFiles that carry
+// a stale fully_enrolled == false even though Steam Guard already works.
 void request_verify_sda(app::AppState& app, AddSdaDialogState& state, std::string account_id);
 
 void request_remove_sda(RemoveSdaDialogState& state, std::string account_id);

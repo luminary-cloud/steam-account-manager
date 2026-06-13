@@ -2,8 +2,8 @@
 
 #define IDI_APP_ICON 101
 
-// Rank badge images (embedded as RT_RCDATA via app.rc).
-// Premier brackets 0..6 (rating thresholds in premier_bracket_for_rating).
+// Rank badge images (RT_RCDATA via app.rc).
+// Premier brackets 0..6 (thresholds in premier_bracket_for_rating).
 #define IDR_PREMIER_BASE   200
 #define IDR_PREMIER_COUNT  7
 // Wingman ranks 0..18 (rank 0 = unranked placeholder).

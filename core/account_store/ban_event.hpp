@@ -22,9 +22,8 @@ struct BanEvent {
     BanEventKind kind = BanEventKind::NewVacBan;
     std::int64_t detected_unix = 0;
     std::int64_t ack_unix = 0;
-    // before/after carry whatever value the kind needs. For ban-count kinds
-    // these are the integer counts; for boolean kinds 0 and 1; for cooldown
-    // they are unix timestamps.
+    // Meaning depends on kind: ban-count kinds = counts, boolean kinds = 0/1,
+    // cooldown kinds = unix timestamps.
     std::int64_t before = 0;
     std::int64_t after = 0;
 };

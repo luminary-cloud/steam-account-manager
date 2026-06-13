@@ -39,9 +39,8 @@ inline const char* to_string(TradeOfferState state) {
     return "Unknown";
 }
 
-// One item, after joining an inventory/offer `assets` entry with its matching
-// `descriptions` entry (keyed by classid+instanceid). For CS2: app_id 730,
-// context_id 2.
+// One item, after joining an `assets` entry with its `descriptions` entry (keyed by
+// classid+instanceid). For CS2: app_id 730, context_id 2.
 struct InventoryItem {
     std::uint64_t asset_id = 0;
     std::uint64_t class_id = 0;
@@ -58,8 +57,7 @@ struct InventoryItem {
     bool marketable = false;
 };
 
-// A reference to one asset we want to put into a trade. Lighter than
-// InventoryItem because the send payload only needs these fields.
+// A reference to one asset to put into a trade; the send payload only needs these.
 struct TradeAssetRef {
     std::uint32_t app_id = 730;
     std::uint32_t context_id = 2;

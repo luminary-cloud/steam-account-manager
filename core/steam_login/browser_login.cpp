@@ -6,7 +6,6 @@ namespace sam::steam_login {
 
 namespace {
 
-// Escapes a value for use inside an HTML double-quoted attribute.
 std::string html_attr_escape(const std::string& in) {
     std::string out;
     out.reserve(in.size() + 16);
@@ -22,7 +21,6 @@ std::string html_attr_escape(const std::string& in) {
     return out;
 }
 
-// Escapes a value for use inside a single-quoted JavaScript string literal.
 std::string js_string_escape(const std::string& in) {
     std::string out;
     out.reserve(in.size() + 16);
@@ -53,8 +51,6 @@ std::string build_login_html(const std::vector<TransferTarget>& targets,
     html += "<body style=\"font-family:sans-serif;background:#1b2838;color:#c7d5e0\">\n";
     html += "<p style=\"margin:24px\">Signing in to Steam...</p>\n";
 
-    // One hidden iframe + form per transfer target. Posting into the iframe sets
-    // that domain's login cookies without navigating the top window away.
     for (std::size_t i = 0; i < targets.size(); ++i) {
         const std::string idx    = std::to_string(i);
         const std::string action = html_attr_escape(targets[i].url);
@@ -69,9 +65,8 @@ std::string build_login_html(const std::vector<TransferTarget>& targets,
         html += "</form>\n";
     }
 
-    // Submit every form, then send the top window to the profile. We navigate on
-    // a short timer (the cross-origin iframe loads aren't readable), which is
-    // ample for the settoken POSTs to set their cookies.
+    // Navigate on a short timer: the cross-origin iframe loads aren't readable,
+    // but it's ample for the settoken POSTs to set their cookies.
     html += "<script>\n";
     html += "var N=" + std::to_string(targets.size()) + ";\n";
     html += "for(var i=0;i<N;i++){try{document.getElementById('f'+i).submit();}catch(e){}}\n";

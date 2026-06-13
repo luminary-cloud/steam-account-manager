@@ -8,18 +8,14 @@
 
 namespace sam::crypto {
 
-// Rijndael with 256-bit block and 256-bit key in CBC mode with PKCS#7 padding.
-// This is NOT the FIPS AES cipher (AES is fixed at 128-bit block); it is the
-// pre-standardisation Rijndael variant still exposed in .NET as
-// `RijndaelManaged { BlockSize = 256, KeySize = 256 }`. The info.dat envelope
-// uses this exact configuration, so we implement it here just for the legacy
-// import path.
+// Rijndael-256 (256-bit block AND key) CBC + PKCS#7. NOT FIPS AES, which is
+// fixed at a 128-bit block; this is the pre-standardisation variant exposed in
+// .NET as RijndaelManaged{BlockSize=256,KeySize=256}, which the info.dat
+// envelope uses. Params: Nb=8, Nk=8, Nr=14.
 //
-// Parameters: Nb=8, Nk=8, Nr=14. ShiftRows offsets for Nb=8 are {0,1,3,4}.
-//
-// Both `key` and `iv` are 32 bytes (256 bits). `ciphertext` length must be a
-// multiple of 32. Throws `CbcPaddingError` on malformed PKCS#7 padding (which
-// is also how a wrong password manifests).
+// `key` and `iv` are 32 bytes; `ciphertext` length must be a multiple of 32.
+// Throws CbcPaddingError on bad PKCS#7 padding, which is also how a wrong
+// password manifests.
 std::vector<std::uint8_t> rijndael256_cbc_pkcs7_decrypt(
     std::span<const std::uint8_t> key,
     std::span<const std::uint8_t> iv,

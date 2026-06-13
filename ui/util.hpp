@@ -46,32 +46,24 @@ void open_folder(const std::filesystem::path& path);
 
 void hover_tooltip(const char* text);
 
-// Drop-in for ImGui::SetTooltip that restores the inner WindowPadding the
-// global (0, 0) theme strips, so tooltip text isn't flush against the border.
+// Like ImGui::SetTooltip but restores inner WindowPadding the (0,0) theme strips.
 void set_tooltip(const char* fmt, ...) IM_FMTARGS(1);
 
-// Horizontal inset (px) of the main content column: main_window applies this as
-// both the left Indent and the right item-width inset. Shared so separators and
-// other full-width items can stop at the same right edge as the widgets.
+// Horizontal inset (px) of the main content column, applied as the left Indent and
+// right item-width inset so full-width items stop at the same edge as widgets.
 inline constexpr float kContentPaddingX = 24.0F;
 
-// Drop-in replacements for ImGui::Separator / ImGui::SeparatorText that stop
-// kContentPaddingX short of the right edge, so section dividers line up with the
-// group boxes and widgets (which honor PushItemWidth(-kContentPaddingX)). Native
-// ImGui separators ignore item width and span the full work rect.
+// Like ImGui::Separator/SeparatorText but stop kContentPaddingX short of the right
+// edge, lining up with widgets that honor PushItemWidth(-kContentPaddingX).
 void separator();
 void separator_text(const char* label);
 
 bool begin_styled_modal(const char* name, float width = 420.0F);
 void end_styled_modal();
 
-// Combo / popup helpers that push a small inner WindowPadding so the popup
-// items aren't flush against the popup border. The global theme sets
-// WindowPadding to (0, 0) so plain BeginCombo / BeginPopup popups clip their
-// first and last item against the border; these wrappers fix that.
-//
-// Pair begin_/end_ symmetrically; the wrapper only calls End* + Pop* when
-// Begin* returned true (same shape as begin_styled_modal/end_styled_modal).
+// Push inner WindowPadding so popup items aren't clipped against the border (the
+// global theme sets WindowPadding to 0). Pair begin_/end_ symmetrically; end_ only
+// runs End*/Pop* when begin_ returned true.
 bool begin_styled_combo(const char* label, const char* preview_value,
                         ImGuiComboFlags flags = 0);
 void end_styled_combo();
@@ -79,23 +71,15 @@ void end_styled_combo();
 bool begin_styled_popup(const char* str_id, ImGuiWindowFlags flags = 0);
 void end_styled_popup();
 
-// Draws a small rounded label "pill" used for ban indicators and similar
-// status chips. When `width` is 0 the pill auto-sizes to its label; when
-// positive the pill rect is forced to that width and the label is centered.
+// width 0 auto-sizes to the label; positive forces that width and centers the label.
 void draw_pill(const char* label, const ImVec4& fill, bool on, float width = 0.0F);
 
-// Two-tone stat chip: dim label on the left, bright value on the right,
-// inside a soft rounded rect. Used for compact key/value stat display
-// (e.g. "Steam Lv 9", "XP 2,557"). The 3-arg variant colorizes the value
-// (useful for binary-state stats like Prime → success green when on).
+// Two-tone stat chip: dim label, bright value, in a rounded rect (e.g. "Steam Lv 9").
+// The 3-arg variant colorizes the value (e.g. Prime -> success green when on).
 void draw_stat_chip(const char* label, const char* value);
 void draw_stat_chip(const char* label, const char* value, const ImVec4& value_color);
 
-// Uniform-styled action button used across all screens and cards. Drop-in
-// replacement for ImGui::Button / ImGui::SmallButton so every button looks
-// the same regardless of where it lives. Use ImVec2(0, 0) (default) to let
-// the button auto-size to its label; pass an explicit width when laying out
-// a fixed-width action row.
+// Uniform-styled button used everywhere. Default ImVec2(0,0) auto-sizes to the label.
 bool action_button(const char* label, const ImVec2& size = ImVec2(0, 0));
 
 }  // namespace sam::ui

@@ -17,10 +17,10 @@ struct TradeOffersResult {
     std::vector<TradeOffer> received;
 };
 
-// Fetches the account's trade offers via IEconService/GetTradeOffers using the
-// account's access_token (no WebAPI key needed). Refreshes the access token
-// first when it is near expiry, mutating `a` so the caller can persist it.
-// active_only restricts to offers awaiting action. Must run on a worker thread.
+// Fetches trade offers via IEconService/GetTradeOffers using the account's
+// access_token (no WebAPI key needed). Refreshes the access token first when near
+// expiry, mutating `a` so the caller can persist it. active_only restricts to offers
+// awaiting action. Must run on a worker thread.
 TradeOffersResult get_trade_offers(core::Account& a, bool active_only = true);
 
 }  // namespace sam::core::trade

@@ -33,8 +33,8 @@ struct ConfirmResult {
 };
 
 // Accepts an incoming offer. partner_steam_id_64 is the offer's sender.
-// needs_confirmation is set when accepting also gives items and Steam queued a
-// mobile confirmation. Must run on a worker thread.
+// needs_confirmation is set when accepting also gives items and Steam queued a mobile
+// confirmation. Must run on a worker thread.
 OfferActionResult accept_trade_offer(core::Account& a, const std::string& offer_id,
                                      std::uint64_t partner_steam_id_64);
 
@@ -50,10 +50,10 @@ SendOfferResult send_trade_offer(core::Account& a, const TradeUrl& trade_url,
                                  const std::vector<TradeAssetRef>& give,
                                  const std::string& message);
 
-// One attempt to auto-resolve the mobile confirmation for a sent offer: fetches
-// the confirmation list and approves the one whose creator_id matches offer_id.
-// Sets not_found when no matching confirmation is visible yet (Steam can lag a
-// few seconds after the send) so the caller can retry. Must run on a worker thread.
+// One attempt to auto-resolve the mobile confirmation for a sent offer: fetches the
+// confirmation list and approves the one whose creator_id matches offer_id. Sets
+// not_found when no matching confirmation is visible yet (Steam can lag a few seconds
+// after the send) so the caller can retry. Must run on a worker thread.
 ConfirmResult confirm_sent_offer(core::Account& a, const std::string& offer_id);
 
 }  // namespace sam::core::trade

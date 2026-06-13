@@ -17,18 +17,14 @@ struct ToastItem {
 
 class ToastStack {
 public:
-    // Append. Caller fills duration; expires_at_unix is detected_unix + duration.
     void push(ToastItem item);
 
-    // Replaces all pending toasts whose account_id matches `account_id` with
-    // a single summary entry. Used when a refresh batch produces many events
-    // and the per-account stack would be noisy.
+    // Replaces all account-scoped pending toasts with one summary entry, so a
+    // refresh batch producing many events doesn't flood the stack.
     void push_summary(std::string message);
 
-    // UI-thread only. Renders any active toasts in the bottom-right of the
-    // main viewport and prunes expired ones. on_click is invoked with the
-    // toast's account_id when the user clicks the body of a toast (empty
-    // for summary toasts).
+    // UI-thread only. Prunes expired toasts; on_click fires with the toast's
+    // account_id when its body is clicked.
     void render(const std::function<void(const std::string&)>& on_click);
 
     void clear();

@@ -58,8 +58,7 @@ void set_io_timeout(SOCKET s, DWORD ms) {
     setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&ms), sizeof(ms));
 }
 
-// Opens a TCP connection to host:port with a bounded connect time. Returns
-// INVALID_SOCKET on failure.
+// Bounded connect time. Returns INVALID_SOCKET on failure.
 SOCKET dial(const std::string& host, std::uint16_t port, int timeout_sec) {
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
@@ -100,9 +99,8 @@ SOCKET dial(const std::string& host, std::uint16_t port, int timeout_sec) {
     return s;
 }
 
-// Performs the SOCKS5 greeting, optional username/password auth (RFC 1929), and a
-// CONNECT to host:port (sent as a domain name so the proxy resolves it). Returns
-// true once the upstream reports the tunnel is open.
+// SOCKS5 greeting, optional username/password auth (RFC 1929), and a CONNECT to
+// host:port sent as a domain name so the proxy resolves it.
 bool socks5_connect(SOCKET up, const ProxyEndpoint& px,
                     const std::string& host, std::uint16_t port) {
     const bool have_creds = !px.user.empty() || !px.pass.empty();
@@ -165,8 +163,8 @@ bool socks5_connect(SOCKET up, const ProxyEndpoint& px,
     return recv_n(up, bound_port, 2);
 }
 
-// Reads the "CONNECT host:port HTTP/1.1" request WinHTTP sends, one byte at a time
-// so we never swallow tunnel bytes that follow the blank line.
+// Reads WinHTTP's "CONNECT host:port HTTP/1.1" request one byte at a time so we
+// never swallow tunnel bytes that follow the blank line.
 bool read_connect_target(SOCKET client, std::string& host, std::uint16_t& port) {
     std::string buf;
     unsigned char c = 0;

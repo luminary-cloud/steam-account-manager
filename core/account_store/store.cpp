@@ -59,8 +59,8 @@ std::wstring u8_to_ws(const std::string& s) {
 
 }  // namespace
 
-// to_json / from_json must live in the same namespace as the type so nlohmann's
-// ADL finds them. All of our domain types live in sam::core.
+// to_json / from_json must share the type's namespace (sam::core) so nlohmann
+// ADL finds them.
 
 void to_json(json& j, const Tag& t) {
     j = json{{"id", t.id}, {"name", t.name}, {"color", t.color_rgba}};
@@ -306,9 +306,8 @@ void to_json(json& j, const Vault& v) {
 }
 
 void from_json(const json& j, Vault& v) {
-    // Loaded version is informational only; the on-disk header version is
-    // authoritative for compatibility checks. Bump to the current build so
-    // the next save carries the latest schema.
+    // The on-disk header version is authoritative for compatibility; the JSON
+    // field is informational. Bump to current so the next save uses the latest.
     v.schema_version = static_cast<int>(store::kSchemaVersion);
     (void)j.value("schema_version", static_cast<int>(store::kSchemaVersion));
     if (j.contains("tags") && j["tags"].is_array()) {
@@ -510,7 +509,6 @@ bool iequals_ascii(std::string_view a, std::string_view b) {
     return true;
 }
 
-// steam_id_64 first when both sides have one, otherwise case-insensitive login.
 bool same_account(const Account& a, const Account& b) {
     if (a.steam_id_64 != 0 && b.steam_id_64 != 0) {
         return a.steam_id_64 == b.steam_id_64;
@@ -629,8 +627,7 @@ MergeReport merge_into(Vault& dst, Vault imported) {
         auto match = std::find_if(dst.accounts.begin(), dst.accounts.end(),
             [&](const Account& existing) { return same_account(existing, incoming); });
         if (match != dst.accounts.end()) {
-            // Preserve the destination ULID so existing references (in-flight
-            // edits, refresh cooldown maps, selected_account_id) stay stable.
+            // Keep the destination ULID so existing references stay stable.
             std::string preserved_id = match->id;
             *match = std::move(incoming);
             match->id = std::move(preserved_id);

@@ -26,8 +26,7 @@ using Microsoft::WRL::ComPtr;
 
 constexpr wchar_t kTaskName[] = L"Luminary Steam Account Manager";
 
-// COM on this thread is normally uninitialised (file dialogs init/uninit per
-// call), so we usually own it. Tolerate an existing apartment either way.
+// Tolerate an existing apartment; we usually own COM on this thread.
 struct ComInit {
     HRESULT hr;
     bool owned = false;
@@ -51,8 +50,8 @@ std::wstring current_exe_path() {
     return std::wstring(buf, n);
 }
 
-// SAM-compatible name (DOMAIN\user or MicrosoftAccount\...), which Task
-// Scheduler accepts for local, domain and Microsoft accounts alike.
+// SAM-compatible name (DOMAIN\user or MicrosoftAccount\...); Task Scheduler
+// accepts it for local, domain and Microsoft accounts alike.
 std::wstring current_user_sam() {
     wchar_t buf[512];
     ULONG n = ARRAYSIZE(buf);

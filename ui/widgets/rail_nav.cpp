@@ -113,8 +113,8 @@ void draw_rail_nav(app::AppState& state) {
                 state.current_screen = entry.screen;
                 if (entry.screen == app::Screen::AddAccount)
                     state.selected_account_id.clear();
-                // Leaving the Accounts screen with selection mode off drops the
-                // checked set so the user doesn't carry a stale selection back.
+                // Drop the checked set when leaving Accounts with selection mode
+                // off, so a stale selection doesn't carry back.
                 if (entry.screen != app::Screen::Accounts &&
                     !state.selection_mode) {
                     state.selected_account_ids.clear();

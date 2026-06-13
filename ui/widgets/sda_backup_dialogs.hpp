@@ -14,8 +14,7 @@ constexpr std::size_t kSdaPassphraseBufLen = 128;
 struct BackupDialogState {
     bool open = false;
     std::string account_id;
-    // Populated when the user clicks "Rebuild URI" for an account whose stored
-    // uri is empty. Not persisted to the vault.
+    // Rebuilt on demand when the stored uri is empty. Not persisted.
     std::string synthesized_uri;
 };
 

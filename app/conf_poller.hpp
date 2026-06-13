@@ -8,11 +8,11 @@ struct AppState;
 
 namespace sam::app::conf_poller {
 
-// Spawns the background polling thread. Reads settings.confirmations.* and
-// state.unlocked on each tick. Safe to call once at app startup.
+// Spawns the background polling thread; reads settings.confirmations.* and
+// state.unlocked each tick. Call once at startup.
 void start(AppState& state);
 
-// Stops the thread and joins. Idempotent.
+// Stops and joins. Idempotent.
 void stop();
 
 }  // namespace sam::app::conf_poller

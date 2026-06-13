@@ -249,13 +249,10 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         if (start < chips.size()) chip_rows.emplace_back(start, chips.size());
     }
 
-    // Report the OLDEST applicable freshness timestamp so the line tells the
-    // truth during the launch refresh window: the bulk Web API call updates
-    // web/bans within seconds, but the per-account GCPD scrape (which produces
-    // a.cs2) is staggered and can lag by minutes for large vaults. Including
-    // cs2 here pulls the display back to honest "Xh ago" until the scrape
-    // lands. Skipped when GCPD isn't applicable (disabled, or no session
-    // cookies) so the line doesn't get stuck at "never".
+    // Report the OLDEST applicable freshness timestamp: the bulk Web API call
+    // updates web/bans in seconds but the per-account GCPD scrape (a.cs2) is
+    // staggered and can lag minutes, so folding cs2 in keeps "Xh ago" honest.
+    // Skipped when GCPD isn't applicable so the line doesn't stick at "never".
     std::int64_t last_refresh = 0;
     {
         auto fold = [&](std::int64_t t) {
@@ -329,10 +326,8 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     const float chip_h = text_h + 6.0F;
     float middle_h = 0.0F;
     if (draw_premier || draw_wingman) middle_h += rank_block_h;
-    // Each section after the rank block is preceded by an ImGui::Spacing(),
-    // which is an empty item that adds two item-spacings of gap (one before it
-    // and one after) instead of one. Use 2*sp_y here so the height estimate
-    // matches what actually gets rendered.
+    // Each section's leading ImGui::Spacing() is an empty item that adds two
+    // item-spacings of gap, not one; use 2*sp_y so this estimate matches render.
     if (!chip_rows.empty()) {
         if (middle_h > 0) middle_h += 2.0F * sp_y;
         middle_h += static_cast<float>(chip_rows.size()) * chip_h;
@@ -357,8 +352,8 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     const ImVec2 header_origin_screen = ImGui::GetCursorScreenPos();
     const float  pane_inner_w         = ImGui::GetContentRegionAvail().x;
 
-    // The identity lines (persona, login, country) read better tightly stacked;
-    // the 12px panel spacing is meant for the stat sections lower down.
+    // Identity lines read better tightly stacked; the 12px panel spacing is for
+    // the stat sections lower down.
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                         ImVec2(ImGui::GetStyle().ItemSpacing.x, 3.0F));
     draw_avatar(a, kAvatarSize);
@@ -428,10 +423,9 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
 
     if (any_ban_pill) draw_ban_pills(a.bans, opts);
 
-    // Vertically center the rank + stat block in the space between the ban
-    // pills and the panel-body bottom. If the block is taller than the
-    // remaining space (long notes/tags/recent-changes), skip the spacer and
-    // let it flow naturally; the child window will scroll as a last resort.
+    // Center the rank + stat block between the ban pills and the panel-body
+    // bottom; if it's taller than the remaining space, skip the spacer and let
+    // the child window scroll.
     {
         const float y_cursor  = ImGui::GetCursorPosY();
         const float child_h   = ImGui::GetWindowHeight();
@@ -606,8 +600,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     const int n_buttons = a.sda.has_value() ? 5 : 4;
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     const float content_w = ImGui::GetContentRegionAvail().x;
-    // The Login button carries an attached method caret; reserve its width so
-    // the remaining buttons stay equal-width and aligned.
+    // Reserve the Login button's attached caret so the rest stay equal-width.
     const float btn_w =
         (content_w - kLoginCaretWidth - spacing * static_cast<float>(n_buttons - 1)) /
         static_cast<float>(n_buttons);

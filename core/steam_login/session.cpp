@@ -34,7 +34,7 @@ std::string jwt_payload(std::string_view jwt) {
     const auto second = jwt.find('.', first + 1);
     if (second == std::string_view::npos) return {};
     std::string seg(jwt.substr(first + 1, second - first - 1));
-    // base64url -> base64 (the decoder accepts both alphabets, but padding may be missing).
+    // Decoder accepts base64url, but padding may be missing.
     while (seg.size() % 4 != 0) seg += '=';
     const auto raw = crypto::base64_decode(seg);
     return std::string(reinterpret_cast<const char*>(raw.data()), raw.size());
@@ -46,9 +46,7 @@ std::string make_steam_login_secure(std::uint64_t steam_id_64,
                                      const crypto::SecureString& access_token) {
     if (steam_id_64 == 0 || access_token.empty()) return {};
     std::string token(access_token.begin(), access_token.end());
-    // Steam expects the cookie value with URL-encoded pipes; confirmed by
-    // capturing a working browser Cookie header which sent
-    // `steamLoginSecure=<steamid>%7C%7C<JWT>` literally on the wire.
+    // Pipes must be URL-encoded: browsers send `<steamid>%7C%7C<JWT>` literally.
     return std::to_string(steam_id_64) + "%7C%7C" + token;
 }
 
@@ -147,12 +145,9 @@ bool finalize_login_targets(std::uint64_t steam_id_64,
 
     const std::string rt(refresh_token.begin(), refresh_token.end());
 
-    // finalizelogin. POST refresh_token as `nonce`. Steam exchanges it for
-    // per-domain transfer URLs (settoken endpoints) that mint cookies on each
-    // Steam frontend. CSRF check requires the `sessionid` form value to match
-    // a `sessionid` cookie on the request; we generate-and-send the same
-    // value as both, which Steam accepts. `redir` is where the browser should
-    // land once the transfer completes.
+    // POST refresh_token as `nonce`; Steam returns per-domain settoken URLs.
+    // CSRF check requires the `sessionid` form value to match a `sessionid`
+    // cookie, so we send the same value as both.
     http::Request fin;
     fin.method = http::Method::Post;
     fin.url = "https://login.steampowered.com/jwt/finalizelogin";
@@ -212,8 +207,7 @@ bool transfer_login(std::uint64_t steam_id_64,
         return false;
     }
 
-    // POST each settoken URL and look for steamLoginSecure in the response.
-    // We only need the community-domain cookie for GCPD.
+    // Only the community-domain cookie is needed for GCPD.
     for (const auto& t : targets) {
         if (t.url.find("steamcommunity.com") == std::string::npos) continue;
 
@@ -250,11 +244,8 @@ bool transfer_login(std::uint64_t steam_id_64,
 bool refresh_access_token(core::Account& a) {
     if (a.refresh_token.empty()) return false;
 
-    // GenerateAccessTokenForApp is authenticated. Steam's unified messaging
-    // accepts the JWT either via an Authorization header, or via an
-    // `access_token` query parameter. We send the refresh_token as the
-    // bearer because it carries the "derive" scope needed to mint access
-    // tokens; the mobile access_token's [web,mobile] scope is not enough.
+    // Bearer is the refresh_token: it carries the "derive" scope needed to mint
+    // access tokens, which the mobile access_token's [web,mobile] scope lacks.
     CAuthentication_AccessToken_GenerateForApp_Request body;
     const std::string rt(a.refresh_token.begin(), a.refresh_token.end());
     body.set_refresh_token(rt);
@@ -286,8 +277,7 @@ bool refresh_access_token(core::Account& a) {
         return false;
     }
 
-    // Steam's unified-messaging HTTP responses carry the eresult in headers,
-    // not in the body. Surface those so failures are diagnosable.
+    // Unified-messaging responses carry the eresult in headers, not the body.
     auto find_header = [&](const std::string& name) -> std::string {
         const auto it = resp.headers.find(name);
         return it != resp.headers.end() ? it->second : std::string{};
@@ -310,10 +300,8 @@ bool refresh_access_token(core::Account& a) {
 
     const std::string at = parsed.access_token();
     if (at.empty()) {
-        // x-eresult=15 (AccessDenied) is expected when the stored refresh_token
-        // has audience web:mobile (see mobile_auth.cpp::begin_session). The
-        // caller falls back to AppState::auto_relogin which mints a fresh
-        // mobile-audience pair.
+        // x-eresult=15 (AccessDenied) is expected for a web:mobile refresh_token
+        // (see mobile_auth.cpp::begin_session); caller falls back to auto_relogin.
         SAM_LOG_WARN("session: refresh: empty access_token in response (x-eresult={} x-error_message='{}')",
                      er.empty() ? "?" : er, em);
         return false;
@@ -324,7 +312,7 @@ bool refresh_access_token(core::Account& a) {
     a.steam_login_secure = crypto::make_secure(
         make_steam_login_secure(a.steam_id_64, a.access_token));
     if (!parsed.refresh_token().empty()) {
-        // Steam occasionally rotates the refresh token; pick up the new one.
+        // Steam occasionally rotates the refresh token.
         a.refresh_token = crypto::make_secure(parsed.refresh_token());
     }
     SAM_LOG_INFO("session: refresh ok, new access_token exp={} ({} chars)",

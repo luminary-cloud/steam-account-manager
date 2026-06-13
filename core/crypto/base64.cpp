@@ -18,7 +18,7 @@ std::array<std::int8_t, 256> build_decode_table() {
     for (std::int8_t i = 0; i < 64; ++i) {
         t[static_cast<std::uint8_t>(kStdAlphabet[i])] = i;
     }
-    // Accept URL-safe variants in the same decoder.
+    // URL-safe variants accepted by the same decoder.
     t[static_cast<std::uint8_t>('-')] = 62;
     t[static_cast<std::uint8_t>('_')] = 63;
     return t;
@@ -91,7 +91,7 @@ std::vector<std::uint8_t> base64_decode(std::string_view encoded) {
         }
         const std::int8_t v = t[static_cast<std::uint8_t>(c)];
         if (v < 0) {
-            return {};  // Malformed
+            return {};
         }
         buf = (buf << 6) | static_cast<std::uint32_t>(v);
         bits += 6;

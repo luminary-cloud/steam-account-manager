@@ -89,8 +89,8 @@ void draw_export_bundle_modal(app::AppState& app, ExportBundleState& state) {
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     if (!visible) {
         ImGui::PopStyleVar(2);
-        // Popup was open but ImGui just closed it (X button / Escape). Wipe
-        // sensitive buffers so a typed passphrase doesn't linger in memory.
+        // ImGui closed the popup (X / Escape): wipe sensitive buffers so a
+        // typed passphrase doesn't linger in memory.
         wipe(state.passphrase_buf);
         wipe(state.confirm_buf);
         state.status.clear();

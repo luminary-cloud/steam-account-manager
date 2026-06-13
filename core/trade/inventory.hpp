@@ -20,9 +20,9 @@ struct InventoryFetchResult {
 };
 
 // Fetches an inventory via steamcommunity.com/inventory/<owner>/<appid>/<contextid>
-// using the account's web session cookie, joining assets with descriptions. For
-// our own CS2 inventory pass owner = a.steam_id_64, app_id 730, context_id 2.
-// Mutates `a` with any refreshed session. Must run on a worker thread.
+// using the web session cookie, joining assets with descriptions. For our own CS2
+// inventory pass owner = a.steam_id_64, app_id 730, context_id 2. Mutates `a` with
+// any refreshed session. Must run on a worker thread.
 InventoryFetchResult fetch_inventory(core::Account& a, std::uint64_t owner_steam_id_64,
                                      std::uint32_t app_id = 730, std::uint32_t context_id = 2,
                                      int count = 2000, std::uint64_t start_assetid = 0);

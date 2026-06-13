@@ -35,8 +35,8 @@ std::vector<std::uint8_t> read_font_file(const std::filesystem::path& path) {
     return bytes;
 }
 
-// Font bytes are cached for the program lifetime and shared across every ImFont via
-// FontDataOwnedByAtlas=false, so a large file like msyh.ttc is read once, not per size.
+// Cached for program lifetime and shared via FontDataOwnedByAtlas=false, so a large
+// file like msyh.ttc is read once, not per size.
 std::vector<std::uint8_t>& cached_font_bytes(const std::filesystem::path& path) {
     static std::map<std::string, std::vector<std::uint8_t>> cache;
     const std::string key = path.string();
@@ -85,9 +85,9 @@ const ImWchar* extended_glyph_ranges() {
     return &ranges[0];
 }
 
-// Merge system fonts covering scripts Segoe UI lacks so non-Latin names render instead
-// of '?'. Null ranges: the dynamic atlas loads glyphs on demand and ignores ranges.
-// Order matters, the first font with a glyph wins, so Segoe UI keeps the Latin set.
+// Merge fonts for scripts Segoe UI lacks so non-Latin names render instead of '?'.
+// Null ranges: the dynamic atlas loads glyphs on demand and ignores ranges.
+// Order matters: first font with a glyph wins, so Segoe UI keeps the Latin set.
 void merge_fallback_fonts(ImFontAtlas* atlas, float pixel_size) {
     add_font_from_disk(atlas, windows_font_path("msyh.ttc"),     pixel_size, nullptr, true, 0);  // CJK + JP kana
     add_font_from_disk(atlas, windows_font_path("malgun.ttf"),   pixel_size, nullptr, true, 0);  // Korean

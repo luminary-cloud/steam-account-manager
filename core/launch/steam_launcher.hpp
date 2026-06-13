@@ -21,17 +21,11 @@ struct LaunchResult {
     bool guard_code_was_typed = false;
 };
 
-// Launches Steam logged in as `account`:
-//   1. close any running steam.exe (graceful -shutdown then hard-kill)
-//   2. spawn the configured steam.exe
-//   3. hand off to login_driver, which polls for the Chromium login window
-//      and fills credentials / Remember / 2FA via UI Automation
-//
-// `LaunchResult::guard_code_was_typed` is true if the async driver was
-// started (it does its work after launch_account returns).
-//
-// NFA accounts (account.is_nfa) are dispatched to launch_account_with_token,
-// which injects the JWT instead of typing a password.
+// Launches Steam logged in as `account`: closes any running steam.exe, spawns the
+// configured one, then hands off to login_driver to fill credentials / 2FA via UI
+// Automation. `guard_code_was_typed` is true if the async driver was started (it does
+// its work after this returns). NFA accounts are dispatched to
+// launch_account_with_token, which injects the JWT instead of typing a password.
 LaunchResult launch_account(const core::Account& account);
 
 // Resolves the configured steam.exe path, or returns nullopt and fills `out`

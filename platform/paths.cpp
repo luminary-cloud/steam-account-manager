@@ -19,14 +19,12 @@ namespace sam::platform {
 
 namespace {
 
-// The chosen data location lives in the registry rather than a file, so a
-// migration leaves nothing behind on disk in the old location.
+// Location lives in the registry, not a file, so a migration leaves nothing on disk.
 constexpr const wchar_t* kRegSubkey     = L"Software\\steam-account-manager";
-constexpr const wchar_t* kRegDataDir    = L"DataDir";     // active custom location
-constexpr const wchar_t* kRegCleanupOld = L"CleanupOld";  // old dir to delete next launch
+constexpr const wchar_t* kRegDataDir    = L"DataDir";
+constexpr const wchar_t* kRegCleanupOld = L"CleanupOld";
 
-// Set during data_dir()'s one-time resolution when the registry named an
-// unusable target (e.g. an unplugged drive). Read-only afterwards.
+// Set during data_dir() resolution when the registry named an unusable target.
 std::optional<std::filesystem::path> g_unavailable_custom;
 
 std::filesystem::path module_directory() {
@@ -59,7 +57,6 @@ bool paths_equal(const std::filesystem::path& a, const std::filesystem::path& b)
     return norm_lower(a) == norm_lower(b);
 }
 
-// True when `child` is `parent` or lives beneath it.
 bool is_subpath(const std::filesystem::path& child, const std::filesystem::path& parent) {
     const std::wstring c = norm_lower(child);
     const std::wstring p = norm_lower(parent);
@@ -68,8 +65,7 @@ bool is_subpath(const std::filesystem::path& child, const std::filesystem::path&
     return c.size() == p.size() || c[p.size()] == L'\\' || c[p.size()] == L'/';
 }
 
-// Reads an absolute path from HKCU\kRegSubkey\value_name. Empty if the value is
-// absent, blank, or not an absolute path.
+// Empty if the value is absent, blank, or not an absolute path.
 std::filesystem::path read_registry_path(const wchar_t* value_name) {
     HKEY key = nullptr;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, kRegSubkey, 0, KEY_QUERY_VALUE, &key)
@@ -112,7 +108,7 @@ bool write_registry_path(const wchar_t* value_name, const std::filesystem::path&
 bool delete_registry_value(const wchar_t* value_name) {
     HKEY key = nullptr;
     const LONG open = RegOpenKeyExW(HKEY_CURRENT_USER, kRegSubkey, 0, KEY_SET_VALUE, &key);
-    if (open == ERROR_FILE_NOT_FOUND) return true;  // nothing to clear
+    if (open == ERROR_FILE_NOT_FOUND) return true;
     if (open != ERROR_SUCCESS) return false;
     const LONG rc = RegDeleteValueW(key, value_name);
     RegCloseKey(key);
@@ -147,9 +143,8 @@ std::filesystem::path default_data_dir() {
 
 namespace {
 
-// Resolves the data root once. portable.flag wins; then a valid custom location
-// from the registry; otherwise the default appdata dir. Records an unusable
-// custom target so the UI can warn (e.g. a removed USB drive).
+// portable.flag wins; then a valid custom registry location; else default appdata.
+// Records an unusable custom target so the UI can warn.
 std::filesystem::path resolve_data_dir() {
     auto exe = module_directory();
     if (!exe.empty() && std::filesystem::exists(exe / L"portable.flag")) {
@@ -233,8 +228,7 @@ bool relocate_data_dir(const std::filesystem::path& new_dir, std::string* err) {
         return fail(std::string("Target folder isn't writable: ") + e.what());
     }
 
-    // Copy the whole tree. The live log file is opened share-all by spdlog, so it
-    // copies fine.
+    // Live log file is opened share-all by spdlog, so it copies fine.
     ec.clear();
     std::filesystem::copy(current, new_dir,
         std::filesystem::copy_options::recursive |
@@ -242,9 +236,7 @@ bool relocate_data_dir(const std::filesystem::path& new_dir, std::string* err) {
         std::filesystem::copy_options::copy_symlinks, ec);
     if (ec) return fail("Copy failed: " + ec.message());
 
-    // Record the old folder so the next launch removes it (we can't delete it
-    // now: this process still holds the log file open there). Stored in the
-    // registry so nothing is left on disk in either location.
+    // Old folder removed next launch; can't delete now (log file still open there).
     write_registry_path(kRegCleanupOld, current);
 
     // Point at the new location last, so any failure above leaves us on the old.

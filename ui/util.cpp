@@ -65,10 +65,8 @@ void set_tooltip(const char* fmt, ...) {
 }
 
 namespace {
-// ImGui::Separator()/SeparatorText() span window->WorkRect.Max.x and ignore the
-// PushItemWidth(-kContentPaddingX) every other content item honors, so they run
-// flush to the right edge. Pull the work-rect right edge in for the duration of
-// the call, then restore it so later layout is unaffected.
+// Separator()/SeparatorText() span WorkRect.Max.x and ignore PushItemWidth, so they
+// run to the right edge. Pull the work-rect right edge in for the call, then restore it.
 template <class Fn>
 void with_content_inset(Fn&& draw) {
     ImGuiWindow* w = ImGui::GetCurrentWindow();
@@ -125,9 +123,7 @@ void end_styled_popup() {
 }
 
 bool action_button(const char* label, const ImVec2& size) {
-    // Uniform "medium" height across all screens. Slightly tighter horizontal
-    // padding than ImGui's default; vertical padding is computed so the final
-    // height lands at ~26 px regardless of the surrounding style.
+    // Vertical padding is computed so the height lands at ~26px regardless of style.
     constexpr float kButtonHeight = 26.0F;
     const float font_h = ImGui::GetFontSize();
     const float pad_y = (kButtonHeight - font_h) * 0.5F;
@@ -152,7 +148,6 @@ void draw_pill(const char* label, const ImVec4& fill, bool on, float width) {
     const ImU32 fg_col = on ? IM_COL32_WHITE : IM_COL32(160, 160, 160, 255);
 
     dl->AddRectFilled(cursor, ImVec2(cursor.x + box.x, cursor.y + box.y), bg_col, 4.0F);
-    // Center the label horizontally within the (possibly stretched) box.
     const float text_x = cursor.x + (box.x - sz.x) * 0.5F;
     dl->AddText(ImVec2(text_x, cursor.y + pad.y), fg_col, label);
     ImGui::Dummy(box);

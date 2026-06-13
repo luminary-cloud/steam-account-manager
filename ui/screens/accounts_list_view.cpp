@@ -34,8 +34,7 @@ constexpr float kRowHeight       = 22.0F;
 constexpr float kDotRadius       = 5.0F;
 constexpr float kIndent          = 10.0F;
 constexpr const char* kDragPayload = "SAM_ACCOUNT_ID";
-// Shown as the list-row label when "Hide account name" is on and the account
-// has no persona name to fall back to.
+// Row label when "Hide account name" is on and there's no persona to fall back to.
 constexpr const char* kNoNamePlaceholder = "Account";
 
 std::string g_rename_target;

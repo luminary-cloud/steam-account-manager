@@ -27,7 +27,7 @@ struct TradeAuditEntry {
     std::string account_id;
     std::string account_login;
     std::string offer_id;  // tradeofferid when known, empty on failure
-    int item_count = 0;    // number of items offered
+    int item_count = 0;
     TradeAuditOutcome outcome = TradeAuditOutcome::Sent;
     std::string detail;  // error message or confirmation note
     TradeAuditSource source = TradeAuditSource::UserSingle;

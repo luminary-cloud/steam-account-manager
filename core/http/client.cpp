@@ -75,7 +75,7 @@ std::map<std::string, HINTERNET> g_sessions;  // keyed by effective proxy URL ("
 // configured) and silently overrides a request-handle WINHTTP_OPTION_PROXY. One
 // session per distinct proxy also keeps each proxy's keep-alive pool separate, so
 // per-account proxies can't cross-contaminate exit IPs. Proxies that can't be set
-// up fall back to a direct session (logged once).
+// up fall back to a direct session.
 HINTERNET session_for(const std::string& effective_proxy) {
     std::lock_guard lk(g_session_mtx);
     if (g_cancelled.load(std::memory_order_acquire)) return nullptr;
@@ -126,8 +126,7 @@ SessionCleanup g_session_cleanup;
 void parse_headers(const std::wstring& raw,
                    std::map<std::string, std::string>& out,
                    std::vector<std::string>& cookies_out) {
-    // Headers come as a single CRLF-separated block. The first line is the
-    // status line; everything after is "Name: Value".
+    // First line is the status line; the rest are "Name: Value".
     std::wstring line;
     bool first = true;
     for (std::size_t i = 0; i <= raw.size(); ++i) {
@@ -201,8 +200,7 @@ bool split_url(const std::string& url, std::wstring& host, INTERNET_PORT& port,
     return true;
 }
 
-// Resolves which proxy URL the current request should use, honoring (in order) a
-// thread-local test override, then the global ProxyMode policy.
+// Honors (in order) a thread-local test override, then the global ProxyMode policy.
 std::string resolve_effective_proxy() {
     if (g_thread_override.has_value()) return *g_thread_override;
     std::lock_guard lk(g_policy_mtx);
@@ -214,10 +212,9 @@ std::string resolve_effective_proxy() {
     return {};
 }
 
-// Applies http/https proxy credentials to a freshly opened request handle. The
-// proxy address itself lives on the session (see session_for); only the username
-// and password must be set per-request, as WinHTTP rejects them on a session
-// handle. SOCKS proxies need nothing here: the bridge does their auth.
+// Applies http/https proxy credentials to a request handle. The proxy address lives
+// on the session (see session_for); WinHTTP rejects username/password on a session
+// handle, so they must be set per-request. SOCKS auth is done by the bridge.
 void apply_proxy(HINTERNET request) {
     const std::string proxy = resolve_effective_proxy();
     if (proxy.empty()) return;
@@ -295,7 +292,7 @@ Response perform_once(const Request& req) {
         WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, &disable, sizeof(disable));
     }
 
-    // Disable WinHTTP's automatic cookie store; we set the Cookie header ourselves.
+    // We set the Cookie header ourselves, so disable WinHTTP's cookie store.
     {
         DWORD flags = WINHTTP_DISABLE_COOKIES;
         WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, &flags, sizeof(flags));

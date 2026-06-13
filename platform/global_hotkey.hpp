@@ -10,10 +10,8 @@ namespace sam::platform::global_hotkey {
 // Single app-wide hotkey id (wParam of WM_HOTKEY).
 inline constexpr int kCopyCodeId = 1001;
 
-// Win32 RegisterHotKey wrapper. `mods` is a bitmask of MOD_CONTROL/MOD_ALT/etc;
-// `vk` is the virtual-key code. Returns true on success. On failure (combo is
-// already owned by another process), returns false and the caller should
-// surface a setting-level error.
+// `mods` is a MOD_* bitmask, `vk` a virtual-key code. False if the combo is
+// already owned by another process.
 bool register_hotkey(HWND hwnd, int id, std::uint32_t mods, std::uint32_t vk);
 
 // Idempotent.

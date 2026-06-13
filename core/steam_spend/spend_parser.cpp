@@ -16,8 +16,6 @@ struct Row {
     std::vector<std::string> cells;
 };
 
-// Strips HTML tags and decodes the handful of entities Steam emits, then trims
-// surrounding whitespace. Mirrors the GCPD parser's helper.
 std::string strip_tags(std::string_view in) {
     std::string out;
     out.reserve(in.size());
@@ -76,9 +74,8 @@ bool equals_ci(std::string_view a, std::string_view b) {
     return true;
 }
 
-// Every <tr> in the document as an ordered list of stripped cell strings. Run
-// over the whole page rather than a specific table class, so a layout reshuffle
-// or a class rename can't hide the spend rows.
+// Every <tr> in the document, not a specific table class, so a layout reshuffle
+// or class rename can't hide the spend rows.
 std::vector<Row> rows_from_html(std::string_view html) {
     std::vector<Row> rows;
     static const std::regex row_re(R"(<tr[^>]*>([\s\S]*?)</tr>)", std::regex::icase);
@@ -98,8 +95,7 @@ std::vector<Row> rows_from_html(std::string_view html) {
     return rows;
 }
 
-// Parses a money string like "6,128.08" or "0.00" into integer cents. Returns
-// -1 on failure. Avoids floats and locale entirely.
+// Money string like "6,128.08" into integer cents, -1 on failure. No floats or locale.
 std::int64_t parse_money_cents(std::string s) {
     s.erase(std::remove(s.begin(), s.end(), ','), s.end());
     s.erase(std::remove(s.begin(), s.end(), ' '), s.end());
@@ -132,9 +128,8 @@ SpendData parse_account_spend(std::string_view html) {
 
     for (const auto& r : rows) {
         if (r.cells.empty()) continue;
-        // Exact (case-insensitive) match on the type label so "TotalSpend" is
-        // never matched by the sibling rows "PackageOnlySpend", "OldSpend",
-        // "PWSpend", or "ChinaSpend".
+        // Exact match so sibling rows (PackageOnlySpend, OldSpend, PWSpend,
+        // ChinaSpend) don't match.
         if (!equals_ci(r.cells[0], "TotalSpend")) continue;
         out.found_total = true;
         // Row shape: Type | Time Calculated | Amount | Currency.
@@ -149,14 +144,11 @@ SpendData parse_account_spend(std::string_view html) {
 }
 
 bool looks_like_spend_page(std::string_view html) {
-    // These labels render on the AccountSpend dump and do not appear on the
-    // login page Steam serves for an expired session.
     return contains_ci(html, "TotalSpend") || contains_ci(html, "PackageOnlySpend");
 }
 
 bool looks_like_login_page(std::string_view html) {
-    // Steam's login HTML always embeds `g_steamID = false;` before the user
-    // authenticates; the `<title>Sign In` literal covers the rendered title.
+    // Steam's login HTML embeds `g_steamID = false;` before authentication.
     return contains_ci(html, "g_steamID = false") ||
            contains_ci(html, "<title>Sign In");
 }

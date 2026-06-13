@@ -43,9 +43,8 @@ bool install_gamesense_loader(const std::filesystem::path& src, std::string* err
 
     const auto dest = dir / src.filename();
 
-    // Replace any previously installed loader so the "first .exe" lookup stays
-    // unambiguous after an update. Never remove the file the user just picked
-    // (they may have re-selected the already-installed loader).
+    // Remove old loaders so the "first .exe" lookup stays unambiguous, but never
+    // the file the user just picked (it may be the already-installed loader).
     for (const auto& entry : fs::directory_iterator(dir, ec)) {
         if (ec) break;
         if (!entry.is_regular_file() || entry.path().extension() != L".exe") continue;
@@ -57,7 +56,7 @@ bool install_gamesense_loader(const std::filesystem::path& src, std::string* err
 
     std::error_code same;
     if (fs::equivalent(src, dest, same) && !same) {
-        return true;  // already installed at this exact path
+        return true;
     }
 
     fs::copy_file(src, dest, fs::copy_options::overwrite_existing, ec);

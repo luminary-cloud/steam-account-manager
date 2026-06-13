@@ -35,7 +35,6 @@ std::array<bool,     IDR_PREMIER_COUNT> g_premier_tried{};
 std::array<TexEntry, IDR_WINGMAN_COUNT> g_wingman{};
 std::array<bool,     IDR_WINGMAN_COUNT> g_wingman_tried{};
 
-// Pull RT_RCDATA bytes for the given resource id out of the running module.
 bool load_resource_bytes(WORD resource_id, const unsigned char*& out_data, std::size_t& out_size) {
     HMODULE module = GetModuleHandleW(nullptr);
     HRSRC h = FindResourceW(module, MAKEINTRESOURCEW(resource_id), RT_RCDATA);

@@ -10,8 +10,7 @@ namespace {
 
 constexpr std::uint64_t kIndividualBase = 0x0110000100000000ULL;
 
-// Returns the value of query key `key` in `url`, or empty if absent. Accepts a
-// full URL or a bare query string.
+// Accepts a full URL or a bare query string.
 std::string query_value(std::string_view url, std::string_view key) {
     const auto qpos = url.find('?');
     std::string_view q =

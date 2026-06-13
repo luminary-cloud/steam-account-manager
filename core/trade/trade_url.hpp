@@ -7,8 +7,7 @@
 
 namespace sam::core::trade {
 
-// Parses a Steam trade URL of the form
-// https://steamcommunity.com/tradeoffer/new/?partner=<accountid>&token=<token>
+// Parses https://steamcommunity.com/tradeoffer/new/?partner=<accountid>&token=<token>.
 // Returns ok=false when the partner id or token can't be extracted.
 TradeUrl parse_trade_url(const std::string& url);
 

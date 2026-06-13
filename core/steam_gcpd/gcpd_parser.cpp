@@ -123,8 +123,7 @@ std::int64_t parse_gcpd_timestamp(const std::string& s) {
     return (t == -1) ? 0 : static_cast<std::int64_t>(t);
 }
 
-// All `<table class="generic_kv_table">` elements as ordered lists of rows,
-// header row included as the first entry. Mirrors what we see in DevTools.
+// All `<table class="generic_kv_table">` elements as row lists, header first.
 std::vector<std::vector<Row>> extract_tables(std::string_view html) {
     std::vector<std::vector<Row>> out;
     static const std::regex tbl_re(
@@ -138,8 +137,6 @@ std::vector<std::vector<Row>> extract_tables(std::string_view html) {
     return out;
 }
 
-// True if the table's header (first row) starts with the given keyword in
-// cell 0, case-insensitive.
 bool header_starts_with(const std::vector<Row>& tbl, std::string_view kw) {
     if (tbl.empty() || tbl.front().cells.empty()) return false;
     return contains_ci(tbl.front().cells.front(), kw);
@@ -166,21 +163,20 @@ MatchmakingData parse_matchmaking(std::string_view html) {
     const std::int64_t now = now_seconds();
 
     for (const auto& tbl : tables) {
-        if (tbl.size() < 2) continue;   // need header + at least one data row
+        if (tbl.size() < 2) continue;   // need header + a data row
         const auto& header = tbl.front().cells;
         if (header.empty()) continue;
 
-        // Cooldown table: header[0] is "Competitive Cooldown Expiration",
-        // header[1] the Level, header[2] Acknowledged.
+        // Cooldown table: header is Expiration | Level | Acknowledged.
         if (contains_ci(header[0], "Cooldown")) {
             for (std::size_t i = 1; i < tbl.size(); ++i) {
                 const auto& row = tbl[i].cells;
                 if (row.empty()) continue;
                 const std::int64_t ts = parse_gcpd_timestamp(row[0]);  // localized "Never" -> 0
                 if (ts == 0) {
-                    // A non-date expiration ("Never") paired with a real penalty
-                    // Level (>= 1) denotes a permanent cooldown. Keying off the
-                    // integer Level keeps this locale-agnostic.
+                    // Non-date expiration ("Never") + a penalty Level >= 1 is a
+                    // permanent cooldown. Keying off the integer Level stays
+                    // locale-agnostic.
                     const bool has_level = row.size() > 1 && to_int(row[1], 0) >= 1;
                     if (!row[0].empty() && has_level) {
                         out.cooldown_expires_unix = sam::core::kCooldownNever;
@@ -188,8 +184,7 @@ MatchmakingData parse_matchmaking(std::string_view html) {
                     }
                     continue;
                 }
-                // A permanent cooldown outranks any temporary row in the table;
-                // ts < kCooldownNever is always true, so guard against clobbering it.
+                // A permanent cooldown outranks temporary rows; don't clobber it.
                 if (out.cooldown_expires_unix == sam::core::kCooldownNever) continue;
                 if (ts > now &&
                     (out.cooldown_expires_unix == 0 || ts < out.cooldown_expires_unix)) {
@@ -200,10 +195,8 @@ MatchmakingData parse_matchmaking(std::string_view html) {
             continue;
         }
 
-        // Main matchmaking-mode table: header[0] is "Matchmaking Mode".
-        // Shape: Mode | Wins | Ties | Losses | Skill Group | Last Match | Region.
-        // Skip the per-map variant (header includes Map/Mappa/Mapa/Carte/Karte);
-        // we no longer extract per-map ranks.
+        // Main table: Mode | Wins | Ties | Losses | Skill Group | Last Match |
+        // Region. Skip the per-map variant (header has Map in some locale).
         if (contains_ci(header[0], "Matchmaking Mode")) {
             if (header_contains_any_cell(tbl, {"Map", "Mappa", "Mapa", "Carte", "Karte"})) {
                 continue;
@@ -224,7 +217,7 @@ MatchmakingData parse_matchmaking(std::string_view html) {
                     ? to_int(row[skill_col], -1) : -1;
                 const int wins  = (row.size() > static_cast<std::size_t>(wins_col))
                     ? to_int(row[wins_col], -1) : -1;
-                if (skill < 0 && wins < 0) continue;   // nothing usable on this row
+                if (skill < 0 && wins < 0) continue;
 
                 if (contains_ci(row[0], "Premier")) {
                     if (skill > 0) out.premier_rating = skill;
@@ -233,8 +226,6 @@ MatchmakingData parse_matchmaking(std::string_view html) {
                     if (skill > 0) out.wingman_rank = skill;
                     if (wins >= 0) out.wingman_wins = wins;
                 }
-                // (Competitive in the main table is the legacy global skill
-                // group; we no longer surface it.)
             }
             continue;
         }
@@ -244,16 +235,12 @@ MatchmakingData parse_matchmaking(std::string_view html) {
 }
 
 bool looks_like_gcpd_page(std::string_view html) {
-    // `generic_kv_table` is the table class every GCPD tab renders; the
-    // breadcrumb literal is the heading at the top of every GCPD page.
     return contains_ci(html, "generic_kv_table") ||
            contains_ci(html, "Personal Game Data");
 }
 
 bool looks_like_login_page(std::string_view html) {
-    // Steam's login HTML always embeds `g_steamID = false;` in an inline
-    // script before the user authenticates; the `<title>Sign In` literal
-    // covers the rendered title in case the inline script is restyled.
+    // Steam's login HTML embeds `g_steamID = false;` before authentication.
     return contains_ci(html, "g_steamID = false") ||
            contains_ci(html, "<title>Sign In");
 }
@@ -264,9 +251,8 @@ AccountMainData parse_accountmain(std::string_view html) {
     if (tables.empty()) return out;
     out.ok = true;
 
-    // Steam renders accountmain's profile rank as a free-text block inside
-    // a single <td> (not as rows). Concatenate ALL cell text across all
-    // tables and grep for the labelled values.
+    // accountmain renders the profile rank as free text in one <td>, not rows,
+    // so concatenate all cell text and grep for the labelled values.
     std::string blob;
     for (const auto& tbl : tables) {
         for (const auto& row : tbl) {

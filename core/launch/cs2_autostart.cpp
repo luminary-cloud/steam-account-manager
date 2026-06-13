@@ -20,11 +20,9 @@ namespace {
 
 using namespace std::chrono_literals;
 
-// Bumped on each start_async; a worker bails as soon as a newer run begins, so
-// logging into a different account cancels a still-pending autostart.
+// Bumped on each start_async; a worker bails as soon as a newer run begins.
 std::atomic<std::uint64_t> g_gen{0};
 
-// Status messages queued by the worker, drained on the UI thread as toasts.
 std::mutex g_msg_mutex;
 std::vector<StatusMessage> g_msgs;
 
@@ -72,9 +70,9 @@ void worker_body(std::uint64_t gen, core::LoginMethod method,
 
     using clk = std::chrono::steady_clock;
 
-    // 1. Wait for sign-in to complete: Steam sets ActiveUser to the account id
-    //    (low 32 bits of the SteamID) once logged in, 0 while on the login
-    //    screen. Match our account when known so another login can't trigger us.
+    // Steam sets ActiveUser to the account id (low 32 bits of the SteamID) once
+    // logged in, 0 while on the login screen. Match our account when known so
+    // another login can't trigger us.
     const auto target = static_cast<std::uint32_t>(steam_id_64 & 0xFFFFFFFFull);
     const auto login_deadline = clk::now() + kLoginTimeout;
     bool logged_in = false;
@@ -97,7 +95,7 @@ void worker_body(std::uint64_t gen, core::LoginMethod method,
         return;
     }
 
-    // 2. Launch CS2 through the running client (queued by Steam if needed).
+    // Launch CS2 through the running client (queued by Steam if needed).
     if (!platform::process::launch(*steam_exe, L"-- steam://rungameid/730")) {
         SAM_LOG_ERROR("cs2_autostart: failed to launch steam://rungameid/730");
         notify("Failed to launch CS2.", true);
@@ -114,7 +112,6 @@ void worker_body(std::uint64_t gen, core::LoginMethod method,
         return;
     }
 
-    // 3. Wait for cs2.exe, then run the loader once.
     const auto cs2_deadline = clk::now() + kCs2Timeout;
     std::uint32_t cs2_pid = 0;
     while (clk::now() < cs2_deadline) {

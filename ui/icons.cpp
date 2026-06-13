@@ -69,8 +69,7 @@ bool decode_png(const unsigned char* data, std::size_t len, std::vector<unsigned
     return true;
 }
 
-// Rasterizes the app icon to straight-alpha RGBA. Reads hbmColor directly (not
-// DrawIconEx) so alpha stays un-premultiplied, as ImGui's blending expects.
+// Reads hbmColor directly (not DrawIconEx) so alpha stays un-premultiplied, as ImGui expects.
 bool load_app_icon_rgba(std::vector<unsigned char>& rgba_out, UINT& w_out, UINT& h_out) {
     HICON icon = static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr),
         MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR));
@@ -112,8 +111,7 @@ bool load_app_icon_rgba(std::vector<unsigned char>& rgba_out, UINT& w_out, UINT&
         rgba_out[i + 2] = b;
         if (rgba_out[i + 3] != 0) any_alpha = true;
     }
-    // A legacy icon with no alpha channel reads back fully transparent; show it
-    // opaque rather than invisible.
+    // A legacy icon with no alpha reads back fully transparent; force opaque.
     if (!any_alpha) {
         for (std::size_t i = 0; i + 3 < rgba_out.size(); i += 4) rgba_out[i + 3] = 255;
     }

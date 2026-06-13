@@ -12,9 +12,8 @@
 
 namespace sam::app {
 
-// Background-thread vault writer. Snapshotting + encryption + atomic write all
-// happen off the UI thread; rapid mutations are coalesced into a single save
-// via latest-wins debouncing.
+// Background-thread vault writer: snapshot + encryption + atomic write happen off
+// the UI thread; rapid mutations are coalesced via latest-wins debouncing.
 class VaultSaver {
 public:
     VaultSaver() = default;
@@ -23,17 +22,15 @@ public:
     VaultSaver(const VaultSaver&) = delete;
     VaultSaver& operator=(const VaultSaver&) = delete;
 
-    // Called once before any schedule(). Idempotent.
+    // Call once before any schedule(). Idempotent.
     void start(std::filesystem::path path);
 
-    // Snapshot vault + password and schedule an async save. The save fires
-    // ~debounce_ms after the most recent schedule() call, so rapid bursts
-    // collapse into one write.
+    // Snapshots vault + password and schedules a save that fires ~debounce after
+    // the most recent schedule(), so bursts collapse into one write.
     void schedule(const core::Vault& vault,
                   const crypto::SecureString& password);
 
-    // Block until any pending or in-flight save has completed. Safe to call
-    // from the UI thread.
+    // Blocks until any pending or in-flight save completes. UI-thread safe.
     void flush();
 
 private:

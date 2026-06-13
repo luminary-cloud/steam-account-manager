@@ -27,8 +27,7 @@ namespace {
 constexpr const char* kAddPopupName    = "Add Steam Guard";
 constexpr const char* kRemovePopupName = "Remove Steam Guard";
 
-// Per-account reveal-until-unix for the R-code shown in the Add wizard. Matches
-// the pattern in draw_revocation_section so the code stays masked by default.
+// Per-account reveal-until-unix for the R-code; masked by default.
 std::unordered_map<std::string, std::int64_t> g_rcode_reveal_until;
 
 std::int64_t unix_now() {
@@ -170,9 +169,9 @@ void dispatch_finalize(app::AppState& app, AddSdaDialogState& s) {
                 return;
             }
 
-            // Finalize came back ambiguous (e.g. status 2 "already finalized") or
-            // ran out of tries. Steam often activates the authenticator anyway, so
-            // confirm against the live status before declaring failure.
+            // Finalize was ambiguous (e.g. status 2 "already finalized") or out
+            // of tries. Steam often activates anyway, so confirm against the live
+            // status before declaring failure.
             s.working_text = "Checking the authenticator with Steam...";
             s.step = AddSdaDialogState::Step::Working;
             dispatch_verify_active(app, s);
@@ -224,9 +223,8 @@ void dispatch_verify_active(app::AppState& app, AddSdaDialogState& s) {
                 return;
             }
 
-            // token_gid uniquely identifies the authenticator token. When the maFile
-            // has one it must match what Steam reports as live; otherwise fall back to
-            // "a Valve mobile authenticator is active".
+            // When the maFile has a token_gid it must match what Steam reports as
+            // live; otherwise fall back to "a Valve mobile authenticator is active".
             const bool has_gid = !mafile_token_gid.empty();
             const bool steam_has_authenticator =
                 status.authenticator_type == 1 || !status.token_gid.empty();

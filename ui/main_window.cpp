@@ -22,8 +22,7 @@ namespace sam::ui {
 
 namespace {
 
-// kContentPaddingX (the matching horizontal inset) lives in ui/util.hpp so the
-// separator helpers can share it.
+// kContentPaddingX lives in ui/util.hpp so the separator helpers can share it.
 constexpr float kContentPaddingY = 20.0F;
 
 void draw_screen(app::AppState& state) {
@@ -57,15 +56,12 @@ bool draw(app::AppState& state) {
     bool keep_running = true;
     if (ImGui::Begin("sam-root", nullptr, root_flags)) {
         widgets::draw_title_bar(state);
-        // Sit the content flush under the bar; the child would otherwise leave
-        // an ItemSpacing gap that shows a strip of the darker root background.
+        // Flush under the bar, else an ItemSpacing gap shows a strip of root background.
         ImGui::SetCursorPosY(widgets::kTitleBarHeight);
 
         if (state.unlocked) {
-            // A background refresh discovered we need to re-login for an
-            // account: switch to the Add Account screen so the Full Login
-            // wizard can pick up the prefilled username. The wizard clears
-            // the optional once it consumes it.
+            // A background refresh flagged an account for re-login: jump to Add Account
+            // so the Full Login wizard picks up the prefilled username (and clears it).
             if (state.pending_relogin_login.has_value() &&
                 state.current_screen != app::Screen::AddAccount) {
                 state.current_screen = app::Screen::AddAccount;
@@ -109,8 +105,7 @@ bool draw(app::AppState& state) {
         state.current_screen = app::Screen::Accounts;
     });
 
-    // Surface the background release check once the vault is unlocked, so the
-    // modal never steals focus from the Unlock-screen password field.
+    // Only once unlocked, so the modal never steals focus from the Unlock password field.
     if (state.unlocked) {
         {
             std::lock_guard lk(state.update_mutex);

@@ -24,10 +24,6 @@ namespace sam::steam_login {
 
 namespace {
 
-// Tiny protobuf encoder/decoder. We only need varint and length-delimited
-// fields; Steam's auth messages don't use packed repeated or fixed32/64 in the
-// surface we touch.
-
 constexpr int kWireVarint   = 0;
 constexpr int kWireFixed64  = 1;
 constexpr int kWireLenDelim = 2;
@@ -70,7 +66,7 @@ void enc_uint64(std::vector<std::uint8_t>& out, int field, std::uint64_t v) {
     enc_varint(out, v);
 }
 
-// Protobuf `fixed64`: 8 bytes little-endian, wire type 1.
+// fixed64: 8 bytes little-endian, wire type 1.
 void enc_fixed64(std::vector<std::uint8_t>& out, int field, std::uint64_t v) {
     enc_tag(out, field, kWireFixed64);
     for (int i = 0; i < 8; ++i) {
@@ -158,9 +154,8 @@ std::string format_post_error(const std::string& fallback, const std::string& er
     return fallback;
 }
 
-// Returns nullopt on transport/HTTP failure or any Steam-side x-eresult error.
-// Writes the raw x-eresult value into *eresult_out when non-null, so callers
-// can distinguish "Steam rejected us" from "couldn't reach Steam".
+// nullopt on transport/HTTP failure or any Steam-side x-eresult error; the raw
+// x-eresult goes to *eresult_out so callers can tell rejection from unreachable.
 std::optional<std::string> post_protobuf(const std::string& path,
                                           const std::vector<std::uint8_t>& msg,
                                           const std::string& access_token = "",
@@ -173,8 +168,8 @@ std::optional<std::string> post_protobuf(const std::string& path,
     }
 
     req.headers["Content-Type"] = "application/x-www-form-urlencoded";
-    // Browser-shape headers: Steam's IAuthenticationService endpoints
-    // rate-limit non-browser-looking clients aggressively (5/15min/IP).
+    // Browser-shape headers: IAuthenticationService rate-limits non-browser
+    // clients aggressively (5/15min/IP).
     req.headers["Origin"]  = "https://steamcommunity.com";
     req.headers["Referer"] = "https://steamcommunity.com/login/";
     req.headers["Accept"]  = "*/*";
@@ -238,9 +233,8 @@ BeginSessionResult begin_session(const MobileLogin& login) {
         return out;
     }
 
-    // device_details (field 9) gives Steam the metadata needed to issue a
-    // session with full mobileconf write capability. Without it, the session
-    // can list confirmations but accept/reject return `{"success":false}`.
+    // device_details (field 9) is required for a session with mobileconf write
+    // capability; without it accept/reject return `{"success":false}`.
     std::vector<std::uint8_t> device;
     enc_string(device, 1, login.device_friendly_name);
     enc_int32 (device, 2, 3);               // platform_type = MobileApp
@@ -254,12 +248,11 @@ BeginSessionResult begin_session(const MobileLogin& login) {
     enc_bool   (msg, 5, true);              // remember_login (deprecated, harmless)
     enc_int32  (msg, 6, 3);                 // platform_type = MobileApp
     enc_int32  (msg, 7, 1);                 // persistence = Persistent
-    // website_id "Mobile" scopes the access_token's `aud` to web:mobile,
-    // which is the only audience /mobileconf/* accepts. Trade-off:
-    // GenerateAccessTokenForApp returns x-eresult=15 for the resulting
-    // refresh_token, so refresh_access_token always falls through to a
-    // full auto_relogin. The 5-minute per-account cooldown in
-    // AppState::auto_relogin keeps that from hammering Steam.
+    // website_id "Mobile" scopes the access_token aud to web:mobile, the only
+    // audience /mobileconf/* accepts. Side effect: GenerateAccessTokenForApp
+    // returns x-eresult=15 for the resulting refresh_token, so
+    // refresh_access_token always falls through to auto_relogin (rate-limited by
+    // its 5-minute per-account cooldown).
     enc_string (msg, 8, "Mobile");
     enc_message(msg, 9, device);
     enc_int32  (msg, 11, 0);                // language
@@ -288,7 +281,7 @@ BeginSessionResult begin_session(const MobileLogin& login) {
         switch (field) {
             case 1:  out.client_id = std::to_string(r.varint()); break;
             case 2:  out.request_id = std::string(r.lendelim()); break;
-            case 3: { // float interval, wire-type 5 (fixed32 IEEE-754).
+            case 3: { // interval is float, wire-type 5 (fixed32 IEEE-754)
                 if (wire == 5) {
                     if (r.p + 4 > r.end) { r.ok = false; break; }
                     std::uint32_t bits = 0;
@@ -343,15 +336,14 @@ bool submit_guard_code(const std::string& client_id,
 
     std::vector<std::uint8_t> msg;
     enc_uint64 (msg, 1, std::stoull(client_id));
-    enc_fixed64(msg, 2, steam_id);                  // proto: fixed64 steamid
+    enc_fixed64(msg, 2, steam_id);
     enc_string (msg, 3, code);
     enc_int32  (msg, 4, guard_kind_to_proto(kind));
 
     std::string er;
     const auto body_opt = post_protobuf(
         "/IAuthenticationService/UpdateAuthSessionWithSteamGuardCode/v1/", msg, "", &er);
-    // Success response is an empty CResponseMessage: empty body with HTTP
-    // 200 and x-eresult absent/1 is the normal "code accepted" signal.
+    // Success is an empty body + HTTP 200 + x-eresult absent/1 (code accepted).
     if (!body_opt) {
         if (error_out) *error_out = format_post_error(
             "UpdateAuthSessionWithSteamGuardCode rejected (HTTP/eresult error)", er);
@@ -382,7 +374,7 @@ PollResult poll_session(const std::string& client_id, const std::string& request
         return out;
     }
     const std::string& body = *body_opt;
-    // An empty body on poll means "no progress yet"; caller should keep polling.
+    // Empty body means no progress yet; caller keeps polling.
 
     Reader r{reinterpret_cast<const std::uint8_t*>(body.data()),
              reinterpret_cast<const std::uint8_t*>(body.data() + body.size())};
@@ -408,7 +400,7 @@ PollResult poll_session(const std::string& client_id, const std::string& request
         out.finished = true;
         out.ok = true;
     } else {
-        out.ok = true;  // No tokens yet but the call succeeded; caller should keep polling.
+        out.ok = true;  // call succeeded but no tokens yet; keep polling
     }
     return out;
 }
@@ -427,7 +419,6 @@ FullLoginResult run_full_login(
         return result;
     }
 
-    // If a guard code is required, ask the caller.
     GuardKind chosen = GuardKind::None;
     for (auto k : begin.allowed_confirmations) {
         if (k == GuardKind::DeviceCode || k == GuardKind::EmailCode) {
@@ -467,17 +458,15 @@ FullLoginResult run_full_login(
             result.account.access_token = std::move(poll.access_token);
             result.account.refresh_token = std::move(poll.refresh_token);
             result.account.access_token_expires = jwt_expiry(result.account.access_token);
-            // Manual cookie is the fallback for /getlist if settoken below
-            // fails. /ajaxop needs the settoken-minted value, so the next
-            // block tries to upgrade.
+            // Fallback cookie for /getlist; /ajaxop needs the settoken-minted
+            // value, which the transfer_login block below upgrades to.
             result.account.steam_login_secure = crypto::make_secure(
                 make_steam_login_secure(begin.steam_id, result.account.access_token));
             result.account.session_id = crypto::random_session_id();
-            // finalizelogin + settoken registers the session in Steam's
-            // community session table and mints the per-domain
-            // steamLoginSecure cookie that /mobileconf/ajaxop reads. Skip
-            // silently on failure: callers still get a usable getlist
-            // cookie above and a later refresh/relogin will retry.
+            // finalizelogin + settoken registers the community session and mints
+            // the per-domain steamLoginSecure cookie /mobileconf/ajaxop reads.
+            // On failure the getlist cookie above still works and a later
+            // refresh/relogin retries.
             if (on_status) on_status("registering community session");
             std::string registered_cookie;
             if (transfer_login(begin.steam_id,
@@ -513,8 +502,7 @@ std::string default_guard_provider(
 
     if (wants_device_code && sda.has_value() && !sda->shared_secret.empty()) {
         if (!time_aligner::synced()) {
-            // Force one sync attempt; codes generated off an unsynced clock
-            // are rejected with EResult 88 (TwoFactorCodeMismatch).
+            // Codes off an unsynced clock are rejected with EResult 88.
             (void)time_aligner::sync_now();
         }
         const std::string code = sda::generate_code_now(sda->shared_secret);

@@ -50,9 +50,7 @@ bool item_to_path(IShellItem* item, std::filesystem::path& out) {
 Result run_dialog(IFileDialog* dlg, const Options& opts) {
     Result r;
 
-    // Project Options::filters into the COM-flavoured COMDLG_FILTERSPEC array.
-    // The strings backing those pointers live on the caller's Options, so we
-    // can pass pointers directly without copying.
+    // Filter strings are backed by the caller's Options, so pass pointers directly.
     std::vector<COMDLG_FILTERSPEC> com_filters;
     if (!opts.filters.empty()) {
         com_filters.reserve(opts.filters.size());
@@ -77,7 +75,7 @@ Result run_dialog(IFileDialog* dlg, const Options& opts) {
 
     HRESULT hr = dlg->Show(opts.parent);
     if (FAILED(hr)) {
-        return r;  // user cancelled or dialog failed; ok=false
+        return r;  // cancelled or failed
     }
 
     if (opts.allow_multiselect) {

@@ -48,8 +48,7 @@ constexpr std::array<std::uint8_t, 256> kInvSbox = {{
     0x17,0x2b,0x04,0x7e,0xba,0x77,0xd6,0x26,0xe1,0x69,0x14,0x63,0x55,0x21,0x0c,0x7d,
 }};
 
-// Round constant: rc[i] is the byte for Rcon iteration i. Computed as
-// rc[1]=1, rc[i] = xtime(rc[i-1]). We need indices 1..15 for Nk=8, Nr=14.
+// Rcon[i] = xtime(Rcon[i-1]), Rcon[1]=1. Indices 1..15 used for Nk=8, Nr=14.
 constexpr std::uint8_t kRcon[16] = {
     0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40,
     0x80, 0x1B, 0x36, 0x6C, 0xD8, 0xAB, 0x4D, 0x9A,
@@ -62,16 +61,15 @@ constexpr int kBlockSize = kNb * 4;            // 32
 constexpr int kKeySize   = kNk * 4;            // 32
 constexpr int kRoundKeyBytes = (kNr + 1) * kBlockSize;  // 480
 
-// ShiftRows offsets for Nb=8 (Rijndael spec table 2). Row r shifts left by C(r).
-// For Nb in {4,5,6}: {0,1,2,3}; for Nb=7: {0,1,2,4}; for Nb=8: {0,1,3,4}.
+// ShiftRows offsets for Nb=8 (Rijndael spec table 2): row r shifts left by C(r).
+// Nb=8 uses {0,1,3,4}, which differs from AES-128's {0,1,2,3}.
 constexpr int kShiftOffsets[4] = {0, 1, 3, 4};
 
-// xtime: multiplication by x in GF(2^8) with the AES reduction polynomial.
+// Multiplication by x in GF(2^8) with the AES reduction polynomial 0x1B.
 inline std::uint8_t xtime(std::uint8_t b) {
     return static_cast<std::uint8_t>((b << 1) ^ ((b & 0x80) ? 0x1B : 0x00));
 }
 
-// Multiply a, b in GF(2^8) using the AES reduction polynomial.
 std::uint8_t gmul(std::uint8_t a, std::uint8_t b) {
     std::uint8_t r = 0;
     for (int i = 0; i < 8; ++i) {
@@ -82,10 +80,8 @@ std::uint8_t gmul(std::uint8_t a, std::uint8_t b) {
     return r;
 }
 
-// Key expansion: input 32-byte key -> 480 bytes of round-key material.
-//
-// Operates on 32-bit "words" (4 bytes each). For Rijndael with Nk=8 there is
-// an extra SubWord step every Nk words (the "Nk>6" branch in the spec).
+// For Rijndael with Nk=8 there is an extra SubWord step every Nk words (the
+// "Nk>6" branch in the spec) not present in AES-128/192.
 void key_expansion(std::span<const std::uint8_t> key,
                    std::array<std::uint8_t, kRoundKeyBytes>& w) {
     std::memcpy(w.data(), key.data(), kKeySize);
@@ -96,18 +92,15 @@ void key_expansion(std::span<const std::uint8_t> key,
         std::memcpy(t, &w[(i - 1) * 4], 4);
 
         if (i % kNk == 0) {
-            // RotWord: rotate left by 1 byte.
+            // RotWord
             const std::uint8_t r0 = t[0];
             t[0] = t[1]; t[1] = t[2]; t[2] = t[3]; t[3] = r0;
-            // SubWord.
             t[0] = kSbox[t[0]];
             t[1] = kSbox[t[1]];
             t[2] = kSbox[t[2]];
             t[3] = kSbox[t[3]];
-            // XOR Rcon.
             t[0] ^= kRcon[i / kNk];
         } else if (kNk > 6 && i % kNk == 4) {
-            // Extra SubWord every Nk words when Nk > 6.
             t[0] = kSbox[t[0]];
             t[1] = kSbox[t[1]];
             t[2] = kSbox[t[2]];
@@ -120,7 +113,7 @@ void key_expansion(std::span<const std::uint8_t> key,
     }
 }
 
-// State is column-major: state[c*4 + r] holds row r, column c.
+// Column-major: state[c*4 + r] holds row r, column c.
 using State = std::array<std::uint8_t, kBlockSize>;
 
 void add_round_key(State& s, const std::uint8_t* round_key) {
@@ -132,8 +125,8 @@ void inv_sub_bytes(State& s) {
 }
 
 void inv_shift_rows(State& s) {
-    // Inverse ShiftRows: row r shifts RIGHT by kShiftOffsets[r].
-    // Rebuild row by row to avoid in-place overwrite hazards.
+    // Row r shifts RIGHT by kShiftOffsets[r]; rebuild per-row to avoid
+    // in-place overwrite hazards.
     for (int r = 1; r < 4; ++r) {
         const int shift = kShiftOffsets[r];
         std::uint8_t tmp[kNb];

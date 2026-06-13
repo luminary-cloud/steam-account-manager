@@ -11,16 +11,14 @@ enum class AccountsViewMode : std::uint8_t {
     List = 1,
 };
 
-// How outbound web requests are proxied. Mirrors http::ProxyMode; kept as a separate
-// app-layer enum so Settings doesn't pull in the http header.
+// Mirrors http::ProxyMode; separate so Settings doesn't pull in the http header.
 enum class ProxyMode : std::uint8_t {
     None = 0,
     Single = 1,
     PerAccount = 2,
 };
 
-// What gets copied into the launched account's CS2 (appid 730) config on login.
-// None: nothing. VideoTxt: a single cs2_video.txt. Folder730: a whole 730 folder.
+// What's copied into the launched account's CS2 (appid 730) config on login.
 enum class CS2ConfigMode : std::uint8_t {
     None = 0,
     VideoTxt = 1,
@@ -32,34 +30,26 @@ struct Settings {
     int auto_lock_minutes = 15;
     AccountsViewMode accounts_view = AccountsViewMode::Grid;
     bool show_avatars = true;
-    // Hides account notes everywhere they display (grid cards and the list-mode
-    // detail panel). Notes remain editable on the add/edit screen.
     bool hide_notes = false;
     bool refresh_on_launch = false;
     bool gcpd_enabled = true;
-    // Caches the master password under the current Windows user via DPAPI so
-    // subsequent launches go straight to Accounts. Disabling this option
+    // Caches the master password via DPAPI (current Windows user). Disabling
     // deletes the cached blob.
     bool remember_master_password = false;
-    // Registers a Task Scheduler logon task (highest privileges, required since
-    // the app is requireAdministrator) that relaunches with --startup to refresh
-    // in the background and then exit. Implies remember_master_password +
-    // refresh_on_launch so the headless run can auto-unlock and fetch.
+    // Task Scheduler logon task (highest privileges, since requireAdministrator)
+    // that relaunches with --startup to refresh and exit. Implies
+    // remember_master_password + refresh_on_launch for the headless auto-unlock.
     bool start_with_windows = false;
-    // When on, account logins render as "<hidden>" everywhere they are
-    // displayed. Per-account reveals live in AppState::revealed_logins and
-    // are cleared on lock via clear_session_secrets().
+    // Renders logins as "<hidden>". Per-account reveals live in
+    // AppState::revealed_logins, cleared on lock via clear_session_secrets().
     bool privacy_mode = false;
     std::string web_api_key;
 
-    // Outbound proxy policy. single_proxy is used only in Single mode; per-account
-    // proxies live on each Account in the encrypted vault.
+    // single_proxy used only in Single mode; per-account proxies live in the vault.
     ProxyMode   proxy_mode = ProxyMode::None;
     std::string single_proxy;   // scheme://[user:pass@]host:port
 
-    // Checks GitHub for a newer release on launch and shows the "Update
-    // available" modal. version_check_skip_until holds the tag the user chose
-    // to skip so it is not offered again.
+    // version_check_skip_until holds the tag the user chose to skip.
     bool check_updates_on_launch = true;
     std::string version_check_skip_until;
 
@@ -83,9 +73,8 @@ struct Settings {
         bool enabled = true;
         bool surface_in_card = true;
         bool surface_toast = true;
-        // Out-of-app tray balloon (Shell_NotifyIcon) for new ban/cooldown
-        // events; mainly for the headless logon refresh. Suppressed while the
-        // main window is focused, where the in-app toast already covers it.
+        // Tray balloon (Shell_NotifyIcon), mainly for the headless logon refresh.
+        // Suppressed while the main window is focused (in-app toast covers it).
         bool surface_windows_notification = false;
         bool on_new_vac_ban = true;
         bool on_new_game_ban = true;
@@ -104,8 +93,7 @@ struct Settings {
         bool show_cooldown_marker = true;
         bool show_unread_badge = true;
         bool show_weekly_drop_marker = true;
-        // Hides the login/account name from list-mode rows (persona name and the
-        // selected-account detail panel are unaffected).
+        // Hides login/account name from list-mode rows only.
         bool hide_account_name = false;
     } list_view;
 
@@ -114,9 +102,8 @@ struct Settings {
         bool show_next_code = true;
         bool hide_current_code = false;
         bool global_hotkey_enabled = false;
-        // Stored as raw Win32 constants so save/load is dead-simple. Defaults
-        // are filled in from win_main on first launch since the MOD_* macros
-        // live in <windows.h>.
+        // Raw Win32 MOD_*/VK constants. Defaults filled from win_main on first
+        // launch (the macros live in <windows.h>).
         std::uint32_t global_hotkey_mods = 0;
         std::uint32_t global_hotkey_vk   = 0;
     } sda;
@@ -142,19 +129,15 @@ struct Settings {
     } confirmations;
 
     struct TradeToggles {
-        // Destination trade link the create-offer dialog pre-fills, plus the
-        // history of links the user has entered. A trade link is not a secret,
-        // so these live in settings.json and survive a restart.
+        // A trade link is not a secret, so these live in settings.json.
         std::string default_destination_trade_url;
         std::vector<std::string> saved_trade_urls;
 
-        // Auto-resolve the mobile confirmation for offers we send. Incoming
-        // offers are always reviewed manually.
+        // Auto-resolve the mobile confirmation for sent offers; incoming are manual.
         bool auto_confirm_sent = true;
 
-        // Trades are rate-limit sensitive: refreshes are manual with a cooldown,
-        // multi-account work is staggered, and the inventory endpoint (heavily
-        // throttled) gets its own longer cooldown.
+        // Rate-limit sensitive: manual cooldowns, staggered multi-account work,
+        // and a longer cooldown for the heavily-throttled inventory endpoint.
         int  per_account_cooldown_seconds = 15;
         int  inventory_cooldown_seconds   = 30;
         int  refresh_stagger_ms           = 1500;
@@ -163,11 +146,10 @@ struct Settings {
         int  background_poll_seconds      = 30;
     } trade;
 
-    // Sort key index into the dropdown options; matches core::SortKey order.
+    // Index into the sort dropdown; matches core::SortKey order.
     int accounts_sort = 0;
 
-    // List-mode group ids the user has collapsed. Ids not listed are expanded,
-    // so new groups default to open; the empty string is the ungrouped section.
+    // Collapsed list-mode group ids; unlisted = expanded. Empty string = ungrouped.
     std::vector<std::string> collapsed_groups;
 
     struct QuickFilters {
@@ -177,11 +159,9 @@ struct Settings {
     } quick_filters;
 
     struct CS2VideoConfig {
-        // What gets applied to the launched account's CS2 730 folder on login.
-        // VideoTxt copies the single template at app::cs2_video_template_path();
-        // Folder730 copies the whole snapshot under app::cs2_730_template_dir().
-        // The *_label fields are the paths the snapshots were imported from and
-        // are shown in Settings for reference only.
+        // VideoTxt copies cs2_video_template_path(); Folder730 copies the snapshot
+        // under cs2_730_template_dir(). The *_label fields are import paths shown
+        // in Settings for reference only.
         CS2ConfigMode mode = CS2ConfigMode::None;
         std::string source_label;         // imported video.txt path
         std::string folder_source_label;  // imported 730 folder path

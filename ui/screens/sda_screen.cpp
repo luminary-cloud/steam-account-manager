@@ -135,8 +135,7 @@ void draw_revocation_section(app::AppState& state, core::Account& a) {
         }
         hover_tooltip("Copy the revocation code to the clipboard.");
     } else {
-        // Per-account input buffer. Reset when the user switches accounts so
-        // a half-typed code doesn't leak into the next account view.
+        // Reset per-account buffer on account switch so a half-typed code doesn't leak across.
         static std::array<char, 32> buf{};
         static std::string buf_owner_id;
         if (buf_owner_id != a.id) {

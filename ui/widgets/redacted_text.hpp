@@ -7,18 +7,13 @@
 
 namespace sam::ui::widgets {
 
-// Renders the account login inline. When privacy_mode is on and this
-// account's id is not in AppState::revealed_logins, draws "<hidden>" as
-// clickable text and a click adds the id to the reveal set. When already
-// revealed (or privacy_mode is off), draws the login string; clicking it
-// removes the id and re-hides. The caller controls surrounding style
-// (PushStyleColor etc.) - the widget only swaps the visible text.
+// Renders the login inline. Under privacy_mode, draws "<hidden>" and clicking
+// toggles this account's id in AppState::revealed_logins. Caller controls
+// surrounding style; the widget only swaps the visible text.
 void draw_login_text(app::AppState& state, const core::Account& a);
 
-// Returns "<hidden>" or the login string for contexts that need an owned
-// std::string (combo previews, SeparatorText, printf-style format args).
-// Not clickable - pair with draw_login_text where an interactive reveal is
-// needed.
+// Non-clickable "<hidden>"-or-login as an owned string, for contexts that need
+// one (combo previews, SeparatorText, format args).
 std::string login_label(const app::AppState& state, const core::Account& a);
 
 }  // namespace sam::ui::widgets

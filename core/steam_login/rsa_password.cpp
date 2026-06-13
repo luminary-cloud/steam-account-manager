@@ -45,10 +45,7 @@ std::vector<std::uint8_t> hex_to_bytes(const std::string& hex) {
 std::optional<RsaKey> fetch_rsa_key(const std::string& username) {
     if (username.empty()) return std::nullopt;
 
-    // GET request, JSON response shape. Steam also accepts a POST with a
-    // protobuf body, but the response parser below expects JSON so we stick
-    // with the GET form. (Mixing POST + ?account_name= query + empty body
-    // returns HTTP 405.)
+    // POST + ?account_name= query + empty body returns HTTP 405; use the GET/JSON form.
     http::Request req;
     req.method = http::Method::Get;
     req.url = "https://api.steampowered.com/IAuthenticationService/"

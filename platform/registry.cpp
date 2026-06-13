@@ -35,8 +35,7 @@ std::optional<std::wstring> read_string_hkcu(const std::wstring& subkey,
     RegCloseKey(h);
     if (rc != ERROR_SUCCESS) return std::nullopt;
 
-    // Trim trailing NULs that the registry may include.
-    while (!buf.empty() && buf.back() == L'\0') buf.pop_back();
+    while (!buf.empty() && buf.back() == L'\0') buf.pop_back();  // registry may pad with NULs
     return buf;
 }
 
@@ -100,7 +99,7 @@ std::optional<std::filesystem::path> read_steam_install_dir() {
     }
     if (auto se = read_string_hkcu(kSteamSubkey, L"SteamExe")) {
         std::filesystem::path p(*se);
-        // SteamExe is usually a file path to steam.exe; take its parent.
+        // SteamExe is usually a path to steam.exe; take its parent.
         if (std::filesystem::is_regular_file(p, ec)) {
             auto parent = p.parent_path();
             if (std::filesystem::is_directory(parent, ec)) return parent;

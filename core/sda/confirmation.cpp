@@ -28,27 +28,20 @@ namespace {
 
 constexpr char kMobileClient[] = "android";
 constexpr char kMobileClientVersion[] = "777777 3.6.4";
-// Dalvik UA is what the actual Steam Mobile App sends. Steam's mobileconf
-// write endpoints (ajaxop, multiajaxop) silently return {"success":false}
-// when the UA looks like a browser even if cookies/JWT are otherwise valid;
-// GCPD has no such check, which is why the same session works there.
-// Matches geel9/SteamAuth SteamWeb.MOBILE_APP_USER_AGENT verbatim.
+// mobileconf write endpoints (ajaxop, multiajaxop) silently return
+// {"success":false} for a browser-looking UA even with valid cookies/JWT; GCPD
+// has no such check. Matches geel9/SteamAuth MOBILE_APP_USER_AGENT verbatim.
 constexpr char kUserAgent[] =
     "Dalvik/2.1.0 (Linux; U; Android 9; Valve Steam App Version/3)";
 
-// SDA's SessionData.GetSteamLoginSecure builds this directly from the
-// BeginAuth-issued access_token. The /login/settoken response cookie
-// carries a per-domain JWT whose audience is community-only, which
-// /mobileconf/* silently rejects. GCPD does not enforce mobile-audience
-// so the settoken cookie still works there (and is what GCPD reads from
-// a.steam_login_secure). Confirmations get the access-token-derived
-// value, which matches SDA verbatim.
+// Built from the access_token, matching SDA's GetSteamLoginSecure. The
+// /login/settoken cookie's JWT is community-audience and /mobileconf/* silently
+// rejects it; GCPD doesn't enforce mobile audience so it reads settoken instead.
 std::string steam_login_secure_value(const core::Account& a) {
     return steam_login::make_steam_login_secure(a.steam_id_64, a.access_token);
 }
 
-// Extract the JWT segment from a "<steamid>%7C%7C<jwt>" cookie value so
-// we can log its audience and verify what we actually sent.
+// Cookie value is "<steamid>%7C%7C<jwt>"; return the JWT segment.
 std::string jwt_from_cookie(const std::string& cookie_value) {
     const auto sep = cookie_value.find("%7C%7C");
     if (sep == std::string::npos) return {};
@@ -56,8 +49,8 @@ std::string jwt_from_cookie(const std::string& cookie_value) {
 }
 
 ConfirmationType detect_type(int t) {
-    // Steam's enum: 1 = Test, 2 = Trade, 3 = MarketListing, 6 = AccountRecovery,
-    // 7 = PhoneNumberChange. New values may appear; we map unknown to Unknown.
+    // Steam's enum: 2=Trade, 3=MarketListing, 6=AccountRecovery,
+    // 7=PhoneNumberChange, 8=FeatureOptOut.
     switch (t) {
         case 2: return ConfirmationType::Trade;
         case 3: return ConfirmationType::MarketListing;
@@ -94,10 +87,9 @@ std::string make_confirmation_hash(const std::string& identity_secret_b64,
     return crypto::base64_encode(std::span<const std::uint8_t>{mac.data(), mac.size()});
 }
 
-// Mirrors SteamAuth's GenerateConfirmationQueryParams: raw concatenation in a
-// fixed order with only the base64 hash URL-encoded. Steam's mobileconf
-// endpoint compares some values literally, so encoding the colon in device_id
-// or reordering the keys breaks the request.
+// Mirrors SteamAuth's GenerateConfirmationQueryParams: fixed key order, only the
+// base64 hash URL-encoded. mobileconf compares some values literally, so
+// encoding the colon in device_id or reordering keys breaks the request.
 std::string base_query(const core::Account& a, std::string_view tag) {
     if (!a.sda.has_value()) return {};
     const auto& sda = *a.sda;
@@ -117,9 +109,8 @@ std::string base_query(const core::Account& a, std::string_view tag) {
 }
 
 void apply_cookies(http::Request& req, const core::Account& a) {
-    // Match SDA's GetCookies insertion order: steamLoginSecure first.
-    // build_cookie_header preserves insertion order, so this is the
-    // order Steam sees in the Cookie: header on the wire.
+    // SDA's GetCookies insertion order (steamLoginSecure first); the header
+    // builder preserves insertion order, so this is the wire order.
     req.cookies.push_back({"steamLoginSecure",
                             steam_login_secure_value(a),
                             "steamcommunity.com", "/", true, true});
@@ -138,10 +129,8 @@ http::Request build_request(http::Method method,
     req.method = method;
     req.url = url;
     req.user_agent = kUserAgent;
-    // SDA sets ONLY User-Agent. Sending X-Requested-With with the Valve
-    // Android app id plus a non-Dalvik UA is contradictory and trips a
-    // silent rejection on mobileconf write endpoints. Mirror SDA: no
-    // X-Requested-With, no Accept, only the UA.
+    // Mirror SDA: only User-Agent. Adding X-Requested-With or Accept trips a
+    // silent rejection on mobileconf write endpoints.
     apply_cookies(req, a);
     return req;
 }
@@ -255,11 +244,8 @@ bool respond_to_confirmation(const core::Account& a,
         const auto j = json::parse(resp.body);
         const bool success = j.value("success", false);
         if (!success) {
-            // Steam often returns `{"success":false}` with no message field.
-            // Surface everything we have so the next failure is debuggable:
-            // full body (not truncated), set-cookie headers (Steam sometimes
-            // rotates sessionid here), time-aligner offset, and the access
-            // token's `aud` claim (mobileconf requires "mobile" in there).
+            // success=false usually arrives with no message; dump everything
+            // for debuggability. mobileconf requires "mobile" in the token aud.
             std::string set_cookies;
             for (const auto& sc : resp.set_cookies) {
                 if (!set_cookies.empty()) set_cookies += " | ";
@@ -341,8 +327,8 @@ bool respond_bulk_chunk(const core::Account& a,
         return false;
     }
 
-    // multiajaxop expects `cid[]` and `ck[]` repeated. SteamAuth POSTs the
-    // exact same string layout as the GET URL, only with op out front.
+    // multiajaxop expects repeated `cid[]`/`ck[]`; same string layout as the
+    // GET URL with op out front.
     std::string body = "op=" + std::string(op) + "&" + query;
     for (std::size_t i = 0; i < n; ++i) {
         body += "&cid[]=" + items[i].id;

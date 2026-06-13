@@ -64,17 +64,15 @@ bool is_session_error(const std::string& err) {
     if (err.find("session expired") != std::string::npos) return true;
     if (err.find("needauth")        != std::string::npos) return true;
 
-    // /mobileconf/* literally returns "Oh nooooooes!" when the
-    // steamLoginSecure cookie has the wrong audience or the HMAC is bad.
-    // Either way, a fresh mobile-audience auto-relogin is the right recovery.
+    // /mobileconf/* returns "Oh nooooooes!" on wrong-audience cookie or bad HMAC;
+    // recover with a fresh mobile-audience auto-relogin.
     std::string lower(err);
     std::transform(lower.begin(), lower.end(), lower.begin(),
                    [](unsigned char c) { return std::tolower(c); });
     if (lower.find("oh nooooooes") != std::string::npos) return true;
 
-    // `{"success":false}` with no message: caller has already tried a refetch
-    // for stale cid/nonce. The remaining likely cause is the access_token
-    // having drifted off the mobile audience, so trigger auto-relogin.
+    // Bare {"success":false} after the caller's stale cid/nonce refetch: likely the
+    // access_token drifted off the mobile audience, so auto-relogin.
     if (err == sda::kRespondSuccessFalse) return true;
 
     return false;
@@ -682,11 +680,9 @@ void submit_single(app::AppState& state, const core::Account& a,
         std::string err;
         bool ok = sda::respond_to_confirmation(cap_a, cap_c, allow, &err);
 
-        // Cache-staleness recovery: the cid is stable across a fetch, but
-        // Steam rotates the nonce when the confirmation is touched elsewhere
-        // (e.g., the actual phone app). Refetch once, match by id, retry with
-        // the fresh nonce. If the confirmation is gone, treat it as already
-        // resolved -- the optimistic erase at the call site stands.
+        // Steam rotates the nonce when the confirmation is touched elsewhere (e.g. the
+        // phone app). Refetch once, match by id, retry with the fresh nonce. If it's
+        // gone, treat it as already resolved (the optimistic erase at the call site stands).
         if (!ok && err == sda::kRespondSuccessFalse) {
             auto fresh = sda::fetch_confirmations(cap_a);
             if (fresh.ok) {
@@ -760,8 +756,7 @@ void submit_bulk(app::AppState& state, const core::Account& a,
     });
 }
 
-// UI-thread-only set of currently-checked confirmation IDs per account.
-// Selections are dropped lazily when the underlying confirmation goes away.
+// UI-thread only. Selections are dropped lazily when the confirmation goes away.
 std::unordered_map<std::string, std::unordered_set<std::string>> g_selected_conf_ids;
 
 void recount_pending(app::AppState& state) {

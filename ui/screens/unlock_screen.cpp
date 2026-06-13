@@ -34,8 +34,7 @@ void try_unlock(app::AppState& state, const std::string& pw, std::string& error)
         state.unlocked = true;
         state.last_interaction = std::chrono::steady_clock::now();
         state.current_screen = app::Screen::Accounts;
-        // If the user has the auto-unlock setting enabled, refresh the DPAPI
-        // cache now that we know the password works.
+        // Refresh the DPAPI auto-unlock cache now that the password is known good.
         if (state.settings.remember_master_password) {
             try {
                 std::span<const std::uint8_t> pw_bytes{
@@ -47,9 +46,7 @@ void try_unlock(app::AppState& state, const std::string& pw, std::string& error)
             }
         }
         if (state.settings.refresh_on_launch) state.refresh_account_data();
-        // One-time automatic fill of external funds for accounts that don't have
-        // a figure yet (skipped when the feature is off); no-op once every
-        // eligible account has been fetched.
+        // Fill external funds for accounts without a figure yet; no-op once all are fetched.
         if (state.settings.info.show_external_funds) {
             state.refresh_all_spend(/*only_missing=*/true);
         }
@@ -161,9 +158,8 @@ void draw_unlock(app::AppState& state) {
         }
     }
 
-    // Recovery for an existing user whose data folder lives elsewhere (another
-    // drive, a USB stick, or a fresh Windows install where the saved location
-    // was lost). Point the app at that folder so it doesn't start a blank vault.
+    // Point the app at an existing data folder elsewhere (another drive, USB, fresh
+    // install) so it doesn't start a blank vault.
     static std::filesystem::path located_dir;
     static std::string locate_error;
     ImGui::Spacing();

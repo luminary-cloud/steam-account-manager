@@ -11,7 +11,7 @@ namespace sam::sda {
 
 namespace {
 
-// The Steam alphabet drops visually ambiguous characters: 0/O, 1/I, L, S, Z, A, E.
+// Steam's TOTP alphabet; drops visually ambiguous characters.
 constexpr char kAlphabet[] = "23456789BCDFGHJKMNPQRTVWXY";
 constexpr std::size_t kAlphabetLen = sizeof(kAlphabet) - 1;
 constexpr std::int64_t kWindowSeconds = 30;

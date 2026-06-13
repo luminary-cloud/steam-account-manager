@@ -25,7 +25,7 @@ std::wstring timestamp_suffix() {
     return ss.str();
 }
 
-// True if `child` is `parent` or lives underneath it. Both should be canonical.
+// `child` is `parent` or lives underneath it. Both should be canonical.
 bool is_subpath(const fs::path& child, const fs::path& parent) {
     auto c = child.begin();
     auto p = parent.begin();
@@ -35,10 +35,10 @@ bool is_subpath(const fs::path& child, const fs::path& parent) {
     return true;
 }
 
-// True if `a` and `b` are the same path or one contains the other. Used to stop a
-// recursive copy from feeding on its own freshly-written files (or an import from
-// deleting its own source via remove_all). On failure to canonicalize we return
-// false and let the copy proceed rather than blocking a valid operation.
+// Same path, or one contains the other. Stops a recursive copy from feeding on its
+// own freshly-written files (or an import from deleting its own source via
+// remove_all). Returns false if either path can't be canonicalized, letting the copy
+// proceed rather than blocking a valid operation.
 bool paths_overlap(const fs::path& a, const fs::path& b) {
     std::error_code ea, eb;
     const fs::path ca = fs::weakly_canonical(a, ea);
@@ -54,10 +54,10 @@ struct CopyStats {
     std::string first_error;
 };
 
-// Recursively copies the CONTENTS of `src` into `dst` (which must already exist),
-// overwriting existing files. Symlinks/junctions are skipped so the copy can't
-// escape the tree. Per-entry failures are counted and skipped so one locked or
-// denied file does not abort the whole copy.
+// Recursively copies the contents of `src` into `dst` (which must already exist),
+// overwriting existing files. Symlinks/junctions are skipped so the copy can't escape
+// the tree. Per-entry failures are counted and skipped so one locked or denied file
+// does not abort the whole copy.
 void copy_tree(const fs::path& src, const fs::path& dst, CopyStats& st) {
     std::error_code ec;
     fs::recursive_directory_iterator it(

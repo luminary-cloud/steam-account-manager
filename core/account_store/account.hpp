@@ -19,12 +19,12 @@ enum class TrustLabel : std::uint8_t {
 
 // What pressing Login on this account does after the Steam client signs in.
 enum class LoginMethod : std::uint8_t {
-    Normal = 0,              // just log in
-    LaunchCs2 = 1,           // log in, then launch CS2
-    LaunchCs2Gamesense = 2,  // log in, launch CS2, inject the gamesense loader
+    Normal = 0,
+    LaunchCs2 = 1,
+    LaunchCs2Gamesense = 2,  // launch CS2 then inject the gamesense loader
 };
 
-// Mirror of a Steam Guard mobile authenticator maFile. Everything here is sensitive.
+// Mirror of a Steam Guard maFile. Everything here is sensitive.
 struct SteamGuardAccount {
     std::string shared_secret;     // base64
     std::string serial_number;
@@ -65,9 +65,9 @@ struct BanStatus {
     std::int64_t last_refreshed_unix = 0;
 };
 
-// Previous values we diff against on the next refresh to surface ban or
-// cooldown changes as notifications. snapshot_unix == 0 means "never observed",
-// in which case the next refresh records the snapshot without firing events.
+// Diffed against on the next refresh to surface ban/cooldown changes.
+// snapshot_unix == 0 = never observed: the next refresh records it without
+// firing events.
 struct PreviousSnapshot {
     int vac_ban_count = 0;
     int game_ban_count = 0;
@@ -79,12 +79,10 @@ struct PreviousSnapshot {
 };
 
 // cooldown_expires_unix sentinels: 0 = no cooldown, kCooldownNever = permanent
-// (non-expiring) cooldown. Steam renders a permanent cooldown's expiration as a
-// localized "Never" with a penalty Level >= 1.
+// (non-expiring) cooldown, which Steam renders as "Never" with Level >= 1.
 inline constexpr std::int64_t kCooldownNever = INT64_MAX;
 
-// CS2-specific fields. All populated by scraping the /gcpd/730 page.
-// CS2 has no Danger Zone, so we track Premier and Wingman.
+// Populated by scraping /gcpd/730.
 struct CS2Status {
     int premier_rating  = -1;
     int premier_wins    = -1;
@@ -96,19 +94,17 @@ struct CS2Status {
     bool vac_live = false;                 // mirrors BanStatus.vac_banned
     std::int64_t cooldown_expires_unix = 0;  // 0 = none, kCooldownNever = permanent
     std::string cooldown_reason;           // "Griefing", "Untrusted", "Team Damage", "Abandon"
-    // Unix time (UTC, s) of the next weekly XP-drop reset. Set when the user marks the
-    // drop claimed; reads as "claimed" while now < this value and auto-clears once now
-    // reaches it. 0 = not claimed.
+    // Next weekly XP-drop reset (UTC s). "claimed" while now < this; auto-clears
+    // once now reaches it. 0 = not claimed.
     std::int64_t weekly_drop_reset_unix = 0;
     std::int64_t last_refreshed_unix = 0;
 };
 
-// External funds applied to the account ("TotalSpend" from
-// help.steampowered.com/accountdata/AccountSpend), denominated in USD.
+// "TotalSpend" from help.steampowered.com/accountdata/AccountSpend.
 struct ExternalFundsStatus {
     std::int64_t total_spend_usd_cents = -1;   // -1 = never fetched
-    // True when Steam reported the figure in USD. When false the value is some
-    // other currency (e.g. RMB) and must not be presented as dollars.
+    // False = the figure is some other currency (e.g. RMB) and must not be
+    // presented as dollars.
     bool currency_is_usd = true;
     std::string currency;                       // raw code as reported, e.g. "USD"
     std::int64_t last_refreshed_unix = 0;
@@ -128,13 +124,12 @@ struct Account {
     std::string session_id;
     crypto::SecureString steam_login_secure;
 
-    // NFA (Non-Full-Access): authenticates by a JWT refresh token only, with no
-    // password. Set by the JWT-token import path. refresh_token_expires caches
-    // jwt_expiry(refresh_token) so the UI doesn't decode the token every frame.
+    // NFA (Non-Full-Access): authenticates by a JWT refresh token only, no
+    // password. refresh_token_expires caches jwt_expiry(refresh_token) so the
+    // UI doesn't decode the token every frame.
     bool is_nfa = false;
     std::int64_t refresh_token_expires = 0;
 
-    // User-curated.
     std::wstring display_name;
     std::wstring notes;
     std::vector<std::string> tag_ids;
@@ -143,22 +138,18 @@ struct Account {
     LoginMethod login_method = LoginMethod::Normal;
     std::optional<std::string> trade_url;
 
-    // Optional per-account outbound proxy for the app's own web traffic.
-    // Form: scheme://[user:pass@]host:port (socks5, http, https). Empty = direct.
-    // May embed credentials, so it lives in a SecureString inside the vault.
+    // Per-account outbound proxy: scheme://[user:pass@]host:port (socks5, http,
+    // https), empty = direct. May embed credentials, hence SecureString.
     crypto::SecureString proxy;
 
-    // Cached info.
     WebProfile web;
     BanStatus bans;
     CS2Status cs2;
     ExternalFundsStatus funds;
 
-    // Captured at the end of each refresh; the next refresh diffs against it
-    // to emit BanEvents.
+    // Captured each refresh; the next refresh diffs against it to emit BanEvents.
     PreviousSnapshot prev_snapshot;
 
-    // Bookkeeping.
     std::int64_t created_unix = 0;
     std::int64_t last_login_unix = 0;
 };
