@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "core/account_store/account.hpp"
 
@@ -26,7 +27,12 @@ struct LaunchResult {
 // Automation. `guard_code_was_typed` is true if the async driver was started (it does
 // its work after this returns). NFA accounts are dispatched to
 // launch_account_with_token, which injects the JWT instead of typing a password.
-LaunchResult launch_account(const core::Account& account);
+//
+// `cs2_launch_options`, when non-empty, is written to appid 730's LaunchOptions in
+// the account's localconfig.vdf during the Steam-down window (between shutdown and
+// relaunch) so Steam can't overwrite it.
+LaunchResult launch_account(const core::Account& account,
+                            std::string_view cs2_launch_options = {});
 
 // Resolves the configured steam.exe path, or returns nullopt and fills `out`
 // with a SteamNotInstalled reason. Shared by the password and token paths.

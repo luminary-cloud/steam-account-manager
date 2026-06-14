@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <string>
 
+#include "core/cs2_config/launch_options.hpp"
 #include "core/launch/steam_launcher.hpp"
 #include "core/log.hpp"
 #include "core/strings.hpp"
@@ -38,7 +39,8 @@ LaunchResult fail(const std::string& message) {
 
 }  // namespace
 
-LaunchResult launch_account_with_token(const core::Account& a) {
+LaunchResult launch_account_with_token(const core::Account& a,
+                                       std::string_view cs2_launch_options) {
     if (a.refresh_token.empty() || a.steam_id_64 == 0)
         return fail("NFA login needs a refresh token and a resolved Steam ID.");
     if (a.login.empty())
@@ -54,6 +56,13 @@ LaunchResult launch_account_with_token(const core::Account& a) {
     auto steam_exe = resolve_steam_exe(out);
     if (!steam_exe) return out;                 // out carries the SteamNotInstalled reason
     if (!shutdown_running_steam(*steam_exe, out)) return out;
+
+    // Steam is down now: safe to set launch options without Steam clobbering them.
+    if (!cs2_launch_options.empty()) {
+        const auto r =
+            cs2_config::apply_launch_options(a.steam_id_64, std::string(cs2_launch_options));
+        if (!r.ok) SAM_LOG_WARN("token-launch: cs2 launch options: {}", r.message);
+    }
 
     const std::string login = core::to_lower(a.login);
 

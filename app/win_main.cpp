@@ -39,8 +39,8 @@
 #include "platform/global_hotkey.hpp"
 #include "platform/paths.hpp"
 #include "platform/single_instance.hpp"
-#include "platform/startup_task.hpp"
 #include "platform/tray_icon.hpp"
+#include "platform/window_affinity.hpp"
 #include "ui/fonts.hpp"
 #include "ui/icons.hpp"
 #include "ui/main_window.hpp"
@@ -468,6 +468,9 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     sam::platform::dpi::enable_per_monitor_v2();
 
     const bool startup_mode = cmd_line && wcsstr(cmd_line, L"--startup") != nullptr;
+    // Only the OpenApp logon task passes --minimized, so manual launches still open
+    // normally.
+    const bool start_minimized = cmd_line && wcsstr(cmd_line, L"--minimized") != nullptr;
 
     sam::platform::SingleInstance one(L"luminary-sam-mutex-v1");
     if (!one.is_primary()) {
@@ -536,8 +539,12 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     // uncloak after the first frame so there's no flash.
     BOOL cloak = TRUE;
     DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &cloak, sizeof(cloak));
-    ShowWindow(hwnd, SW_SHOW);
-    ShowWindow(hwnd, SW_SHOWNORMAL);
+    if (start_minimized) {
+        ShowWindow(hwnd, SW_SHOWMINNOACTIVE);
+    } else {
+        ShowWindow(hwnd, SW_SHOW);
+        ShowWindow(hwnd, SW_SHOWNORMAL);
+    }
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -561,12 +568,11 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
 
     sam::app::AppState state;
     state.load_settings();
-    // Keep the logon task in lockstep: re-register when on (also repairs a moved
-    // exe path), remove an orphaned task when off.
-    if (state.settings.start_with_windows) {
-        sam::platform::startup_task::set_run_at_logon(true);
-    } else if (sam::platform::startup_task::is_run_at_logon_enabled()) {
-        sam::platform::startup_task::set_run_at_logon(false);
+    // Keep the logon task in lockstep with the current mode: re-register when on
+    // (also repairs a moved exe path), remove an orphaned task when off.
+    state.sync_logon_task();
+    if (state.settings.streamproof) {
+        sam::platform::set_capture_excluded(hwnd, true);
     }
     state.start_update_check();
     state.notifications.set_path(sam::app::notifications_path());

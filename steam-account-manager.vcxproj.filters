@@ -78,6 +78,7 @@
     <ClCompile Include="core\trade\actions.cpp"><Filter>core\trade</Filter></ClCompile>
     <ClCompile Include="core\trade\trade_audit.cpp"><Filter>core\trade</Filter></ClCompile>
     <ClCompile Include="core\cs2_config\video_config.cpp"><Filter>core\cs2_config</Filter></ClCompile>
+    <ClCompile Include="core\cs2_config\launch_options.cpp"><Filter>core\cs2_config</Filter></ClCompile>
     <ClCompile Include="core\cs2\friend_code.cpp"><Filter>core\cs2</Filter></ClCompile>
 
     <ClCompile Include="core\account_store\store.cpp"><Filter>core\account_store</Filter></ClCompile>
@@ -126,6 +127,7 @@
     <ClCompile Include="platform\ui_automation.cpp"><Filter>platform</Filter></ClCompile>
     <ClCompile Include="platform\tray_icon.cpp"><Filter>platform</Filter></ClCompile>
     <ClCompile Include="platform\startup_task.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\window_affinity.cpp"><Filter>platform</Filter></ClCompile>
 
     <ClCompile Include="ui\main_window.cpp"><Filter>ui</Filter></ClCompile>
     <ClCompile Include="ui\theme.cpp"><Filter>ui</Filter></ClCompile>
@@ -338,6 +340,7 @@
     <ClInclude Include="core\trade\actions.hpp"><Filter>core\trade</Filter></ClInclude>
     <ClInclude Include="core\trade\trade_audit.hpp"><Filter>core\trade</Filter></ClInclude>
     <ClInclude Include="core\cs2_config\video_config.hpp"><Filter>core\cs2_config</Filter></ClInclude>
+    <ClInclude Include="core\cs2_config\launch_options.hpp"><Filter>core\cs2_config</Filter></ClInclude>
     <ClInclude Include="core\cs2\friend_code.hpp"><Filter>core\cs2</Filter></ClInclude>
 
     <ClInclude Include="core\account_store\account.hpp"><Filter>core\account_store</Filter></ClInclude>
@@ -393,6 +396,7 @@
     <ClInclude Include="platform\ui_automation.hpp"><Filter>platform</Filter></ClInclude>
     <ClInclude Include="platform\tray_icon.hpp"><Filter>platform</Filter></ClInclude>
     <ClInclude Include="platform\startup_task.hpp"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="platform\window_affinity.hpp"><Filter>platform</Filter></ClInclude>
 
     <ClInclude Include="ui\main_window.hpp"><Filter>ui</Filter></ClInclude>
     <ClInclude Include="ui\theme.hpp"><Filter>ui</Filter></ClInclude>

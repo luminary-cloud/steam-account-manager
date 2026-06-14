@@ -81,7 +81,7 @@ ComPtr<ITaskFolder> connect_root(ComPtr<ITaskService>& svc) {
     return folder;
 }
 
-bool create_task() {
+bool create_task(const std::wstring& args, bool persistent) {
     const std::wstring exe = current_exe_path();
     if (exe.empty()) return false;
 
@@ -97,7 +97,9 @@ bool create_task() {
 
     if (ComPtr<IRegistrationInfo> reg; SUCCEEDED(task->get_RegistrationInfo(reg.GetAddressOf())) && reg) {
         reg->put_Author(_bstr_t(L"Luminary"));
-        reg->put_Description(_bstr_t(L"Refreshes Steam account data in the background at logon."));
+        reg->put_Description(_bstr_t(
+            persistent ? L"Opens the Steam Account Manager at logon."
+                       : L"Refreshes Steam account data in the background at logon."));
     }
 
     if (ComPtr<IPrincipal> principal; SUCCEEDED(task->get_Principal(principal.GetAddressOf())) && principal) {
@@ -109,7 +111,8 @@ bool create_task() {
         settings->put_StartWhenAvailable(VARIANT_TRUE);
         settings->put_DisallowStartIfOnBatteries(VARIANT_FALSE);
         settings->put_StopIfGoingOnBatteries(VARIANT_FALSE);
-        settings->put_ExecutionTimeLimit(_bstr_t(L"PT5M"));
+        // The GUI runs indefinitely; a time limit would kill it. PT0S = no limit.
+        settings->put_ExecutionTimeLimit(_bstr_t(persistent ? L"PT0S" : L"PT5M"));
         settings->put_MultipleInstances(TASK_INSTANCES_IGNORE_NEW);
         settings->put_AllowDemandStart(VARIANT_TRUE);
         settings->put_Enabled(VARIANT_TRUE);
@@ -138,7 +141,7 @@ bool create_task() {
         ComPtr<IExecAction> exec;
         if (FAILED(action.As(&exec)) || !exec) return false;
         exec->put_Path(_bstr_t(exe.c_str()));
-        exec->put_Arguments(_bstr_t(L"--startup"));
+        if (!args.empty()) exec->put_Arguments(_bstr_t(args.c_str()));
     }
 
     ComPtr<IRegisteredTask> registered;
@@ -174,8 +177,8 @@ bool delete_task() {
 
 }  // namespace
 
-bool set_run_at_logon(bool enable) {
-    return enable ? create_task() : delete_task();
+bool set_run_at_logon(bool enable, const std::wstring& args, bool persistent) {
+    return enable ? create_task(args, persistent) : delete_task();
 }
 
 bool is_run_at_logon_enabled() {

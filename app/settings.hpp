@@ -25,6 +25,14 @@ enum class CS2ConfigMode : std::uint8_t {
     Folder730 = 2,
 };
 
+// What the logon Scheduled Task does, if anything. Only one task ever exists, so
+// the two active modes can't collide on the single-instance lock.
+enum class LogonAction : std::uint8_t {
+    None = 0,
+    BackgroundRefresh = 1,  // headless --startup: refresh, notify, exit
+    OpenApp = 2,            // launch the full GUI (optionally --minimized)
+};
+
 struct Settings {
     int clipboard_clear_seconds = 12;
     int auto_lock_minutes = 15;
@@ -36,13 +44,20 @@ struct Settings {
     // Caches the master password via DPAPI (current Windows user). Disabling
     // deletes the cached blob.
     bool remember_master_password = false;
-    // Task Scheduler logon task (highest privileges, since requireAdministrator)
-    // that relaunches with --startup to refresh and exit. Implies
-    // remember_master_password + refresh_on_launch for the headless auto-unlock.
-    bool start_with_windows = false;
+    // Task Scheduler logon task (highest privileges, since requireAdministrator).
+    // BackgroundRefresh relaunches with --startup to refresh and exit (implies
+    // remember_master_password + refresh_on_launch for the headless auto-unlock);
+    // OpenApp launches the full GUI. None removes the task.
+    LogonAction logon_action = LogonAction::None;
+    // Only meaningful for OpenApp: the logon task passes --minimized so the window
+    // opens minimized to the taskbar. Manual launches always open normally.
+    bool start_minimized = false;
     // Renders logins as "<hidden>". Per-account reveals live in
     // AppState::revealed_logins, cleared on lock via clear_session_secrets().
     bool privacy_mode = false;
+    // Excludes the window from screen-capture software via SetWindowDisplayAffinity
+    // (WDA_EXCLUDEFROMCAPTURE). Still visible on the physical monitor.
+    bool streamproof = false;
     std::string web_api_key;
 
     // single_proxy used only in Single mode; per-account proxies live in the vault.
@@ -165,6 +180,10 @@ struct Settings {
         CS2ConfigMode mode = CS2ConfigMode::None;
         std::string source_label;         // imported video.txt path
         std::string folder_source_label;  // imported 730 folder path
+        // Written into appid 730's LaunchOptions in the launched account's
+        // localconfig.vdf, during the Steam-down window so Steam can't clobber it.
+        // Empty = leave Steam's existing launch options alone.
+        std::string launch_options;
     } cs2_video;
 };
 

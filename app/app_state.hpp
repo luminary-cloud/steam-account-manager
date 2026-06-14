@@ -224,6 +224,10 @@ struct AppState {
     // True while a bulk refresh_all_spend runs, for toolbar disable/progress.
     std::atomic<bool> spend_bulk_running{false};
 
+    // Registers/updates/removes the single logon Scheduled Task to match
+    // settings.logon_action (+ start_minimized for OpenApp). Idempotent.
+    void sync_logon_task() const;
+
     // Copies cs2_video_template_path() into `a`'s CS2 config folder and toasts the
     // result. Failures toast a warning rather than throw.
     void apply_cs2_video_config(const core::Account& a);

@@ -13,7 +13,7 @@
 
 #include "app/app_paths.hpp"
 #include "core/log.hpp"
-#include "platform/startup_task.hpp"
+#include "platform/window_affinity.hpp"
 #include "ui/screens/settings_sections.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
@@ -65,6 +65,15 @@ void draw_privacy_section(app::AppState& state) {
     hover_tooltip("Replaces account login names with <hidden> everywhere they appear. Click a "
                   "redacted name to reveal that one account for the rest of the session; click "
                   "again to re-hide. Reveals are cleared when the vault locks.");
+
+    if (ImGui::Checkbox("Hide from screen capture (streamproof)", &state.settings.streamproof)) {
+        platform::set_capture_excluded(state.main_hwnd, state.settings.streamproof);
+        state.save_settings();
+    }
+    hover_tooltip("Excludes this window from screen-capture software (OBS, Discord, Snipping "
+                  "Tool) - they record a blank where the window is. It stays visible on your "
+                  "monitor. Requires Windows 10 2004 or newer; some hardware capture cards may "
+                  "still see it.");
 }
 
 void draw_account_info_section(app::AppState& state) {
@@ -114,35 +123,50 @@ void draw_integration_section(app::AppState& state) {
 
 void draw_startup_section(app::AppState& state) {
     separator_text("Startup");
-    {
-        const bool prev = state.settings.start_with_windows;
-        if (ImGui::Checkbox("Start with Windows (refresh in the background at logon)",
-                            &state.settings.start_with_windows)) {
-            if (state.settings.start_with_windows && !prev) {
-                // Background refresh needs the vault to auto-unlock: enable
-                // refresh-on-launch and the DPAPI password cache alongside it.
-                state.settings.refresh_on_launch = true;
-                if (settings_detail::write_master_pw_cache(state)) state.settings.remember_master_password = true;
-                if (!state.settings.remember_master_password ||
-                    !sam::platform::startup_task::set_run_at_logon(true)) {
-                    SAM_LOG_ERROR("startup: failed to enable start-with-Windows");
-                    state.settings.start_with_windows = false;
-                }
-            } else if (!state.settings.start_with_windows && prev) {
-                sam::platform::startup_task::set_run_at_logon(false);
+
+    int mode = static_cast<int>(state.settings.logon_action);
+    ImGui::SetNextItemWidth(260);
+    if (ImGui::Combo("At Windows logon", &mode,
+                     "Do nothing\0Refresh accounts in the background\0Open the app\0")) {
+        const auto prev = state.settings.logon_action;
+        state.settings.logon_action = static_cast<app::LogonAction>(mode);
+
+        if (state.settings.logon_action == app::LogonAction::BackgroundRefresh) {
+            // Background refresh needs the vault to auto-unlock: enable
+            // refresh-on-launch and the DPAPI password cache alongside it.
+            state.settings.refresh_on_launch = true;
+            if (settings_detail::write_master_pw_cache(state))
+                state.settings.remember_master_password = true;
+            if (!state.settings.remember_master_password) {
+                SAM_LOG_ERROR("startup: background refresh needs the master-password cache");
+                state.settings.logon_action = prev;
             }
+        }
+        state.sync_logon_task();
+        state.save_settings();
+    }
+    hover_tooltip("Do nothing: no logon task. Refresh accounts in the background: runs this app "
+                  "hidden at logon with admin rights, refreshes every account, shows a Windows "
+                  "notification for any new ban or cooldown, then exits. Open the app: launches "
+                  "the full window at logon. The app is requireAdministrator, so this uses a "
+                  "Scheduled Task (the Run key can't auto-start elevated apps).");
+
+    if (state.settings.logon_action == app::LogonAction::OpenApp) {
+        if (ImGui::Checkbox("Start minimized", &state.settings.start_minimized)) {
+            state.sync_logon_task();  // the task's --minimized argument changes
             state.save_settings();
         }
+        hover_tooltip("Opens minimized to the taskbar at logon. Manual launches always open "
+                      "normally.");
     }
-    hover_tooltip("Registers a Scheduled Task that runs this app hidden at logon with admin "
-                  "rights, refreshes every account, shows a Windows notification for any new ban "
-                  "or cooldown, then exits. Also turns on Refresh on launch and the master-"
-                  "password cache.");
-    ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
-    ImGui::TextWrapped("Caches your master password via Windows DPAPI so the background run can "
-                       "open the vault unattended. Anyone signed in as you on this PC can then "
-                       "open the vault without the password.");
-    ImGui::PopStyleColor();
+
+    if (state.settings.logon_action == app::LogonAction::BackgroundRefresh) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
+        ImGui::TextWrapped("Caches your master password via Windows DPAPI so the background run "
+                           "can open the vault unattended. Anyone signed in as you on this PC can "
+                           "then open the vault without the password.");
+        ImGui::PopStyleColor();
+    }
 }
 
 void draw_notifications_section(app::AppState& state) {

@@ -18,6 +18,7 @@
 #include "core/steam_api/ban_check.hpp"
 #include "core/update_check.hpp"
 #include "core/version.hpp"
+#include "platform/startup_task.hpp"
 #include "platform/tray_icon.hpp"
 
 namespace sam::app {
@@ -198,8 +199,12 @@ void AppState::save_settings() {
     j["refresh_on_launch"]       = settings.refresh_on_launch;
     j["gcpd_enabled"]            = settings.gcpd_enabled;
     j["remember_master_password"] = settings.remember_master_password;
-    j["start_with_windows"]      = settings.start_with_windows;
+    j["logon_action"]            = static_cast<int>(settings.logon_action);
+    j["start_minimized"]         = settings.start_minimized;
+    // Downgrade-safe: older builds key off this bool for the headless logon refresh.
+    j["start_with_windows"]      = (settings.logon_action == LogonAction::BackgroundRefresh);
     j["privacy_mode"]            = settings.privacy_mode;
+    j["streamproof"]             = settings.streamproof;
     j["web_api_key"]             = settings.web_api_key;
     j["proxy_mode"]              = static_cast<int>(settings.proxy_mode);
     j["single_proxy"]            = settings.single_proxy;
@@ -288,6 +293,7 @@ void AppState::save_settings() {
     vj["mode"]                = static_cast<int>(settings.cs2_video.mode);
     vj["source_label"]        = settings.cs2_video.source_label;
     vj["folder_source_label"] = settings.cs2_video.folder_source_label;
+    vj["launch_options"]      = settings.cs2_video.launch_options;
     // Downgrade-safe: older builds key off this bool for video.txt mode.
     vj["auto_apply_on_login"] = (settings.cs2_video.mode == CS2ConfigMode::VideoTxt);
 
@@ -334,8 +340,17 @@ void AppState::load_settings() {
     get("refresh_on_launch",       settings.refresh_on_launch);
     get("gcpd_enabled",            settings.gcpd_enabled);
     get("remember_master_password", settings.remember_master_password);
-    get("start_with_windows",      settings.start_with_windows);
+    if (j.contains("logon_action")) {
+        int v = j["logon_action"].get<int>();
+        if (v < 0 || v > 2) v = 0;
+        settings.logon_action = static_cast<LogonAction>(v);
+    } else if (j.contains("start_with_windows") && j["start_with_windows"].get<bool>()) {
+        // Migrate the legacy on/off bool (only ever meant the headless refresh).
+        settings.logon_action = LogonAction::BackgroundRefresh;
+    }
+    get("start_minimized",         settings.start_minimized);
     get("privacy_mode",            settings.privacy_mode);
+    get("streamproof",             settings.streamproof);
     get("web_api_key",             settings.web_api_key);
     get("single_proxy",            settings.single_proxy);
     if (j.contains("proxy_mode")) {
@@ -480,6 +495,7 @@ void AppState::load_settings() {
         };
         get_v("source_label",        settings.cs2_video.source_label);
         get_v("folder_source_label", settings.cs2_video.folder_source_label);
+        get_v("launch_options",      settings.cs2_video.launch_options);
 
         if (vj.contains("mode")) {
             int m = vj["mode"].get<int>();
@@ -492,6 +508,24 @@ void AppState::load_settings() {
             settings.cs2_video.mode =
                 legacy ? CS2ConfigMode::VideoTxt : CS2ConfigMode::None;
         }
+    }
+}
+
+void AppState::sync_logon_task() const {
+    switch (settings.logon_action) {
+        case LogonAction::BackgroundRefresh:
+            platform::startup_task::set_run_at_logon(true, L"--startup", false);
+            break;
+        case LogonAction::OpenApp:
+            platform::startup_task::set_run_at_logon(
+                true, settings.start_minimized ? L"--minimized" : L"", true);
+            break;
+        case LogonAction::None:
+        default:
+            if (platform::startup_task::is_run_at_logon_enabled()) {
+                platform::startup_task::set_run_at_logon(false);
+            }
+            break;
     }
 }
 

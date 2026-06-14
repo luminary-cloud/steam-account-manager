@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <thread>
 
+#include "core/cs2_config/launch_options.hpp"
 #include "core/launch/login_driver.hpp"
 #include "core/launch/token_launcher.hpp"
 #include "core/log.hpp"
@@ -51,15 +52,22 @@ bool shutdown_running_steam(const std::filesystem::path& exe_path, LaunchResult&
     return true;
 }
 
-LaunchResult launch_account(const core::Account& a) {
+LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_options) {
     // NFA accounts have no password to type; sign them in via token injection.
-    if (a.is_nfa) return launch_account_with_token(a);
+    if (a.is_nfa) return launch_account_with_token(a, cs2_launch_options);
 
     LaunchResult out;
 
     auto exe_path = resolve_steam_exe(out);
     if (!exe_path) return out;
     if (!shutdown_running_steam(*exe_path, out)) return out;
+
+    // Steam is down now: safe to set launch options without Steam clobbering them.
+    if (!cs2_launch_options.empty()) {
+        const auto r =
+            cs2_config::apply_launch_options(a.steam_id_64, std::string(cs2_launch_options));
+        if (!r.ok) SAM_LOG_WARN("launch: cs2 launch options: {}", r.message);
+    }
 
     // Force the login window: without this, a stale AutoLoginUser auto-logs in as
     // the previous account before the driver even sees the login UI.

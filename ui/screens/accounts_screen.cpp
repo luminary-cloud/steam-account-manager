@@ -42,7 +42,8 @@ void handle_card_action(app::AppState& state,
     switch (act) {
         case widgets::CardAction::Launch: {
             state.flush_pending_save();
-            auto result = sam::launch::launch_account(a);
+            auto result =
+                sam::launch::launch_account(a, state.settings.cs2_video.launch_options);
             if (result.status != sam::launch::LaunchStatus::Ok) {
                 state.launch_error = result.message;
                 ImGui::OpenPopup("Launch failed");

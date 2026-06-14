@@ -67,6 +67,8 @@ installer, no telemetry, nothing leaves your machine.
   or code typing.
 - Per-launch CS2 config: copy a `video.txt` or a whole `730` folder into the account's
   CS2 config on login (existing files are backed up first).
+- Set CS2 launch options once and have them written into the launched account's `730`
+  config on login (applied while Steam restarts so Steam will not overwrite them).
 - Per-account launch method: stop after login, launch CS2, or launch CS2 with a
   user-supplied external loader.
 - Open any account signed-in in your browser from the right-click menu.
@@ -80,6 +82,8 @@ installer, no telemetry, nothing leaves your machine.
 - Vault encrypted with AES-256-GCM under PBKDF2-HMAC-SHA256 (600,000 iterations).
   No recovery path.
 - Optional DPAPI auto-unlock to skip the master-password prompt on launch.
+- Streamproof mode hides the window from screen-capture software (OBS, Discord, Snipping
+  Tool) while it stays fully visible on your monitor.
 - Per-account or single proxy (SOCKS5 / HTTP / HTTPS, with credentials) and a test button.
 - Portable mode and a relocatable data folder (USB stick, another drive, network share).
 - No telemetry. Details in [SECURITY.md](SECURITY.md).

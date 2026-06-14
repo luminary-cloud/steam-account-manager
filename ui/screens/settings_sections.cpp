@@ -442,6 +442,19 @@ void draw_cs2_config_section(app::AppState& state) {
             }
         }
     }
+
+    ImGui::Spacing();
+    char lo_buf[256];
+    std::snprintf(lo_buf, sizeof(lo_buf), "%s",
+                  state.settings.cs2_video.launch_options.c_str());
+    ImGui::SetNextItemWidth(300);
+    if (ImGui::InputText("CS2 launch options", lo_buf, sizeof(lo_buf))) {
+        state.settings.cs2_video.launch_options = lo_buf;
+        state.save_settings();
+    }
+    hover_tooltip("Written to appid 730's LaunchOptions for the account you launch (e.g. "
+                  "-novid -tickrate 128 +fps_max 400). Applied while Steam is restarting so "
+                  "Steam won't overwrite it. Leave empty to keep Steam's current options.");
 }
 
 void draw_gamesense_section(app::AppState& state) {

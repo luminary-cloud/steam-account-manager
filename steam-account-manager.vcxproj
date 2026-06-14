@@ -204,6 +204,7 @@
     <ClCompile Include="core\trade\trade_audit.cpp" />
 
     <ClCompile Include="core\cs2_config\video_config.cpp" />
+    <ClCompile Include="core\cs2_config\launch_options.cpp" />
 
     <ClCompile Include="core\cs2\friend_code.cpp" />
 
@@ -248,6 +249,7 @@
     <ClCompile Include="platform\global_hotkey.cpp" />
     <ClCompile Include="platform\tray_icon.cpp" />
     <ClCompile Include="platform\startup_task.cpp" />
+    <ClCompile Include="platform\window_affinity.cpp" />
 
     <ClCompile Include="ui\main_window.cpp" />
     <ClCompile Include="ui\theme.cpp" />
@@ -350,6 +352,7 @@
     <ClInclude Include="core\trade\trade_audit.hpp" />
 
     <ClInclude Include="core\cs2_config\video_config.hpp" />
+    <ClInclude Include="core\cs2_config\launch_options.hpp" />
 
     <ClInclude Include="core\cs2\friend_code.hpp" />
 
@@ -401,6 +404,7 @@
     <ClInclude Include="platform\ui_automation.hpp" />
     <ClInclude Include="platform\tray_icon.hpp" />
     <ClInclude Include="platform\startup_task.hpp" />
+    <ClInclude Include="platform\window_affinity.hpp" />
 
     <ClInclude Include="ui\main_window.hpp" />
     <ClInclude Include="ui\theme.hpp" />
