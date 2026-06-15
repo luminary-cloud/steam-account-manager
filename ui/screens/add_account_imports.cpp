@@ -212,24 +212,36 @@ InfoDatImportResult import_one_info_dat(app::AppState& state,
     return r;
 }
 
-struct JwtImportResult {
-    bool ok = false;
-    bool merged = false;
-    bool client_audience = false;
-    bool expired = false;
-    std::int64_t expires = 0;
-    std::uint64_t steam_id = 0;
-    std::string error;
-    std::string account_id;
-    std::string login;
+struct MafileBatchSummary {
+    int imported = 0;
+    int merged = 0;
+    int blank_steam_id = 0;              // imported but no steam_id_64 resolved
+    bool web_api_key_missing = false;
+    std::vector<std::string> failures;   // "<filename>: <error>"
 };
+
+struct InfoDatBatchSummary {
+    int files_ok = 0;
+    int created  = 0;
+    int merged   = 0;
+    int accounts_total = 0;
+    int blank_steam_id = 0;             // imported but no steam_id_64 resolved
+    bool web_api_key_missing = false;
+    std::vector<std::string> failures;  // "<filename>: <error>"
+};
+
+}  // namespace
+
+namespace add_account_detail {
 
 struct LoginToken {
     std::string login;
     std::string token;
 };
 
-// Splits "<login>----<token>" (the form NFA exports use) or a bare token.
+// Splits "<login>----<token>" (the form NFA exports use) or a bare token, and drops
+// any trailing "----key:value" metadata some exporters append after the JWT. The
+// token is the field between the first and second "----" (a JWT never contains it).
 LoginToken split_login_token(std::string raw) {
     auto trim = [](std::string s) {
         while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
@@ -239,12 +251,16 @@ LoginToken split_login_token(std::string raw) {
         return s;
     };
     raw = trim(std::move(raw));
-    const auto sep = raw.find("----");
-    if (sep == std::string::npos) return {std::string{}, raw};
-    return {trim(raw.substr(0, sep)), trim(raw.substr(sep + 4))};
+    const auto first = raw.find("----");
+    if (first == std::string::npos) return {std::string{}, raw};
+    std::string login = trim(raw.substr(0, first));
+    std::string rest = raw.substr(first + 4);
+    const auto second = rest.find("----");
+    std::string token = (second == std::string::npos) ? rest : rest.substr(0, second);
+    return {std::move(login), trim(std::move(token))};
 }
 
-JwtImportResult import_one_jwt_token(app::AppState& state, const std::string& raw) {
+JwtImportResult import_jwt_token(app::AppState& state, const std::string& raw) {
     JwtImportResult r;
     LoginToken lt = split_login_token(raw);
     std::string login_hint = lt.login;
@@ -258,6 +274,7 @@ JwtImportResult import_one_jwt_token(app::AppState& state, const std::string& ra
     }
     const std::string aud = steam_login::jwt_audience(rt);
     r.client_audience = aud.find("client") != std::string::npos;
+    r.steam_issuer = steam_login::jwt_issuer(rt).find("steam") != std::string::npos;
     r.expires = exp;
     r.expired = exp <= now_seconds();
 
@@ -299,28 +316,6 @@ JwtImportResult import_one_jwt_token(app::AppState& state, const std::string& ra
     r.ok = true;
     return r;
 }
-
-struct MafileBatchSummary {
-    int imported = 0;
-    int merged = 0;
-    int blank_steam_id = 0;              // imported but no steam_id_64 resolved
-    bool web_api_key_missing = false;
-    std::vector<std::string> failures;   // "<filename>: <error>"
-};
-
-struct InfoDatBatchSummary {
-    int files_ok = 0;
-    int created  = 0;
-    int merged   = 0;
-    int accounts_total = 0;
-    int blank_steam_id = 0;             // imported but no steam_id_64 resolved
-    bool web_api_key_missing = false;
-    std::vector<std::string> failures;  // "<filename>: <error>"
-};
-
-}  // namespace
-
-namespace add_account_detail {
 
 void draw_import_mafile(app::AppState& state) {
     static std::array<char, 1024> path_buf{};
@@ -695,7 +690,7 @@ void draw_import_jwt_token(app::AppState& state) {
     if (action_button("Import##nfa-import")) {
         error.clear();
         has_result = false;
-        result = import_one_jwt_token(state, token_buf.data());
+        result = import_jwt_token(state, token_buf.data());
         if (!result.ok) {
             error = result.error;
         } else {
@@ -737,6 +732,12 @@ void draw_import_jwt_token(app::AppState& state) {
             ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
             ImGui::TextWrapped("Heads up: this token's audience doesn't include \"client\", so the "
                                "Steam client may reject it at Login.");
+            ImGui::PopStyleColor();
+        }
+        if (!result.steam_issuer) {
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
+            ImGui::TextWrapped("Heads up: this token's issuer isn't Steam, so it may not be a valid "
+                               "Steam refresh token.");
             ImGui::PopStyleColor();
         }
         if (result.login.empty()) {

@@ -4,12 +4,15 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "core/crypto/rng.hpp"
 #include "core/log.hpp"
 #include "core/strings.hpp"
 #include "platform/fs.hpp"
@@ -298,6 +301,23 @@ void upsert_scalar(VdfNode& parent, std::string_view key, std::string_view value
     parent.children.push_back(std::move(node));
 }
 
+VdfNode* ensure_block_path(VdfNode& root, std::initializer_list<const char*> path) {
+    VdfNode* cur = &root;
+    for (const char* key : path) {
+        VdfNode* child = find_child(*cur, key);
+        if (!child) {
+            VdfNode n;
+            n.key = key;
+            n.is_block = true;
+            cur->children.push_back(std::move(n));
+            child = find_child(*cur, key);
+        }
+        child->is_block = true;
+        cur = child;
+    }
+    return cur;
+}
+
 bool set_remembered_account(std::uint64_t steam_id_64) {
     if (steam_id_64 == 0) return false;
     auto path = loginusers_path();
@@ -421,6 +441,67 @@ bool ensure_loginusers_entry(std::uint64_t steam_id_64,
     }
     SAM_LOG_INFO("ensure_loginusers_entry: wrote entry for {} ({}) in {}",
                  target_sid, account_name, path.string());
+    return true;
+}
+
+bool ensure_config_vdf_account(std::uint64_t steam_id_64,
+                               const std::string& account_name) {
+    if (steam_id_64 == 0 || account_name.empty()) return false;
+    auto dir = platform::registry::read_steam_install_dir();
+    if (!dir) {
+        SAM_LOG_WARN("ensure_config_vdf_account: Steam install dir not found");
+        return false;
+    }
+    const auto path = *dir / "config" / "config.vdf";
+    const std::string name = core::to_lower(account_name);
+
+    const std::string existing = read_file_to_string(path);
+    const bool fresh = existing.empty();
+    VdfNode root = parse_vdf(existing);
+
+    VdfNode* accounts = ensure_block_path(
+        root, {"InstallConfigStore", "Software", "Valve", "Steam", "Accounts"});
+
+    // The account-name key is dynamic, so find-or-create it by hand.
+    VdfNode* entry = find_child(*accounts, name);
+    if (!entry) {
+        VdfNode e;
+        e.key = name;
+        e.is_block = true;
+        accounts->children.push_back(std::move(e));
+        entry = find_child(*accounts, name);
+    }
+    entry->is_block = true;
+    upsert_scalar(*entry, "SteamID", std::to_string(steam_id_64));
+
+    // Steam stamps a brand-new config.vdf with a 9-digit MTBF; add one only when
+    // we're creating the file so we never clobber Steam's own value on an update.
+    if (fresh) {
+        VdfNode* steam = ensure_block_path(
+            root, {"InstallConfigStore", "Software", "Valve", "Steam"});
+        if (!find_child(*steam, "MTBF")) {
+            const auto rb = crypto::random_bytes(9);
+            std::string mtbf;
+            for (std::uint8_t b : rb) mtbf.push_back(static_cast<char>('0' + (b % 10)));
+            upsert_scalar(*steam, "MTBF", mtbf);
+        }
+    }
+
+    std::string serialized;
+    for (const auto& c : root.children) serialize_node(c, serialized, 0);
+
+    try {
+        platform::atomic_write_file(path,
+            std::span<const std::uint8_t>(
+                reinterpret_cast<const std::uint8_t*>(serialized.data()),
+                serialized.size()),
+            /*restrict_acl=*/false);  // Steam's sandboxed helper must read this.
+    } catch (const std::exception& ex) {
+        SAM_LOG_ERROR("ensure_config_vdf_account: write failed: {}", ex.what());
+        return false;
+    }
+    SAM_LOG_INFO("ensure_config_vdf_account: wrote SteamID {} for '{}' in {}",
+                 steam_id_64, name, path.string());
     return true;
 }
 

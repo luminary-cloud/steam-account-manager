@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -35,6 +36,15 @@ bool ensure_loginusers_entry(std::uint64_t steam_id_64,
                              const std::string& account_name,
                              const std::string& persona_name);
 
+// Ensures <SteamInstall>/config/config.vdf has the
+// InstallConfigStore > Software > Valve > Steam > Accounts > <account_name> >
+// SteamID entry that Steam reads to associate the AutoLoginUser name with its
+// Steam ID. Without it the Steam client ignores the injected ConnectCache token
+// and falls back to the login window. Used by the NFA token-login path. False if
+// Steam isn't installed or the write fails.
+bool ensure_config_vdf_account(std::uint64_t steam_id_64,
+                               const std::string& account_name);
+
 // Generic text-VDF tree, shared with the connect_cache writer. Round-trips
 // unknown keys so a write preserves fields Valve may add.
 struct VdfNode {
@@ -48,5 +58,8 @@ VdfNode parse_vdf(std::string_view text);
 void serialize_node(const VdfNode& node, std::string& out, int depth);
 VdfNode* find_child(VdfNode& parent, std::string_view key);
 void upsert_scalar(VdfNode& parent, std::string_view key, std::string_view value);
+
+// Walks (creating as needed) a chain of nested block keys, returning the deepest.
+VdfNode* ensure_block_path(VdfNode& root, std::initializer_list<const char*> path);
 
 }  // namespace sam::steam_local

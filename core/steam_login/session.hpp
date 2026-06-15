@@ -21,6 +21,9 @@ std::int64_t jwt_expiry(const crypto::SecureString& jwt);
 // in the audience are accepted by /mobileconf/ajaxop.
 std::string jwt_audience(const crypto::SecureString& jwt);
 
+// `iss` claim, empty if unparseable. Genuine Steam tokens carry iss == "steam".
+std::string jwt_issuer(const crypto::SecureString& jwt);
+
 // SteamID64 from the `sub` claim (decimal string), 0 if unparseable.
 std::uint64_t jwt_steam_id(const crypto::SecureString& jwt);
 

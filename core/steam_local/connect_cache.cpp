@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
-#include <initializer_list>
 #include <span>
 #include <sstream>
 #include <string>
@@ -29,24 +28,6 @@ std::string read_file(const std::filesystem::path& p) {
     std::ostringstream ss;
     ss << f.rdbuf();
     return ss.str();
-}
-
-// Walks (creating as needed) a chain of nested block keys, returning the deepest.
-VdfNode* ensure_block_path(VdfNode& root, std::initializer_list<const char*> path) {
-    VdfNode* cur = &root;
-    for (const char* key : path) {
-        VdfNode* child = find_child(*cur, key);
-        if (!child) {
-            VdfNode n;
-            n.key = key;
-            n.is_block = true;
-            cur->children.push_back(std::move(n));
-            child = find_child(*cur, key);
-        }
-        child->is_block = true;
-        cur = child;
-    }
-    return cur;
 }
 
 }  // namespace

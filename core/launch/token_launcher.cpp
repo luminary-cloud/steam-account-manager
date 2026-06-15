@@ -70,6 +70,10 @@ LaunchResult launch_account_with_token(const core::Account& a,
     steam_local::ensure_loginusers_entry(a.steam_id_64, login, a.web.persona_name);
     if (!steam_local::write_connect_cache_token(login, a.refresh_token))
         return fail("Could not write the login token to Steam's local.vdf.");
+    // Steam maps the AutoLoginUser name to its Steam ID via config.vdf; without
+    // this entry it ignores the injected token and shows the login window.
+    if (!steam_local::ensure_config_vdf_account(a.steam_id_64, login))
+        SAM_LOG_WARN("token-launch: config.vdf account entry not written");
 
     auto pid = platform::process::launch(*steam_exe, L"");
     if (!pid) {

@@ -24,7 +24,8 @@ std::wstring tmp_path_for(const std::filesystem::path& path) {
 }  // namespace
 
 void atomic_write_file(const std::filesystem::path& path,
-                       std::span<const std::uint8_t> data) {
+                       std::span<const std::uint8_t> data,
+                       bool restrict_acl) {
     const std::wstring tmp_w = tmp_path_for(path);
 
     HANDLE h = CreateFileW(tmp_w.c_str(),
@@ -68,7 +69,7 @@ void atomic_write_file(const std::filesystem::path& path,
                                  std::to_string(err) + ")");
     }
 
-    restrict_to_current_user(path);
+    if (restrict_acl) restrict_to_current_user(path);
 }
 
 bool restrict_to_current_user(const std::filesystem::path& path) {

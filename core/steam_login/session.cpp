@@ -108,6 +108,21 @@ std::string jwt_audience(const crypto::SecureString& jwt) {
     }
 }
 
+std::string jwt_issuer(const crypto::SecureString& jwt) {
+    if (jwt.empty()) return {};
+    const std::string payload = jwt_payload(std::string_view{jwt.data(), jwt.size()});
+    if (payload.empty()) return {};
+    try {
+        const auto j = json::parse(payload);
+        if (!j.contains("iss")) return {};
+        const auto& iss = j["iss"];
+        if (iss.is_string()) return iss.get<std::string>();
+    } catch (...) {
+        return {};
+    }
+    return {};
+}
+
 bool needs_refresh(const core::Account& a, int safety_seconds) {
     if (a.access_token.empty()) return true;
     const std::int64_t exp = a.access_token_expires == 0 ? jwt_expiry(a.access_token)

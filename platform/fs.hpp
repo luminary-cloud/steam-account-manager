@@ -10,8 +10,16 @@ namespace sam::platform {
 
 // Atomic: streams to path.tmp, FlushFileBuffers, MoveFileEx REPLACE_EXISTING +
 // WRITE_THROUGH.
+//
+// restrict_acl=true (default) locks the file's DACL to the current user, for our
+// own secrets (vault, master-password cache). Pass false for files that Steam
+// itself must read/rewrite (its VDFs): locking them strips the inherited ACEs --
+// including ALL [RESTRICTED] APPLICATION PACKAGES -- that Steam's sandboxed
+// steamwebhelper needs, so it can't read the injected login token and the client
+// bounces back to the account picker.
 void atomic_write_file(const std::filesystem::path& path,
-                       std::span<const std::uint8_t> data);
+                       std::span<const std::uint8_t> data,
+                       bool restrict_acl = true);
 
 // Restricts the DACL on `path` to the current user SID only. Best-effort.
 bool restrict_to_current_user(const std::filesystem::path& path);
