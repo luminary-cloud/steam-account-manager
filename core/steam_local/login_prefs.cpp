@@ -118,16 +118,27 @@ std::string sha1_hex(const std::string& data) {
 std::int64_t now_unix() { return static_cast<std::int64_t>(std::time(nullptr)); }
 
 // Backs up `path` (UTC timestamp suffix) then atomically writes `text`. restrict_acl
-// stays false for Steam-owned files Steam must still read. Fills out.message on failure.
+// stays false for Steam-owned files Steam must still read. On first login the file may
+// not exist yet: there is nothing to back up, so just create the parent tree and write.
+// Fills out.message on failure.
 bool backup_and_write(const fs::path& path, const std::string& text, bool restrict_acl,
                       LoginPrefResult& out) {
     std::error_code ec;
-    fs::path bak = path;
-    bak += L".bak." + timestamp_suffix();
-    fs::copy_file(path, bak, fs::copy_options::overwrite_existing, ec);
-    if (ec) {
-        out.message = "backup of " + path.filename().string() + " failed: " + ec.message();
-        return false;
+    if (fs::is_regular_file(path, ec)) {
+        fs::path bak = path;
+        bak += L".bak." + timestamp_suffix();
+        fs::copy_file(path, bak, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            out.message = "backup of " + path.filename().string() + " failed: " + ec.message();
+            return false;
+        }
+    } else {
+        fs::create_directories(path.parent_path(), ec);
+        if (ec) {
+            out.message =
+                "could not create " + path.parent_path().string() + ": " + ec.message();
+            return false;
+        }
     }
     try {
         platform::atomic_write_file(path, as_bytes(text), restrict_acl);
@@ -219,20 +230,17 @@ LoginPrefResult set_news_notify_off(std::uint64_t steam_id_64) {
     const fs::path path = *userdata / L"config" / L"localconfig.vdf";
     out.target = path;
 
+    // On first login Steam hasn't written localconfig.vdf yet; start from an empty store
+    // so the setting is in place before Steam creates the file during sign-in. When the
+    // file already exists we parse and amend it (backup_and_write backs it up first).
     std::error_code ec;
-    if (!fs::is_regular_file(path, ec)) {
-        out.message = "localconfig.vdf not found; sign into the account in Steam once first";
-        return out;
-    }
-
-    const std::string text = read_file_to_string(path);
-    if (text.empty()) {
-        out.message = "localconfig.vdf is empty or unreadable";
-        return out;
+    VdfNode root;
+    if (fs::is_regular_file(path, ec)) {
+        const std::string text = read_file_to_string(path);
+        if (!text.empty()) root = parse_vdf(text);
     }
 
     // UserLocalConfigStore > news > NotifyAvailableGames
-    VdfNode root = parse_vdf(text);
     VdfNode& store = find_or_add_block(root, "UserLocalConfigStore");
     VdfNode& news = find_or_add_block(store, "news");
     upsert_scalar_ci(news, "NotifyAvailableGames", "0");
@@ -257,20 +265,19 @@ LoginPrefResult set_cloud_enabled_off(std::uint64_t steam_id_64) {
     const fs::path shared = *userdata / L"7" / L"remote" / L"sharedconfig.vdf";
     out.target = shared;
 
+    // On first login Steam hasn't written sharedconfig.vdf yet; start from an empty store
+    // so CloudEnabled=0 is in place before sign-in. This file is cloud-synced, so on a
+    // brand-new account Steam may still pull "cloud on" from the server during the first
+    // sign-in (no local remotecache exists yet to outrank it); it then sticks from the
+    // next launch. When the file exists we parse and amend it (backed up first).
     std::error_code ec;
-    if (!fs::is_regular_file(shared, ec)) {
-        out.message = "sharedconfig.vdf not found; sign into the account in Steam once first";
-        return out;
-    }
-
-    const std::string text = read_file_to_string(shared);
-    if (text.empty()) {
-        out.message = "sharedconfig.vdf is empty or unreadable";
-        return out;
+    VdfNode root;
+    if (fs::is_regular_file(shared, ec)) {
+        const std::string text = read_file_to_string(shared);
+        if (!text.empty()) root = parse_vdf(text);
     }
 
     // UserRoamingConfigStore > Software > Valve > Steam > CloudEnabled
-    VdfNode root = parse_vdf(text);
     VdfNode& store = find_or_add_block(root, "UserRoamingConfigStore");
     VdfNode& software = find_or_add_block(store, "Software");
     VdfNode& valve = find_or_add_block(software, "Valve");
