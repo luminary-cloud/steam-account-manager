@@ -69,6 +69,8 @@ installer, no telemetry, nothing leaves your machine.
   CS2 config on login (existing files are backed up first).
 - Set CS2 launch options once and have them written into the launched account's `730`
   config on login (applied while Steam restarts so Steam will not overwrite them).
+- Optionally disable Steam Cloud or new-release news notifications per account on login,
+  written while Steam restarts so Steam keeps them off (existing files are backed up first).
 - Per-account launch method: stop after login, launch CS2, or launch CS2 with a
   user-supplied external loader.
 - Open any account signed-in in your browser from the right-click menu.
