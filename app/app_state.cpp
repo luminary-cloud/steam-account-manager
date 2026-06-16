@@ -205,6 +205,8 @@ void AppState::save_settings() {
     j["start_with_windows"]      = (settings.logon_action == LogonAction::BackgroundRefresh);
     j["privacy_mode"]            = settings.privacy_mode;
     j["streamproof"]             = settings.streamproof;
+    j["disable_cloud_on_login"]  = settings.disable_cloud_on_login;
+    j["disable_news_on_login"]   = settings.disable_news_on_login;
     j["web_api_key"]             = settings.web_api_key;
     j["proxy_mode"]              = static_cast<int>(settings.proxy_mode);
     j["single_proxy"]            = settings.single_proxy;
@@ -351,6 +353,8 @@ void AppState::load_settings() {
     get("start_minimized",         settings.start_minimized);
     get("privacy_mode",            settings.privacy_mode);
     get("streamproof",             settings.streamproof);
+    get("disable_cloud_on_login",  settings.disable_cloud_on_login);
+    get("disable_news_on_login",   settings.disable_news_on_login);
     get("web_api_key",             settings.web_api_key);
     get("single_proxy",            settings.single_proxy);
     if (j.contains("proxy_mode")) {

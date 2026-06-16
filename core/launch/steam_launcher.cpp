@@ -8,6 +8,7 @@
 #include "core/launch/login_driver.hpp"
 #include "core/launch/token_launcher.hpp"
 #include "core/log.hpp"
+#include "core/steam_local/login_prefs.hpp"
 #include "platform/process.hpp"
 #include "platform/registry.hpp"
 
@@ -52,9 +53,12 @@ bool shutdown_running_steam(const std::filesystem::path& exe_path, LaunchResult&
     return true;
 }
 
-LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_options) {
+LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_options,
+                            bool disable_cloud_on_login, bool disable_news_on_login) {
     // NFA accounts have no password to type; sign them in via token injection.
-    if (a.is_nfa) return launch_account_with_token(a, cs2_launch_options);
+    if (a.is_nfa)
+        return launch_account_with_token(a, cs2_launch_options, disable_cloud_on_login,
+                                         disable_news_on_login);
 
     LaunchResult out;
 
@@ -67,6 +71,14 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
         const auto r =
             cs2_config::apply_launch_options(a.steam_id_64, std::string(cs2_launch_options));
         if (!r.ok) SAM_LOG_WARN("launch: cs2 launch options: {}", r.message);
+    }
+    if (disable_news_on_login) {
+        const auto r = steam_local::set_news_notify_off(a.steam_id_64);
+        if (!r.ok) SAM_LOG_WARN("launch: disable news: {}", r.message);
+    }
+    if (disable_cloud_on_login) {
+        const auto r = steam_local::set_cloud_enabled_off(a.steam_id_64);
+        if (!r.ok) SAM_LOG_WARN("launch: disable cloud: {}", r.message);
     }
 
     // Force the login window: without this, a stale AutoLoginUser auto-logs in as

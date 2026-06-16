@@ -14,6 +14,7 @@
 #include "app/app_paths.hpp"
 #include "core/log.hpp"
 #include "platform/window_affinity.hpp"
+#include "ui/fonts.hpp"
 #include "ui/screens/settings_sections.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
@@ -22,8 +23,8 @@ namespace sam::ui::screens {
 
 namespace {
 
-void draw_general_section(app::AppState& state) {
-    separator_text("General");
+void draw_clipboard_lock_section(app::AppState& state) {
+    separator_text("Clipboard & auto-lock");
     ImGui::SetNextItemWidth(200);
     ImGui::SliderInt("Clipboard auto-clear (s)", &state.settings.clipboard_clear_seconds, 10, 120);
     hover_tooltip("Passwords and Steam Guard codes copied from the app are wiped from the "
@@ -32,13 +33,16 @@ void draw_general_section(app::AppState& state) {
     ImGui::SliderInt("Auto-lock (minutes)", &state.settings.auto_lock_minutes, 0, 240);
     hover_tooltip("Re-lock the vault after this many idle minutes. 0 disables auto-lock for the "
                   "current session.");
+}
+
+void draw_updates_section(app::AppState& state) {
+    separator_text("Updates");
     ImGui::Checkbox("Check for updates on launch", &state.settings.check_updates_on_launch);
     hover_tooltip("On launch, checks GitHub for a newer release and shows an \"Update available\" "
                   "prompt if one exists. No account data is sent.");
 }
 
 void draw_appearance_section(app::AppState& state) {
-    separator_text("Appearance");
     {
         int view_idx = static_cast<int>(state.settings.accounts_view);
         ImGui::SetNextItemWidth(200);
@@ -74,6 +78,26 @@ void draw_privacy_section(app::AppState& state) {
                   "Tool) - they record a blank where the window is. It stays visible on your "
                   "monitor. Requires Windows 10 2004 or newer; some hardware capture cards may "
                   "still see it.");
+}
+
+void draw_steam_login_section(app::AppState& state) {
+    separator_text("Steam login");
+    if (ImGui::Checkbox("Disable Steam Cloud on login",
+                        &state.settings.disable_cloud_on_login)) {
+        state.save_settings();
+    }
+    hover_tooltip("When you launch an account, set CloudEnabled=0 for it (Steam's \"Enable "
+                  "Steam Cloud\" off). Applies to every account you launch. Turning this off "
+                  "does not re-enable cloud; it just stops the app touching the file. Note: "
+                  "this flips the account's account-wide cloud setting.");
+
+    if (ImGui::Checkbox("Disable new-release news on login",
+                        &state.settings.disable_news_on_login)) {
+        state.save_settings();
+    }
+    hover_tooltip("When you launch an account, set NotifyAvailableGames=0 (Steam's \"Notify "
+                  "me about additions or changes to my games, new releases\" off). Applies to "
+                  "every account you launch; turning it off leaves Steam's setting as-is.");
 }
 
 void draw_account_info_section(app::AppState& state) {
@@ -170,7 +194,6 @@ void draw_startup_section(app::AppState& state) {
 }
 
 void draw_notifications_section(app::AppState& state) {
-    separator_text("Notifications");
     ImGui::Checkbox("Detect bans and cooldown changes", &state.settings.notifications.enabled);
     hover_tooltip("When on, each refresh compares the new ban / cooldown state against the "
                   "previous snapshot and records a notification if anything changed. The "
@@ -264,6 +287,99 @@ void draw_vault_section(app::AppState& state) {
                   "option deletes the cached password.");
 }
 
+// Category button for the settings sub-rail, styled like the main rail nav's
+// sidebar_item (rail_nav.cpp): selected gets a faint fill + accent left bar,
+// hover gets a fainter fill. Returns true on click.
+bool category_item(const char* label, bool selected, float width) {
+    const ImVec2 size{width, 32.0F};
+    const ImVec2 cursor = ImGui::GetCursorScreenPos();
+    ImGui::PushID(label);
+    ImGui::InvisibleButton("##cat", size);
+    const bool pressed = ImGui::IsItemActivated();
+    const bool hovered = ImGui::IsItemHovered();
+    ImGui::PopID();
+
+    auto* draw = ImGui::GetWindowDrawList();
+    if (selected) {
+        draw->AddRectFilled(cursor, ImVec2(cursor.x + size.x, cursor.y + size.y),
+                            ImColor(255, 255, 255, 14), 6.0F);
+        const ImVec4 accent = theme::accent();
+        draw->AddRectFilled(ImVec2(cursor.x, cursor.y + 6.0F),
+                            ImVec2(cursor.x + 3.0F, cursor.y + size.y - 6.0F),
+                            ImColor(accent.x, accent.y, accent.z, 1.0F), 1.5F);
+    } else if (hovered) {
+        draw->AddRectFilled(cursor, ImVec2(cursor.x + size.x, cursor.y + size.y),
+                            ImColor(255, 255, 255, 8), 6.0F);
+    }
+
+    const ImVec4 col = (selected || hovered) ? theme::text() : theme::dim_text();
+    draw->AddText(ImVec2(cursor.x + 14.0F, cursor.y + 8.0F), ImColor(col), label);
+    return pressed;
+}
+
+void render_general(app::AppState& state) {
+    draw_updates_section(state);
+    ImGui::Spacing();
+    draw_startup_section(state);
+    ImGui::Spacing();
+    settings_detail::draw_storage_section(state);
+}
+
+void render_security(app::AppState& state) {
+    draw_clipboard_lock_section(state);
+    ImGui::Spacing();
+    draw_vault_section(state);
+    ImGui::Spacing();
+    draw_privacy_section(state);
+}
+
+void render_appearance(app::AppState& state) {
+    draw_appearance_section(state);
+    ImGui::Spacing();
+    draw_account_info_section(state);
+    ImGui::Spacing();
+    draw_list_view_section(state);
+}
+
+void render_notifications(app::AppState& state) {
+    draw_notifications_section(state);
+}
+
+void render_steam_guard(app::AppState& state) {
+    settings_detail::draw_authenticator_section(state);
+    ImGui::Spacing();
+    settings_detail::draw_confirmations_section(state);
+}
+
+void render_launch_steam(app::AppState& state) {
+    draw_steam_login_section(state);
+    ImGui::Spacing();
+    settings_detail::draw_cs2_config_section(state);
+    ImGui::Spacing();
+    settings_detail::draw_gamesense_section(state);
+}
+
+void render_network_data(app::AppState& state) {
+    draw_integration_section(state);
+    ImGui::Spacing();
+    settings_detail::draw_proxy_section(state);
+}
+
+struct CategoryDef {
+    const char* label;
+    void (*render)(app::AppState&);
+};
+
+constexpr CategoryDef kCategories[] = {
+    {"General",            render_general},
+    {"Security & Privacy", render_security},
+    {"Appearance",         render_appearance},
+    {"Notifications",      render_notifications},
+    {"Steam Guard",        render_steam_guard},
+    {"Launch & Steam",     render_launch_steam},
+    {"Network & Data",     render_network_data},
+};
+
 }  // namespace
 
 // Gap above the pinned Save settings footer row.
@@ -283,54 +399,50 @@ void draw_settings(app::AppState& state) {
 
     ImGui::BeginChild("##settings-body", ImVec2(0, -footer_reserved),
                       ImGuiChildFlags_NavFlattened);
+
+    // Selected category for the sub-rail. Transient view state, kept for the
+    // session only (not persisted to settings).
+    static int active_category = 0;
+    constexpr float kRailWidth = 184.0F;
+
+    ImGui::BeginChild("##settings-cats", ImVec2(kRailWidth, 0), false,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    {
+        // Faint divider on the rail's right edge, matching the main rail nav.
+        auto* draw = ImGui::GetWindowDrawList();
+        const ImVec2 wp = ImGui::GetWindowPos();
+        const float wh = ImGui::GetWindowSize().y;
+        draw->AddLine(ImVec2(wp.x + kRailWidth - 1.0F, wp.y),
+                      ImVec2(wp.x + kRailWidth - 1.0F, wp.y + wh),
+                      ImColor(0.659F, 0.635F, 0.620F, 0.10F));
+    }
+    ImGui::Dummy(ImVec2(0.0F, 4.0F));
+    for (int i = 0; i < IM_ARRAYSIZE(kCategories); ++i) {
+        ImGui::SetCursorPosX(8.0F);
+        if (category_item(kCategories[i].label, active_category == i, kRailWidth - 16.0F)) {
+            active_category = i;
+        }
+        ImGui::Dummy(ImVec2(0.0F, 4.0F));
+    }
+    ImGui::EndChild();
+
+    ImGui::SameLine(0.0F, 16.0F);
+
+    ImGui::BeginChild("##settings-content", ImVec2(0, 0), ImGuiChildFlags_NavFlattened);
     // PushItemWidth doesn't carry across the child boundary; re-apply so right edges match.
     ImGui::PushItemWidth(-kContentPaddingX);
 
-    draw_general_section(state);
-
+    ImFont* tf = fonts::title();
+    if (tf) ImGui::PushFont(tf, 0.0F);
+    ImGui::TextUnformatted(kCategories[active_category].label);
+    if (tf) ImGui::PopFont();
     ImGui::Spacing();
-    draw_appearance_section(state);
 
-    ImGui::Spacing();
-    draw_privacy_section(state);
-
-    ImGui::Spacing();
-    draw_account_info_section(state);
-
-    ImGui::Spacing();
-    draw_integration_section(state);
-
-    ImGui::Spacing();
-    settings_detail::draw_proxy_section(state);
-
-    ImGui::Spacing();
-    draw_startup_section(state);
-
-    ImGui::Spacing();
-    draw_notifications_section(state);
-
-    ImGui::Spacing();
-    settings_detail::draw_authenticator_section(state);
-
-    ImGui::Spacing();
-    draw_list_view_section(state);
-
-    ImGui::Spacing();
-    settings_detail::draw_confirmations_section(state);
-
-    ImGui::Spacing();
-    draw_vault_section(state);
-
-    ImGui::Spacing();
-    settings_detail::draw_cs2_config_section(state);
-
-    ImGui::Spacing();
-    settings_detail::draw_gamesense_section(state);
-
-    ImGui::Spacing();
-    settings_detail::draw_storage_section(state);
+    kCategories[active_category].render(state);
 
     ImGui::PopItemWidth();
+    ImGui::EndChild();
+
     ImGui::EndChild();
 
     ImGui::Dummy(ImVec2(0.0F, kFooterGap));

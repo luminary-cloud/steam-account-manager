@@ -106,6 +106,7 @@
     <ClCompile Include="core\launch\token_launcher.cpp"><Filter>core\launch</Filter></ClCompile>
 
     <ClCompile Include="core\steam_local\loginusers.cpp"><Filter>core\steam_local</Filter></ClCompile>
+    <ClCompile Include="core\steam_local\login_prefs.cpp"><Filter>core\steam_local</Filter></ClCompile>
     <ClCompile Include="core\steam_local\connect_cache.cpp"><Filter>core\steam_local</Filter></ClCompile>
 
     <ClCompile Include="core\steam_auth\gen\steammessages_base.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
@@ -374,6 +375,7 @@
     <ClInclude Include="core\launch\token_launcher.hpp"><Filter>core\launch</Filter></ClInclude>
 
     <ClInclude Include="core\steam_local\loginusers.hpp"><Filter>core\steam_local</Filter></ClInclude>
+    <ClInclude Include="core\steam_local\login_prefs.hpp"><Filter>core\steam_local</Filter></ClInclude>
     <ClInclude Include="core\steam_local\connect_cache.hpp"><Filter>core\steam_local</Filter></ClInclude>
     <ClInclude Include="core\steam_local\crc32.hpp"><Filter>core\steam_local</Filter></ClInclude>
 

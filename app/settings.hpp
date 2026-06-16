@@ -58,6 +58,10 @@ struct Settings {
     // Excludes the window from screen-capture software via SetWindowDisplayAffinity
     // (WDA_EXCLUDEFROMCAPTURE). Still visible on the physical monitor.
     bool streamproof = false;
+    // Forced to "0" on the launched account during the Steam-down window, only while the
+    // toggle is on; never re-enabled. See core/steam_local/login_prefs.
+    bool disable_cloud_on_login = false;
+    bool disable_news_on_login = false;
     std::string web_api_key;
 
     // single_proxy used only in Single mode; per-account proxies live in the vault.

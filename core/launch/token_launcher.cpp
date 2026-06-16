@@ -11,6 +11,7 @@
 #include "core/log.hpp"
 #include "core/strings.hpp"
 #include "core/steam_local/connect_cache.hpp"
+#include "core/steam_local/login_prefs.hpp"
 #include "core/steam_local/loginusers.hpp"
 #include "core/steam_login/session.hpp"
 #include "platform/process.hpp"
@@ -40,7 +41,9 @@ LaunchResult fail(const std::string& message) {
 }  // namespace
 
 LaunchResult launch_account_with_token(const core::Account& a,
-                                       std::string_view cs2_launch_options) {
+                                       std::string_view cs2_launch_options,
+                                       bool disable_cloud_on_login,
+                                       bool disable_news_on_login) {
     if (a.refresh_token.empty() || a.steam_id_64 == 0)
         return fail("NFA login needs a refresh token and a resolved Steam ID.");
     if (a.login.empty())
@@ -62,6 +65,14 @@ LaunchResult launch_account_with_token(const core::Account& a,
         const auto r =
             cs2_config::apply_launch_options(a.steam_id_64, std::string(cs2_launch_options));
         if (!r.ok) SAM_LOG_WARN("token-launch: cs2 launch options: {}", r.message);
+    }
+    if (disable_news_on_login) {
+        const auto r = steam_local::set_news_notify_off(a.steam_id_64);
+        if (!r.ok) SAM_LOG_WARN("token-launch: disable news: {}", r.message);
+    }
+    if (disable_cloud_on_login) {
+        const auto r = steam_local::set_cloud_enabled_off(a.steam_id_64);
+        if (!r.ok) SAM_LOG_WARN("token-launch: disable cloud: {}", r.message);
     }
 
     const std::string login = core::to_lower(a.login);

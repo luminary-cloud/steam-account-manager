@@ -14,7 +14,12 @@ namespace sam::launch {
 //
 // `cs2_launch_options`, when non-empty, is written to appid 730's LaunchOptions
 // while Steam is shut down (before the relaunch), so Steam can't overwrite it.
+//
+// `disable_cloud_on_login` / `disable_news_on_login`, when set, force Steam Cloud and
+// the new-release news notification off for the account in the same Steam-down window.
 LaunchResult launch_account_with_token(const core::Account& account,
-                                       std::string_view cs2_launch_options = {});
+                                       std::string_view cs2_launch_options = {},
+                                       bool disable_cloud_on_login = false,
+                                       bool disable_news_on_login = false);
 
 }  // namespace sam::launch

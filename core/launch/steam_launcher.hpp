@@ -31,8 +31,13 @@ struct LaunchResult {
 // `cs2_launch_options`, when non-empty, is written to appid 730's LaunchOptions in
 // the account's localconfig.vdf during the Steam-down window (between shutdown and
 // relaunch) so Steam can't overwrite it.
+//
+// `disable_cloud_on_login` / `disable_news_on_login`, when set, force Steam Cloud and
+// the new-release news notification off for the account in the same Steam-down window.
 LaunchResult launch_account(const core::Account& account,
-                            std::string_view cs2_launch_options = {});
+                            std::string_view cs2_launch_options = {},
+                            bool disable_cloud_on_login = false,
+                            bool disable_news_on_login = false);
 
 // Resolves the configured steam.exe path, or returns nullopt and fills `out`
 // with a SteamNotInstalled reason. Shared by the password and token paths.
