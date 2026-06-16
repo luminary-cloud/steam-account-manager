@@ -3,8 +3,8 @@
 # Steam Account Manager
 
 [![build](https://github.com/luminary-cloud/steam-account-manager/actions/workflows/build.yml/badge.svg)](https://github.com/luminary-cloud/steam-account-manager/actions/workflows/build.yml)
-[![release](https://img.shields.io/github/v/release/luminary-cloud/steam-account-manager)](../../releases)
-[![license](https://img.shields.io/github/license/luminary-cloud/steam-account-manager)](LICENSE)
+[![release](https://img.shields.io/github/v/release/luminary-cloud/steam-account-manager?cacheSeconds=3600)](../../releases)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
 
 A native Windows manager for your Steam accounts: one encrypted vault, Steam Guard
@@ -30,8 +30,8 @@ installer, no telemetry, nothing leaves your machine.
 - Per-account password, notes, color tags, and trust labels (green / yellow / red).
 - Search, sort, multi-select, and bulk actions.
 - Privacy mode hides every login until you click to reveal one.
-- NFA (token-only) accounts: import a JWT refresh token, track when it expires, and
-  sign in without a password.
+- NFA (token-only) accounts: import a JWT refresh token, track when it expires, edit or
+  replace it later, and sign in without a password.
 
 ### Authenticator
 - Steam Guard codes for any imported authenticator, with a next-code preview.
