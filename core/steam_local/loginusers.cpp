@@ -344,11 +344,16 @@ bool set_remembered_account(std::uint64_t steam_id_64) {
     for (auto& entry : users->children) {
         if (!entry.is_block) continue;
         const bool is_target = entry.key == target_sid;
-        // Steam writes "1"/"0" as quoted strings; match that exactly.
-        upsert_scalar(entry, "RememberPassword", is_target ? "1" : "0");
-        upsert_scalar(entry, "AllowAutoLogin",  is_target ? "1" : "0");
-        upsert_scalar(entry, "MostRecent",      is_target ? "1" : "0");
-        if (is_target) matched = true;
+        if (is_target) {
+            // Steam writes "1"/"0" as quoted strings; match that exactly.
+            upsert_scalar(entry, "RememberPassword", "1");
+            upsert_scalar(entry, "AllowAutoLogin",  "1");
+            upsert_scalar(entry, "MostRecent",      "1");
+            matched = true;
+        } else {
+            // Leave RememberPassword/AllowAutoLogin so the account stays saved.
+            upsert_scalar(entry, "MostRecent", "0");
+        }
     }
 
     if (!matched) {
@@ -419,11 +424,12 @@ bool ensure_loginusers_entry(std::uint64_t steam_id_64,
     upsert_scalar(*entry, "Timestamp",
                   std::to_string(static_cast<long long>(std::time(nullptr))));
 
-    // Steam auto-logs into exactly one account: clear the flags on the rest.
+    // Only one account can be the most-recent; clear it on the rest. Leave their
+    // RememberPassword/AllowAutoLogin so they stay saved in Steam's switcher. Steam
+    // auto-logs into the account named by the AutoLoginUser registry value (set by
+    // the caller in token_launcher.cpp), not by these per-account flags.
     for (auto& child : users->children) {
         if (!child.is_block || child.key == target_sid) continue;
-        upsert_scalar(child, "RememberPassword", "0");
-        upsert_scalar(child, "AllowAutoLogin", "0");
         upsert_scalar(child, "MostRecent", "0");
     }
 

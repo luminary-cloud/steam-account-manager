@@ -27,6 +27,7 @@
 #include "app/job_pump.hpp"
 #include "app/resource.h"
 #include "core/account_store/store.hpp"
+#include "core/cs2_gc/cs2_gc_client.hpp"
 #include "core/http/client.hpp"
 #include "core/launch/cs2_autostart.hpp"
 #include "core/log.hpp"
@@ -731,6 +732,10 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     // Abort in-flight HTTP so the threads joined below return immediately instead
     // of blocking on a WinHTTP timeout.
     sam::http::cancel_all();
+
+    // Join any retired CS2 GC clients while AppState is still alive, so their worker
+    // callbacks never touch a destroyed state.
+    sam::cs2_gc::reap_all();
 
     // Flush the debounced vault save before tearing down the worker so the last
     // edit isn't lost.

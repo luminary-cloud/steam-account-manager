@@ -443,6 +443,10 @@ void cancel_all() {
     g_sessions.clear();
 }
 
+std::string current_effective_proxy() {
+    return resolve_effective_proxy();
+}
+
 ScopedProxy::ScopedProxy(std::string proxy_url) : prev_(std::move(g_thread_proxy)) {
     g_thread_proxy = std::move(proxy_url);
 }

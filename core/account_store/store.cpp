@@ -174,6 +174,9 @@ void to_json(json& j, const CS2Status& c) {
         {"cooldown_expires_unix", c.cooldown_expires_unix},
         {"cooldown_reason",      c.cooldown_reason},
         {"weekly_drop_reset_unix", c.weekly_drop_reset_unix},
+        {"weekly_drop_claimed_generation", c.weekly_drop_claimed_generation},
+        {"weekly_drop_claimed_ids",   c.weekly_drop_claimed_ids},
+        {"weekly_drop_claimed_names", c.weekly_drop_claimed_names},
         {"last_refreshed_unix",  c.last_refreshed_unix},
     };
 }
@@ -210,6 +213,12 @@ void from_json(const json& j, CS2Status& c) {
     c.cooldown_expires_unix = j.value("cooldown_expires_unix", static_cast<std::int64_t>(0));
     c.cooldown_reason       = j.value("cooldown_reason", std::string{});
     c.weekly_drop_reset_unix = j.value("weekly_drop_reset_unix", static_cast<std::int64_t>(0));
+    c.weekly_drop_claimed_generation =
+        j.value("weekly_drop_claimed_generation", static_cast<std::uint32_t>(0));
+    c.weekly_drop_claimed_ids =
+        j.value("weekly_drop_claimed_ids", std::vector<std::uint64_t>{});
+    c.weekly_drop_claimed_names =
+        j.value("weekly_drop_claimed_names", std::vector<std::string>{});
     c.last_refreshed_unix   = j.value("last_refreshed_unix", static_cast<std::int64_t>(0));
 }
 
@@ -242,6 +251,8 @@ void to_json(json& j, const Account& a) {
     j["steam_login_secure"]   = secure_to_string(a.steam_login_secure);
     j["is_nfa"]               = a.is_nfa;
     j["refresh_token_expires"] = a.refresh_token_expires;
+    j["cm_refresh_token"]     = secure_to_string(a.cm_refresh_token);
+    j["cm_refresh_token_expires"] = a.cm_refresh_token_expires;
     j["display_name"]         = ws_to_u8(a.display_name);
     j["notes"]                = ws_to_u8(a.notes);
     j["tag_ids"]              = a.tag_ids;
@@ -274,6 +285,8 @@ void from_json(const json& j, Account& a) {
     a.steam_login_secure   = string_to_secure(j.value("steam_login_secure", std::string{}));
     a.is_nfa               = j.value("is_nfa", false);
     a.refresh_token_expires = j.value("refresh_token_expires", static_cast<std::int64_t>(0));
+    a.cm_refresh_token     = string_to_secure(j.value("cm_refresh_token", std::string{}));
+    a.cm_refresh_token_expires = j.value("cm_refresh_token_expires", static_cast<std::int64_t>(0));
     a.display_name         = u8_to_ws(j.value("display_name", std::string{}));
     a.notes                = u8_to_ws(j.value("notes", std::string{}));
     if (j.contains("tag_ids") && j["tag_ids"].is_array()) {

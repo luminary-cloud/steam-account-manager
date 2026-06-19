@@ -297,4 +297,18 @@ LoginPrefResult set_cloud_enabled_off(std::uint64_t steam_id_64) {
     return out;
 }
 
+LoginConfigPresence login_config_presence(std::uint64_t steam_id_64) {
+    LoginConfigPresence out;
+    LoginPrefResult ignored;
+    auto userdata = account_userdata_dir(steam_id_64, ignored);
+    if (!userdata) return out;  // unresolved SteamID / Steam not installed: both false
+
+    std::error_code ec;
+    out.localconfig_present =
+        fs::is_regular_file(*userdata / L"config" / L"localconfig.vdf", ec);
+    out.sharedconfig_present =
+        fs::is_regular_file(*userdata / L"7" / L"remote" / L"sharedconfig.vdf", ec);
+    return out;
+}
+
 }  // namespace sam::steam_local

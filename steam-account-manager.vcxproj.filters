@@ -10,6 +10,8 @@
     <Filter Include="core\steam_auth"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000006}</UniqueIdentifier></Filter>
     <Filter Include="core\steam_auth\gen"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000015}</UniqueIdentifier></Filter>
     <Filter Include="core\steam_gcpd"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000007}</UniqueIdentifier></Filter>
+    <Filter Include="core\steam_cm"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000040}</UniqueIdentifier></Filter>
+    <Filter Include="core\cs2_gc"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000042}</UniqueIdentifier></Filter>
     <Filter Include="core\steam_spend"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000034}</UniqueIdentifier></Filter>
     <Filter Include="core\profile"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000030}</UniqueIdentifier></Filter>
     <Filter Include="core\trade"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000033}</UniqueIdentifier></Filter>
@@ -29,6 +31,7 @@
     <Filter Include="third_party\imgui"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000011}</UniqueIdentifier></Filter>
     <Filter Include="third_party\imgui\backends"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000016}</UniqueIdentifier></Filter>
     <Filter Include="third_party\mbedtls"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000017}</UniqueIdentifier></Filter>
+    <Filter Include="third_party\puff"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000041}</UniqueIdentifier></Filter>
     <Filter Include="project"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000012}</UniqueIdentifier></Filter>
     <Filter Include="scripts"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000018}</UniqueIdentifier></Filter>
     <Filter Include=".github"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000019}</UniqueIdentifier></Filter>
@@ -69,6 +72,20 @@
 
     <ClCompile Include="core\steam_gcpd\gcpd_scraper.cpp"><Filter>core\steam_gcpd</Filter></ClCompile>
     <ClCompile Include="core\steam_gcpd\gcpd_parser.cpp"><Filter>core\steam_gcpd</Filter></ClCompile>
+    <ClCompile Include="core\steam_cm\message.cpp"><Filter>core\steam_cm</Filter></ClCompile>
+    <ClCompile Include="core\steam_cm\multi.cpp"><Filter>core\steam_cm</Filter></ClCompile>
+    <ClCompile Include="core\steam_cm\ws_transport.cpp"><Filter>core\steam_cm</Filter></ClCompile>
+    <ClCompile Include="core\steam_cm\cm_server_list.cpp"><Filter>core\steam_cm</Filter></ClCompile>
+    <ClCompile Include="core\steam_cm\cm_session.cpp"><Filter>core\steam_cm</Filter></ClCompile>
+    <ClCompile Include="core\cs2_gc\gc_message.cpp"><Filter>core\cs2_gc</Filter></ClCompile>
+    <ClCompile Include="core\cs2_gc\so_cache.cpp"><Filter>core\cs2_gc</Filter></ClCompile>
+    <ClCompile Include="core\cs2_gc\gc_session.cpp"><Filter>core\cs2_gc</Filter></ClCompile>
+    <ClCompile Include="core\cs2_gc\casket_ops.cpp"><Filter>core\cs2_gc</Filter></ClCompile>
+    <ClCompile Include="core\cs2_gc\free_reward.cpp"><Filter>core\cs2_gc</Filter></ClCompile>
+    <ClCompile Include="core\cs2_gc\kv.cpp"><Filter>core\cs2_gc</Filter></ClCompile>
+    <ClCompile Include="core\cs2_gc\item_schema.cpp"><Filter>core\cs2_gc</Filter></ClCompile>
+    <ClCompile Include="core\cs2_gc\cs2_gc_client.cpp"><Filter>core\cs2_gc</Filter></ClCompile>
+    <ClCompile Include="third_party\puff\puff.c"><Filter>third_party\puff</Filter></ClCompile>
     <ClCompile Include="core\steam_spend\spend_scraper.cpp"><Filter>core\steam_spend</Filter></ClCompile>
     <ClCompile Include="core\steam_spend\spend_parser.cpp"><Filter>core\steam_spend</Filter></ClCompile>
     <ClCompile Include="core\profile\edit.cpp"><Filter>core\profile</Filter></ClCompile>
@@ -113,6 +130,14 @@
     <ClCompile Include="core\steam_auth\gen\enums.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
     <ClCompile Include="core\steam_auth\gen\steammessages_unified_base.steamclient.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
     <ClCompile Include="core\steam_auth\gen\steammessages_auth.steamclient.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\gc_options.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\steammessages_clientserver_login.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\steammessages_clientserver_extra.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\engine_gcmessages.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\gcsdk_gcmessages.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\base_gcmessages.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\econ_gcmessages.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
+    <ClCompile Include="core\steam_auth\gen\cstrike15_gcmessages.pb.cc"><Filter>core\steam_auth\gen</Filter></ClCompile>
 
     <ClCompile Include="platform\fs.cpp"><Filter>platform</Filter></ClCompile>
     <ClCompile Include="platform\file_dialog.cpp"><Filter>platform</Filter></ClCompile>
@@ -150,6 +175,7 @@
     <ClCompile Include="ui\screens\settings_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\settings_sections.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\trade_offers_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\cs2_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\trade_offers_modals.cpp"><Filter>ui\screens</Filter></ClCompile>
 
     <ClCompile Include="ui\widgets\rail_nav.cpp"><Filter>ui\widgets</Filter></ClCompile>
@@ -331,6 +357,22 @@
 
     <ClInclude Include="core\steam_gcpd\gcpd_scraper.hpp"><Filter>core\steam_gcpd</Filter></ClInclude>
     <ClInclude Include="core\steam_gcpd\gcpd_parser.hpp"><Filter>core\steam_gcpd</Filter></ClInclude>
+    <ClInclude Include="core\steam_cm\emsg.hpp"><Filter>core\steam_cm</Filter></ClInclude>
+    <ClInclude Include="core\steam_cm\message.hpp"><Filter>core\steam_cm</Filter></ClInclude>
+    <ClInclude Include="core\steam_cm\multi.hpp"><Filter>core\steam_cm</Filter></ClInclude>
+    <ClInclude Include="core\steam_cm\ws_transport.hpp"><Filter>core\steam_cm</Filter></ClInclude>
+    <ClInclude Include="core\steam_cm\cm_server_list.hpp"><Filter>core\steam_cm</Filter></ClInclude>
+    <ClInclude Include="core\steam_cm\cm_session.hpp"><Filter>core\steam_cm</Filter></ClInclude>
+    <ClInclude Include="core\cs2_gc\gc_emsg.hpp"><Filter>core\cs2_gc</Filter></ClInclude>
+    <ClInclude Include="core\cs2_gc\gc_message.hpp"><Filter>core\cs2_gc</Filter></ClInclude>
+    <ClInclude Include="core\cs2_gc\so_cache.hpp"><Filter>core\cs2_gc</Filter></ClInclude>
+    <ClInclude Include="core\cs2_gc\gc_session.hpp"><Filter>core\cs2_gc</Filter></ClInclude>
+    <ClInclude Include="core\cs2_gc\casket_ops.hpp"><Filter>core\cs2_gc</Filter></ClInclude>
+    <ClInclude Include="core\cs2_gc\free_reward.hpp"><Filter>core\cs2_gc</Filter></ClInclude>
+    <ClInclude Include="core\cs2_gc\kv.hpp"><Filter>core\cs2_gc</Filter></ClInclude>
+    <ClInclude Include="core\cs2_gc\item_schema.hpp"><Filter>core\cs2_gc</Filter></ClInclude>
+    <ClInclude Include="core\cs2_gc\cs2_gc_client.hpp"><Filter>core\cs2_gc</Filter></ClInclude>
+    <ClInclude Include="third_party\puff\puff.h"><Filter>third_party\puff</Filter></ClInclude>
     <ClInclude Include="core\steam_spend\spend_scraper.hpp"><Filter>core\steam_spend</Filter></ClInclude>
     <ClInclude Include="core\steam_spend\spend_parser.hpp"><Filter>core\steam_spend</Filter></ClInclude>
     <ClInclude Include="core\profile\edit.hpp"><Filter>core\profile</Filter></ClInclude>
@@ -383,6 +425,14 @@
     <ClInclude Include="core\steam_auth\gen\enums.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
     <ClInclude Include="core\steam_auth\gen\steammessages_unified_base.steamclient.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
     <ClInclude Include="core\steam_auth\gen\steammessages_auth.steamclient.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
+    <ClInclude Include="core\steam_auth\gen\gc_options.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
+    <ClInclude Include="core\steam_auth\gen\steammessages_clientserver_login.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
+    <ClInclude Include="core\steam_auth\gen\steammessages_clientserver_extra.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
+    <ClInclude Include="core\steam_auth\gen\engine_gcmessages.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
+    <ClInclude Include="core\steam_auth\gen\gcsdk_gcmessages.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
+    <ClInclude Include="core\steam_auth\gen\base_gcmessages.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
+    <ClInclude Include="core\steam_auth\gen\econ_gcmessages.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
+    <ClInclude Include="core\steam_auth\gen\cstrike15_gcmessages.pb.h"><Filter>core\steam_auth\gen</Filter></ClInclude>
 
     <ClInclude Include="platform\fs.hpp"><Filter>platform</Filter></ClInclude>
     <ClInclude Include="platform\file_dialog.hpp"><Filter>platform</Filter></ClInclude>
@@ -417,6 +467,8 @@
     <ClInclude Include="ui\screens\settings_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\settings_sections.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\trade_offers_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\cs2_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\cs2_screen_state.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\trade_offers_detail.hpp"><Filter>ui\screens</Filter></ClInclude>
 
     <ClInclude Include="ui\widgets\rail_nav.hpp"><Filter>ui\widgets</Filter></ClInclude>

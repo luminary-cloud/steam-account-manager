@@ -31,6 +31,10 @@
 struct HWND__;
 using HWND = HWND__*;
 
+namespace sam::ui::screens {
+struct Cs2ScreenState;
+}
+
 namespace sam::app {
 
 enum class Screen {
@@ -39,6 +43,7 @@ enum class Screen {
     Authenticator,
     Confirmations,
     TradeOffers,
+    Cs2,
     AddAccount,
     Settings,
 };
@@ -85,6 +90,8 @@ struct AppState {
     std::optional<core::update_check::Result> update_result;
     bool update_modal_dismissed_this_session = false;
     std::jthread update_thread;
+
+    std::unique_ptr<ui::screens::Cs2ScreenState> cs2_screen;
 
     // Cross-launch index of ban/cooldown events; persisted to notifications.json
     // (non-sensitive, plain JSON).
@@ -175,6 +182,9 @@ struct AppState {
     std::unordered_map<std::string, std::chrono::steady_clock::time_point>
         last_relogin_attempt;
 
+    AppState();
+    ~AppState();
+
     core::Account* find_account(const std::string& id);
     void save_vault_if_dirty();
     void flush_pending_save();
@@ -257,6 +267,13 @@ struct AppState {
     bool auto_relogin(const std::string& account_id,
                       core::Account& creds,
                       std::string* err = nullptr);
+
+    // Mints a SteamClient-audience refresh token (for the CS2 Game Coordinator) via
+    // a fresh credentials login, auto-filling Steam Guard from the stored
+    // authenticator, and stores it as cm_refresh_token. Async; on_done runs on the
+    // UI thread. Requires a stored password.
+    void acquire_cm_token(const std::string& account_id,
+                          std::function<void(bool, std::string)> on_done);
 
     // Seconds left on the 5-min auto-relogin cooldown; 0 = a fresh attempt allowed.
     std::int64_t relogin_cooldown_seconds(const std::string& account_id);

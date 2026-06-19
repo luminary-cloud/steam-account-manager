@@ -22,6 +22,14 @@ $proto_files = @(
     "enums.proto"
     "steammessages_unified_base.steamclient.proto"
     "steammessages_auth.steamclient.proto"
+    "gc_options.proto"
+    "steammessages_clientserver_login.proto"
+    "steammessages_clientserver_extra.proto"
+    "engine_gcmessages.proto"
+    "gcsdk_gcmessages.proto"
+    "base_gcmessages.proto"
+    "econ_gcmessages.proto"
+    "cstrike15_gcmessages.proto"
 )
 
 $args = @(

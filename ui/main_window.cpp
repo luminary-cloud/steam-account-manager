@@ -9,6 +9,7 @@
 #include "ui/screens/accounts_screen.hpp"
 #include "ui/screens/add_account_screen.hpp"
 #include "ui/screens/confirmations_screen.hpp"
+#include "ui/screens/cs2_screen.hpp"
 #include "ui/screens/sda_screen.hpp"
 #include "ui/screens/settings_screen.hpp"
 #include "ui/screens/trade_offers_screen.hpp"
@@ -26,12 +27,19 @@ namespace {
 constexpr float kContentPaddingY = 20.0F;
 
 void draw_screen(app::AppState& state) {
+    // The CS2 tab can be hidden mid-session; retire any live client and bounce to
+    // Accounts so we never render (or keep a GC socket open for) a disabled feature.
+    if (state.current_screen == app::Screen::Cs2 && !state.settings.cs2_gc.enabled) {
+        screens::discard_cs2_client(state);
+        state.current_screen = app::Screen::Accounts;
+    }
     switch (state.current_screen) {
         case app::Screen::Unlock:        screens::draw_unlock(state);        break;
         case app::Screen::Accounts:      screens::draw_accounts(state);      break;
         case app::Screen::Authenticator: screens::draw_sda(state);           break;
         case app::Screen::Confirmations: screens::draw_confirmations(state); break;
         case app::Screen::TradeOffers:   screens::draw_trade_offers(state);  break;
+        case app::Screen::Cs2:           screens::draw_cs2(state);           break;
         case app::Screen::AddAccount:    screens::draw_add_account(state);   break;
         case app::Screen::Settings:      screens::draw_settings(state);      break;
     }

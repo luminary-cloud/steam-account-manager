@@ -70,6 +70,7 @@
         $(ProjectDir)third_party\mbedtls\include;
         $(ProjectDir)third_party\protobuf\include;
         $(ProjectDir)third_party\stb;
+        $(ProjectDir)third_party\puff;
         $(ProjectDir)third_party\utfcpp\source;
         $(ProjectDir)third_party\doctest;
         %(AdditionalIncludeDirectories)
@@ -168,6 +169,23 @@
     <ClCompile Include="core\steam_login\browser_login.cpp" />
     <ClCompile Include="core\steam_gcpd\gcpd_scraper.cpp" />
     <ClCompile Include="core\steam_gcpd\gcpd_parser.cpp" />
+    <ClCompile Include="core\steam_cm\message.cpp" />
+    <ClCompile Include="core\steam_cm\multi.cpp" />
+    <ClCompile Include="core\steam_cm\ws_transport.cpp" />
+    <ClCompile Include="core\steam_cm\cm_server_list.cpp" />
+    <ClCompile Include="core\steam_cm\cm_session.cpp" />
+    <ClCompile Include="core\cs2_gc\gc_message.cpp" />
+    <ClCompile Include="core\cs2_gc\so_cache.cpp" />
+    <ClCompile Include="core\cs2_gc\gc_session.cpp" />
+    <ClCompile Include="core\cs2_gc\casket_ops.cpp" />
+    <ClCompile Include="core\cs2_gc\free_reward.cpp" />
+    <ClCompile Include="core\cs2_gc\kv.cpp" />
+    <ClCompile Include="core\cs2_gc\item_schema.cpp" />
+    <ClCompile Include="core\cs2_gc\cs2_gc_client.cpp" />
+    <ClCompile Include="third_party\puff\puff.c">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
     <ClCompile Include="core\steam_spend\spend_scraper.cpp" />
     <ClCompile Include="core\steam_spend\spend_parser.cpp" />
     <ClCompile Include="core\profile\edit.cpp" />
@@ -235,6 +253,7 @@
     <ClCompile Include="ui\screens\settings_screen.cpp" />
     <ClCompile Include="ui\screens\settings_sections.cpp" />
     <ClCompile Include="ui\screens\trade_offers_screen.cpp" />
+    <ClCompile Include="ui\screens\cs2_screen.cpp" />
     <ClCompile Include="ui\screens\trade_offers_modals.cpp" />
     <ClCompile Include="ui\widgets\rail_nav.cpp" />
     <ClCompile Include="ui\widgets\title_bar.cpp" />
@@ -294,6 +313,22 @@
     <ClInclude Include="core\steam_login\browser_login.hpp" />
     <ClInclude Include="core\steam_gcpd\gcpd_scraper.hpp" />
     <ClInclude Include="core\steam_gcpd\gcpd_parser.hpp" />
+    <ClInclude Include="core\steam_cm\emsg.hpp" />
+    <ClInclude Include="core\steam_cm\message.hpp" />
+    <ClInclude Include="core\steam_cm\multi.hpp" />
+    <ClInclude Include="core\steam_cm\ws_transport.hpp" />
+    <ClInclude Include="core\steam_cm\cm_server_list.hpp" />
+    <ClInclude Include="core\steam_cm\cm_session.hpp" />
+    <ClInclude Include="core\cs2_gc\gc_emsg.hpp" />
+    <ClInclude Include="core\cs2_gc\gc_message.hpp" />
+    <ClInclude Include="core\cs2_gc\so_cache.hpp" />
+    <ClInclude Include="core\cs2_gc\gc_session.hpp" />
+    <ClInclude Include="core\cs2_gc\casket_ops.hpp" />
+    <ClInclude Include="core\cs2_gc\free_reward.hpp" />
+    <ClInclude Include="core\cs2_gc\kv.hpp" />
+    <ClInclude Include="core\cs2_gc\item_schema.hpp" />
+    <ClInclude Include="core\cs2_gc\cs2_gc_client.hpp" />
+    <ClInclude Include="third_party\puff\puff.h" />
     <ClInclude Include="core\steam_spend\spend_scraper.hpp" />
     <ClInclude Include="core\steam_spend\spend_parser.hpp" />
     <ClInclude Include="core\profile\edit.hpp" />
@@ -366,6 +401,8 @@
     <ClInclude Include="ui\screens\settings_screen.hpp" />
     <ClInclude Include="ui\screens\settings_sections.hpp" />
     <ClInclude Include="ui\screens\trade_offers_screen.hpp" />
+    <ClInclude Include="ui\screens\cs2_screen.hpp" />
+    <ClInclude Include="ui\screens\cs2_screen_state.hpp" />
     <ClInclude Include="ui\screens\trade_offers_detail.hpp" />
     <ClInclude Include="ui\widgets\rail_nav.hpp" />
     <ClInclude Include="ui\widgets\title_bar.hpp" />
@@ -414,10 +451,50 @@
       <WarningLevel>TurnOffAllWarnings</WarningLevel>
       <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
+    <ClCompile Include="core\steam_auth\gen\gc_options.pb.cc">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="core\steam_auth\gen\steammessages_clientserver_login.pb.cc">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="core\steam_auth\gen\steammessages_clientserver_extra.pb.cc">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="core\steam_auth\gen\engine_gcmessages.pb.cc">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="core\steam_auth\gen\gcsdk_gcmessages.pb.cc">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="core\steam_auth\gen\base_gcmessages.pb.cc">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="core\steam_auth\gen\econ_gcmessages.pb.cc">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+    <ClCompile Include="core\steam_auth\gen\cstrike15_gcmessages.pb.cc">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
     <ClInclude Include="core\steam_auth\gen\steammessages_base.pb.h" />
     <ClInclude Include="core\steam_auth\gen\enums.pb.h" />
     <ClInclude Include="core\steam_auth\gen\steammessages_unified_base.steamclient.pb.h" />
     <ClInclude Include="core\steam_auth\gen\steammessages_auth.steamclient.pb.h" />
+    <ClInclude Include="core\steam_auth\gen\gc_options.pb.h" />
+    <ClInclude Include="core\steam_auth\gen\steammessages_clientserver_login.pb.h" />
+    <ClInclude Include="core\steam_auth\gen\steammessages_clientserver_extra.pb.h" />
+    <ClInclude Include="core\steam_auth\gen\engine_gcmessages.pb.h" />
+    <ClInclude Include="core\steam_auth\gen\gcsdk_gcmessages.pb.h" />
+    <ClInclude Include="core\steam_auth\gen\base_gcmessages.pb.h" />
+    <ClInclude Include="core\steam_auth\gen\econ_gcmessages.pb.h" />
+    <ClInclude Include="core\steam_auth\gen\cstrike15_gcmessages.pb.h" />
   </ItemGroup>
   <ItemGroup Label="ImGui">
     <ClCompile Include="third_party\imgui\imgui.cpp">

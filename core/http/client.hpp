@@ -91,4 +91,9 @@ private:
 // Encodes a flat map as application/x-www-form-urlencoded.
 std::string form_encode(const std::map<std::string, std::string>& fields);
 
+// The proxy URL request() would use on the calling thread right now, honoring the
+// active ProxyMode and any ScopedProxy/ScopedProxyOverride in scope ("" = direct).
+// Lets non-HTTP transports (the CM WebSocket) reuse the same per-account routing.
+std::string current_effective_proxy();
+
 }  // namespace sam::http

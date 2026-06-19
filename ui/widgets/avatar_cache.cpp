@@ -83,7 +83,7 @@ void shutdown() {
 
 }  // namespace avatar_cache
 
-ID3D11ShaderResourceView* avatar_for(std::string_view url) {
+ID3D11ShaderResourceView* texture_for(std::string_view url) {
     if (url.empty()) return nullptr;
     const std::string key(url);
 

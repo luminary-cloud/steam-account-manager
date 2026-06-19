@@ -1,0 +1,7 @@
+import "google/protobuf/descriptor.proto";
+
+option optimize_for = SPEED;
+
+extend .google.protobuf.FieldOptions {
+	optional bool key_field = 60000 [default = false];
+}

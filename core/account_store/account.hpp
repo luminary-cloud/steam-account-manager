@@ -97,6 +97,13 @@ struct CS2Status {
     // Next weekly XP-drop reset (UTC s). "claimed" while now < this; auto-clears
     // once now reaches it. 0 = not claimed.
     std::int64_t weekly_drop_reset_unix = 0;
+    // What the weekly drop picked this period, observed via the GC and cached so the
+    // claimed names show without a live connection and the picked items can be told
+    // apart from un-picked candidates after a reconnect. `generation` pairs with the GC
+    // personal store's generation_time (0 = unknown); names are resolved at observe time.
+    std::uint32_t weekly_drop_claimed_generation = 0;
+    std::vector<std::uint64_t> weekly_drop_claimed_ids;
+    std::vector<std::string> weekly_drop_claimed_names;
     std::int64_t last_refreshed_unix = 0;
 };
 
@@ -129,6 +136,12 @@ struct Account {
     // UI doesn't decode the token every frame.
     bool is_nfa = false;
     std::int64_t refresh_token_expires = 0;
+
+    // SteamClient-audience refresh token for the CS2 Game Coordinator. Password
+    // accounts mint this on demand (their mobile-scoped token is rejected by the
+    // CM); NFA accounts reuse refresh_token. Empty until set up.
+    crypto::SecureString cm_refresh_token;
+    std::int64_t cm_refresh_token_expires = 0;
 
     std::wstring display_name;
     std::wstring notes;

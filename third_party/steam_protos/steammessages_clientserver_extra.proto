@@ -1,0 +1,28 @@
+option optimize_for = SPEED;
+
+message CMsgClientGamesPlayed {
+	message GamePlayed {
+		optional fixed64 game_id = 2;
+	}
+
+	repeated .CMsgClientGamesPlayed.GamePlayed games_played = 1;
+	optional uint32 client_os_type = 2;
+}
+
+message CMsgGCClient {
+	optional uint32 appid = 1;
+	optional uint32 msgtype = 2;
+	optional bytes payload = 3;
+	optional fixed64 steamid = 4;
+	optional string gcname = 5;
+	optional uint32 ip = 6;
+}
+
+message CMsgClientPlayingSessionState {
+	optional bool playing_blocked = 2;
+	optional uint32 playing_app = 3;
+}
+
+message CMsgClientKickPlayingSession {
+	optional bool only_stop_game = 1;
+}

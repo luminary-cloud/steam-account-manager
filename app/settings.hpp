@@ -189,6 +189,19 @@ struct Settings {
         // Empty = leave Steam's existing launch options alone.
         std::string launch_options;
     } cs2_video;
+
+    struct Cs2GcToggles {
+        // Master switch: shows the CS2 tab and allows a live Game Coordinator
+        // connection. Off hides the tab and closes any active connection.
+        bool enabled = true;
+        bool show_weekly_drop = true;
+        bool show_weekly_mission = true;
+        bool show_inventory = true;
+        bool show_storage_units = true;
+        // Record an observed weekly-drop claim in the vault so the account-list
+        // marker lights up without a manual "Mark claimed".
+        bool auto_mark_claimed = true;
+    } cs2_gc;
 };
 
 }  // namespace sam::app

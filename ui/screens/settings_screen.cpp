@@ -100,6 +100,25 @@ void draw_steam_login_section(app::AppState& state) {
                   "every account you launch; turning it off leaves Steam's setting as-is.");
 }
 
+void draw_cs2_gc_section(app::AppState& state) {
+    separator_text("CS2 Game Coordinator");
+    ImGui::Checkbox("Enable CS2 tab", &state.settings.cs2_gc.enabled);
+    hover_tooltip("Shows the CS2 tab in the sidebar and lets the app open a live Game "
+                  "Coordinator connection to manage inventory and weekly drops. Turning this "
+                  "off hides the tab and closes any active connection.");
+    ImGui::BeginDisabled(!state.settings.cs2_gc.enabled);
+    ImGui::Checkbox("Show weekly drop card", &state.settings.cs2_gc.show_weekly_drop);
+    ImGui::Checkbox("Show weekly mission card", &state.settings.cs2_gc.show_weekly_mission);
+    ImGui::Checkbox("Show inventory card", &state.settings.cs2_gc.show_inventory);
+    ImGui::Checkbox("Show storage units card", &state.settings.cs2_gc.show_storage_units);
+    ImGui::Checkbox("Mark weekly drop claimed automatically",
+                    &state.settings.cs2_gc.auto_mark_claimed);
+    hover_tooltip("When connected, if the GC reports this account's weekly drop is already "
+                  "gone, record it as claimed so the account list shows the green marker. Off "
+                  "leaves the marker to the manual \"Mark claimed\" action only.");
+    ImGui::EndDisabled();
+}
+
 void draw_account_info_section(app::AppState& state) {
     separator_text("Account info to display");
     if (ImGui::BeginTable("##info-grid", 3, ImGuiTableFlags_SizingStretchSame)) {
@@ -365,6 +384,10 @@ void render_network_data(app::AppState& state) {
     settings_detail::draw_proxy_section(state);
 }
 
+void render_cs2(app::AppState& state) {
+    draw_cs2_gc_section(state);
+}
+
 struct CategoryDef {
     const char* label;
     void (*render)(app::AppState&);
@@ -378,6 +401,7 @@ constexpr CategoryDef kCategories[] = {
     {"Steam Guard",        render_steam_guard},
     {"Launch & Steam",     render_launch_steam},
     {"Network & Data",     render_network_data},
+    {"CS2",                render_cs2},
 };
 
 }  // namespace

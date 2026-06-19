@@ -133,4 +133,14 @@ Ensure-SingleFile -Name "stb" `
     -Url "https://raw.githubusercontent.com/nothings/stb/master/stb_image_write.h" `
     -RelPath "stb_image_write.h"
 
+# puff: Mark Adler's tiny DEFLATE decompressor (zlib license), used to inflate
+# gzip-compressed CMsgMulti payloads from the Steam CM.
+Ensure-SingleFile -Name "puff" `
+    -Url "https://raw.githubusercontent.com/madler/zlib/v1.3.1/contrib/puff/puff.c" `
+    -RelPath "puff.c"
+
+Ensure-SingleFile -Name "puff" `
+    -Url "https://raw.githubusercontent.com/madler/zlib/v1.3.1/contrib/puff/puff.h" `
+    -RelPath "puff.h"
+
 Write-Step "done"

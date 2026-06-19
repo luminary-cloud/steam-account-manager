@@ -338,6 +338,15 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
             if (au && *au != 0 &&
                 (creds.expected_account_id == 0 || *au == creds.expected_account_id)) {
                 SAM_LOG_INFO("login_driver: login confirmed (ActiveUser={})", *au);
+                if (!superseded() && creds.on_login_confirmed) {
+                    try {
+                        creds.on_login_confirmed([gen] {
+                            return g_current_gen.load(std::memory_order_acquire) == gen;
+                        });
+                    } catch (...) {
+                        SAM_LOG_ERROR("login_driver: on_login_confirmed threw");
+                    }
+                }
                 return;
             }
         }

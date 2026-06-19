@@ -7,9 +7,13 @@ struct ID3D11ShaderResourceView;
 
 namespace sam::ui::widgets {
 
-// Returns nullptr until the avatar is fetched; the first call for a URL kicks
-// off a background download. Caller draws a placeholder meanwhile.
-ID3D11ShaderResourceView* avatar_for(std::string_view url);
+// Returns nullptr until the image is fetched; the first call for a URL kicks off a
+// background download into a D3D11 texture, cached by URL. Caller draws a placeholder
+// meanwhile. Used for avatars and CS2 item icons alike.
+ID3D11ShaderResourceView* texture_for(std::string_view url);
+
+// Avatar alias for texture_for, kept for existing call sites.
+inline ID3D11ShaderResourceView* avatar_for(std::string_view url) { return texture_for(url); }
 
 namespace avatar_cache {
 

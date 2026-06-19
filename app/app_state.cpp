@@ -20,6 +20,7 @@
 #include "core/version.hpp"
 #include "platform/startup_task.hpp"
 #include "platform/tray_icon.hpp"
+#include "ui/screens/cs2_screen_state.hpp"
 
 namespace sam::app {
 
@@ -131,6 +132,9 @@ void flush_native_notification(AppState& state) {
     state.session_event_message.clear();
 }
 }  // namespace detail
+
+AppState::AppState() = default;
+AppState::~AppState() = default;
 
 core::Account* AppState::find_account(const std::string& id) {
     for (auto& a : vault.accounts) {
@@ -298,6 +302,14 @@ void AppState::save_settings() {
     vj["launch_options"]      = settings.cs2_video.launch_options;
     // Downgrade-safe: older builds key off this bool for video.txt mode.
     vj["auto_apply_on_login"] = (settings.cs2_video.mode == CS2ConfigMode::VideoTxt);
+
+    auto& gj = j["cs2_gc"];
+    gj["enabled"]             = settings.cs2_gc.enabled;
+    gj["show_weekly_drop"]    = settings.cs2_gc.show_weekly_drop;
+    gj["show_weekly_mission"] = settings.cs2_gc.show_weekly_mission;
+    gj["show_inventory"]      = settings.cs2_gc.show_inventory;
+    gj["show_storage_units"]  = settings.cs2_gc.show_storage_units;
+    gj["auto_mark_claimed"]   = settings.cs2_gc.auto_mark_claimed;
 
     auto path = settings_path();
     std::filesystem::create_directories(path.parent_path());
@@ -513,6 +525,21 @@ void AppState::load_settings() {
                 legacy ? CS2ConfigMode::VideoTxt : CS2ConfigMode::None;
         }
     }
+
+    if (j.contains("cs2_gc")) {
+        auto& gj = j["cs2_gc"];
+        auto get_g = [&](const char* key, auto& dst) {
+            if (gj.contains(key)) {
+                dst = gj[key].get<std::remove_reference_t<decltype(dst)>>();
+            }
+        };
+        get_g("enabled",             settings.cs2_gc.enabled);
+        get_g("show_weekly_drop",    settings.cs2_gc.show_weekly_drop);
+        get_g("show_weekly_mission", settings.cs2_gc.show_weekly_mission);
+        get_g("show_inventory",      settings.cs2_gc.show_inventory);
+        get_g("show_storage_units",  settings.cs2_gc.show_storage_units);
+        get_g("auto_mark_claimed",   settings.cs2_gc.auto_mark_claimed);
+    }
 }
 
 void AppState::sync_logon_task() const {
@@ -534,6 +561,7 @@ void AppState::sync_logon_task() const {
 }
 
 void AppState::clear_session_secrets() {
+    cs2_screen.reset();  // stops the CS2 GC worker and drops its session
     revealed_logins.clear();
     selection_mode = false;
     selected_account_ids.clear();

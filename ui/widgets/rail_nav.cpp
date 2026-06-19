@@ -72,11 +72,12 @@ bool sidebar_item(const char* label, bool selected, float width, int badge_count
     return pressed;
 }
 
-constexpr std::array<NavEntry, 4> kWorkspaceItems{{
+constexpr std::array<NavEntry, 5> kWorkspaceItems{{
     {"Accounts",      app::Screen::Accounts,      nullptr},
     {"Authenticator", app::Screen::Authenticator, nullptr},
     {"Confirmations", app::Screen::Confirmations, pending_confirmations_badge},
     {"Trade Offers",  app::Screen::TradeOffers,   pending_trade_offers_badge},
+    {"CS2",           app::Screen::Cs2,           nullptr},
 }};
 constexpr std::array<NavEntry, 2> kManageItems{{
     {"Add account", app::Screen::AddAccount},
@@ -106,6 +107,8 @@ void draw_rail_nav(app::AppState& state) {
         ImGui::Unindent(kSidebarPaddingX);
         ImGui::Dummy(ImVec2(0, 4));
         for (const auto& entry : items) {
+            if (entry.screen == app::Screen::Cs2 && !state.settings.cs2_gc.enabled)
+                continue;
             ImGui::SetCursorPosX(kSidebarPaddingX);
             const int badge = entry.badge_fn ? entry.badge_fn(state) : 0;
             if (sidebar_item(entry.label, state.current_screen == entry.screen,

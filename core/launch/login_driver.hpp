@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 #include "core/crypto/secure_string.hpp"
@@ -18,6 +19,14 @@ struct Credentials {
     // sign-in via the registry ActiveUser value. 0 if unknown, in which case the
     // driver falls back to "any non-zero ActiveUser after credentials submitted".
     std::uint32_t expected_account_id = 0;
+
+    // Fired once, on the worker thread, the moment a sign-in is confirmed (never on
+    // timeout/error). Used to (re)apply login prefs that a first login would clobber:
+    // the callback shuts Steam down, edits the now-initialized config, and relaunches.
+    // It must NOT touch UI/vault state (same contract as the rest of the driver).
+    // `still_current()` returns false once a newer launch supersedes this run, so a
+    // long-running callback can bail before relaunching the wrong account.
+    std::function<void(const std::function<bool()>& still_current)> on_login_confirmed;
 };
 
 // Spawns a detached worker that drives the freshly-launched Steam login UI via

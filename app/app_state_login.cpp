@@ -88,6 +88,62 @@ bool AppState::auto_relogin(const std::string& account_id,
     return true;
 }
 
+void AppState::acquire_cm_token(const std::string& account_id,
+                                std::function<void(bool, std::string)> on_done) {
+    core::Account* a = find_account(account_id);
+    if (a == nullptr) {
+        if (on_done) on_done(false, "account not found");
+        return;
+    }
+    if (a->login.empty() || a->password.empty()) {
+        if (on_done) on_done(false, "no stored password for this account");
+        return;
+    }
+
+    const std::string aid = account_id;
+    core::Account creds;
+    creds.login = a->login;
+    creds.password = a->password;
+    creds.sda = a->sda;
+    creds.proxy = a->proxy;
+
+    job_pump::submit([this, aid, creds, on_done = std::move(on_done)]() mutable {
+        http::ScopedProxy proxy_guard(std::string(creds.proxy.data(), creds.proxy.size()));
+        steam_login::MobileLogin login;
+        login.username = creds.login;
+        login.password = creds.password;
+        auto sda = creds.sda;
+        auto result = steam_login::acquire_client_token(
+            login,
+            [&](const std::vector<steam_login::GuardKind>& allowed) {
+                return steam_login::default_guard_provider(sda, allowed, /*on_prompt=*/{});
+            },
+            [&](const std::string& s) {
+                SAM_LOG_INFO("cs2 client-login: {} ({})", s, creds.login);
+            });
+
+        if (!result.ok) {
+            SAM_LOG_WARN("cs2 client-login: failed for '{}': {}", creds.login, result.error);
+            post_ui_callback([on_done = std::move(on_done), err = result.error]() mutable {
+                if (on_done) on_done(false, err.empty() ? std::string{"Steam declined the sign-in"} : err);
+            });
+            return;
+        }
+
+        crypto::SecureString rt = std::move(result.refresh_token);
+        const std::int64_t exp = result.expires;
+        post_ui_callback([this, aid, rt = std::move(rt), exp, on_done = std::move(on_done)]() mutable {
+            if (auto* acc = find_account(aid)) {
+                acc->cm_refresh_token = std::move(rt);
+                acc->cm_refresh_token_expires = exp;
+                vault_dirty = true;
+                save_vault_if_dirty();
+            }
+            if (on_done) on_done(true, std::string{});
+        });
+    });
+}
+
 namespace {
 // UI thread only (touches `toasts`).
 void push_cs2_toast(AppState& state, const std::string& aid,

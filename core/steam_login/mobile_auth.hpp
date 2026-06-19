@@ -45,6 +45,7 @@ struct MobileLogin {
     crypto::SecureString password;
     std::string device_friendly_name = "steam-account-manager";
     std::string platform_user_agent;
+    bool steam_client = false;  // request the SteamClient audience (CS2 GC) not Mobile
 };
 
 BeginSessionResult begin_session(const MobileLogin& login);
@@ -65,6 +66,22 @@ struct FullLoginResult {
 };
 
 FullLoginResult run_full_login(
+    const MobileLogin& login,
+    const std::function<std::string(const std::vector<GuardKind>&)>& on_guard_needed,
+    const std::function<void(const std::string&)>& on_status);
+
+// Acquires only a SteamClient-audience refresh token (for the CS2 Game Coordinator)
+// via a fresh credentials login. Forces the SteamClient platform. on_guard_needed
+// supplies the Steam Guard code (empty to fail).
+struct ClientTokenResult {
+    bool ok = false;
+    std::string error;
+    crypto::SecureString refresh_token;
+    std::int64_t expires = 0;
+    std::uint64_t steam_id = 0;
+};
+
+ClientTokenResult acquire_client_token(
     const MobileLogin& login,
     const std::function<std::string(const std::vector<GuardKind>&)>& on_guard_needed,
     const std::function<void(const std::string&)>& on_status);

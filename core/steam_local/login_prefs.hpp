@@ -36,4 +36,16 @@ LoginPrefResult set_news_notify_off(std::uint64_t steam_id_64);
 // the remotecache refresh is best-effort and a missing cache does not fail the call.
 LoginPrefResult set_cloud_enabled_off(std::uint64_t steam_id_64);
 
+// Whether the per-user config files backing the news / cloud settings already exist on
+// disk for the account. An absent file means the upcoming sign-in is a first login that
+// Steam will initialize from scratch, clobbering anything pre-written, so the setting has
+// to be (re)applied after that first login instead. Returns both-false if the SteamID is
+// unresolved or Steam isn't installed, in which case the caller falls back to the normal
+// pre-write (no deferral).
+struct LoginConfigPresence {
+    bool localconfig_present = false;   // backs set_news_notify_off
+    bool sharedconfig_present = false;  // backs set_cloud_enabled_off
+};
+LoginConfigPresence login_config_presence(std::uint64_t steam_id_64);
+
 }  // namespace sam::steam_local

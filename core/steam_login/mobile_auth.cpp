@@ -235,10 +235,11 @@ BeginSessionResult begin_session(const MobileLogin& login) {
 
     // device_details (field 9) is required for a session with mobileconf write
     // capability; without it accept/reject return `{"success":false}`.
+    const bool client = login.steam_client;
     std::vector<std::uint8_t> device;
     enc_string(device, 1, login.device_friendly_name);
-    enc_int32 (device, 2, 3);               // platform_type = MobileApp
-    enc_int32 (device, 3, -500);            // os_type = Android
+    enc_int32 (device, 2, client ? 1 : 3);    // platform_type: SteamClient / MobileApp
+    enc_int32 (device, 3, client ? 16 : -500);  // os_type: Windows / Android
 
     std::vector<std::uint8_t> msg;
     enc_string (msg, 1, login.device_friendly_name);
@@ -246,14 +247,9 @@ BeginSessionResult begin_session(const MobileLogin& login) {
     enc_string (msg, 3, encrypted);
     enc_uint64 (msg, 4, rsa->timestamp);
     enc_bool   (msg, 5, true);              // remember_login (deprecated, harmless)
-    enc_int32  (msg, 6, 3);                 // platform_type = MobileApp
+    enc_int32  (msg, 6, client ? 1 : 3);    // platform_type: SteamClient / MobileApp
     enc_int32  (msg, 7, 1);                 // persistence = Persistent
-    // website_id "Mobile" scopes the access_token aud to web:mobile, the only
-    // audience /mobileconf/* accepts. Side effect: GenerateAccessTokenForApp
-    // returns x-eresult=15 for the resulting refresh_token, so
-    // refresh_access_token always falls through to auto_relogin (rate-limited by
-    // its 5-minute per-account cooldown).
-    enc_string (msg, 8, "Mobile");
+    enc_string (msg, 8, client ? "Client" : "Mobile");
     enc_message(msg, 9, device);
     enc_int32  (msg, 11, 0);                // language
 
@@ -486,6 +482,69 @@ FullLoginResult run_full_login(
         std::this_thread::sleep_for(std::chrono::seconds(begin.interval_seconds > 0
                                                              ? begin.interval_seconds
                                                              : 5));
+    }
+
+    result.error = "login timed out";
+    return result;
+}
+
+ClientTokenResult acquire_client_token(
+    const MobileLogin& login_in,
+    const std::function<std::string(const std::vector<GuardKind>&)>& on_guard_needed,
+    const std::function<void(const std::string&)>& on_status) {
+
+    ClientTokenResult result;
+    MobileLogin login = login_in;
+    login.steam_client = true;
+
+    if (on_status) on_status("requesting RSA key");
+    auto begin = begin_session(login);
+    if (!begin.ok) {
+        result.error = begin.error;
+        return result;
+    }
+
+    GuardKind chosen = GuardKind::None;
+    for (auto k : begin.allowed_confirmations) {
+        if (k == GuardKind::DeviceCode || k == GuardKind::EmailCode) {
+            chosen = k;
+            break;
+        }
+    }
+    if (chosen != GuardKind::None) {
+        if (on_status) on_status("waiting for Steam Guard code");
+        const std::string code = on_guard_needed ? on_guard_needed(begin.allowed_confirmations) : "";
+        if (code.empty()) {
+            result.error = "guard code not provided";
+            return result;
+        }
+        std::string err;
+        if (!submit_guard_code(begin.client_id, begin.steam_id, code, chosen, &err)) {
+            result.error = "guard rejected: " + err;
+            return result;
+        }
+    } else if (!begin.allowed_confirmations.empty() && on_status) {
+        on_status("waiting for confirmation in the Steam Mobile app");
+    }
+
+    if (on_status) on_status("polling for tokens");
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(2);
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto poll = poll_session(begin.client_id, begin.request_id);
+        if (!poll.ok) {
+            result.error = poll.error;
+            return result;
+        }
+        if (poll.finished) {
+            result.steam_id = begin.steam_id;
+            result.refresh_token = std::move(poll.refresh_token);
+            result.expires = jwt_expiry(result.refresh_token);
+            result.ok = true;
+            return result;
+        }
+        if (!poll.new_client_id.empty()) begin.client_id = poll.new_client_id;
+        std::this_thread::sleep_for(std::chrono::seconds(
+            begin.interval_seconds > 0 ? begin.interval_seconds : 5));
     }
 
     result.error = "login timed out";
