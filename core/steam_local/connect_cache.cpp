@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <optional>
 #include <span>
 #include <sstream>
 #include <string>
@@ -30,6 +31,15 @@ std::string read_file(const std::filesystem::path& p) {
     return ss.str();
 }
 
+// Key is the string hex(crc32(name)) + "1", not (crc<<4)|1 which overflows
+// uint32 when the top nibble is set. `name` must already be lowercased.
+std::string connect_cache_key(const std::string& name) {
+    char hexbuf[16];
+    std::snprintf(hexbuf, sizeof(hexbuf), "%x",
+                  static_cast<unsigned>(crc32_ieee(name)));
+    return std::string(hexbuf) + "1";
+}
+
 }  // namespace
 
 std::optional<std::filesystem::path> steam_local_vdf_path() {
@@ -38,9 +48,9 @@ std::optional<std::filesystem::path> steam_local_vdf_path() {
     return root / "Steam" / "local.vdf";
 }
 
-bool write_connect_cache_token(const std::string& account_name,
-                               const crypto::SecureString& refresh_token) {
-    if (account_name.empty() || refresh_token.empty()) return false;
+bool write_connect_cache_raw(const std::string& account_name,
+                             const std::string& raw_value) {
+    if (account_name.empty() || raw_value.empty()) return false;
 
     auto path_opt = steam_local_vdf_path();
     if (!path_opt) {
@@ -50,13 +60,36 @@ bool write_connect_cache_token(const std::string& account_name,
     const auto path = *path_opt;
 
     const std::string name = core::to_lower(account_name);
+    const std::string key = connect_cache_key(name);
 
-    // Key is the string hex(crc32(name)) + "1", not (crc<<4)|1 which overflows
-    // uint32 when the top nibble is set.
-    char hexbuf[16];
-    std::snprintf(hexbuf, sizeof(hexbuf), "%x",
-                  static_cast<unsigned>(crc32_ieee(name)));
-    const std::string key = std::string(hexbuf) + "1";
+    VdfNode root = parse_vdf(read_file(path));  // "" when local.vdf is absent
+    VdfNode* connect_cache = ensure_block_path(
+        root, {"MachineUserConfigStore", "Software", "Valve", "Steam", "ConnectCache"});
+    upsert_scalar(*connect_cache, key, raw_value);
+
+    std::string serialized;
+    for (const auto& c : root.children) serialize_node(c, serialized, 0);
+
+    try {
+        platform::atomic_write_file(path,
+            std::span<const std::uint8_t>(
+                reinterpret_cast<const std::uint8_t*>(serialized.data()),
+                serialized.size()));
+    } catch (const std::exception& ex) {
+        SAM_LOG_ERROR("connect_cache: write failed: {}", ex.what());
+        return false;
+    }
+
+    SAM_LOG_INFO("connect_cache: wrote token for '{}' (key {}, {} hex chars) to {}",
+                 name, key, raw_value.size(), path.string());
+    return true;
+}
+
+bool write_connect_cache_token(const std::string& account_name,
+                               const crypto::SecureString& refresh_token) {
+    if (account_name.empty() || refresh_token.empty()) return false;
+
+    const std::string name = core::to_lower(account_name);
 
     // DPAPI-wrap the bare JWT, entropy = the account name bytes (no NUL).
     std::string plaintext(refresh_token.begin(), refresh_token.end());
@@ -75,29 +108,30 @@ bool write_connect_cache_token(const std::string& account_name,
     }
     crypto::zero_buffer(plaintext.data(), plaintext.size());
 
-    const std::string value = core::to_hex_lower(blob);
+    return write_connect_cache_raw(account_name, core::to_hex_lower(blob));
+}
 
-    VdfNode root = parse_vdf(read_file(path));  // "" when local.vdf is absent
-    VdfNode* connect_cache = ensure_block_path(
-        root, {"MachineUserConfigStore", "Software", "Valve", "Steam", "ConnectCache"});
-    upsert_scalar(*connect_cache, key, value);
+std::optional<std::string> read_connect_cache_value(const std::string& account_name) {
+    if (account_name.empty()) return std::nullopt;
 
-    std::string serialized;
-    for (const auto& c : root.children) serialize_node(c, serialized, 0);
+    auto path_opt = steam_local_vdf_path();
+    if (!path_opt) return std::nullopt;
 
-    try {
-        platform::atomic_write_file(path,
-            std::span<const std::uint8_t>(
-                reinterpret_cast<const std::uint8_t*>(serialized.data()),
-                serialized.size()));
-    } catch (const std::exception& ex) {
-        SAM_LOG_ERROR("connect_cache: write failed: {}", ex.what());
-        return false;
+    const std::string contents = read_file(*path_opt);
+    if (contents.empty()) return std::nullopt;
+
+    const std::string key = connect_cache_key(core::to_lower(account_name));
+
+    VdfNode root = parse_vdf(contents);
+    VdfNode* node = &root;
+    for (const char* k : {"MachineUserConfigStore", "Software", "Valve", "Steam",
+                          "ConnectCache"}) {
+        node = find_child(*node, k);
+        if (!node || !node->is_block) return std::nullopt;
     }
-
-    SAM_LOG_INFO("connect_cache: wrote token for '{}' (key {}, {} hex chars) to {}",
-                 name, key, value.size(), path.string());
-    return true;
+    VdfNode* entry = find_child(*node, key);
+    if (!entry || entry->is_block || entry->value.empty()) return std::nullopt;
+    return entry->value;
 }
 
 }  // namespace sam::steam_local

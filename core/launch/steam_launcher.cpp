@@ -3,6 +3,7 @@
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -10,6 +11,7 @@
 #include "core/launch/login_driver.hpp"
 #include "core/launch/token_launcher.hpp"
 #include "core/log.hpp"
+#include "core/steam_local/connect_cache.hpp"
 #include "core/steam_local/login_prefs.hpp"
 #include "core/steam_local/loginusers.hpp"
 #include "core/strings.hpp"
@@ -17,6 +19,12 @@
 #include "platform/registry.hpp"
 
 namespace sam::launch {
+
+namespace {
+constexpr auto kSetupPollInterval = std::chrono::milliseconds(250);
+constexpr auto kMinSetupDwell     = std::chrono::seconds(5);
+constexpr auto kSetupTimeout      = std::chrono::seconds(60);
+}  // namespace
 
 std::optional<std::filesystem::path> resolve_steam_exe(LaunchResult& out) {
     auto steam_exe = platform::registry::read_steam_exe_path();
@@ -127,10 +135,50 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
         creds.on_login_confirmed =
             [exe, login_w, login_lower, sid, defer_news,
              defer_cloud](const std::function<bool()>& still_current) {
-                // The first sign-in just initialized this account's userdata. Shut Steam
-                // down (flushes its now-full localconfig/sharedconfig and creates
-                // remotecache.vdf), apply the settings in-place so they survive, then
-                // relaunch with auto-login so Steam reads them. One restart, first login only.
+                // ActiveUser flips the moment Steam authenticates, long before it creates
+                // the account's userdata or writes its login state (loginusers/config.vdf),
+                // so stopping Steam right away kills it mid-setup and the relaunch has
+                // nothing to sign in with (blank login window). Wait until Steam has set up
+                // the account's userdata, grabbing the remember-me token it stored along the
+                // way. First login only, so this one-time wait is acceptable.
+                SAM_LOG_INFO("first-login reapply: waiting for Steam to finish first-login "
+                             "setup before restart");
+                std::optional<std::string> cc_token;
+                bool setup_ready = false;
+                {
+                    const auto start = std::chrono::steady_clock::now();
+                    std::optional<long long> ready_after_s;
+                    for (;;) {
+                        if (still_current && !still_current()) {
+                            SAM_LOG_INFO("first-login reapply: superseded during setup "
+                                         "wait; aborting");
+                            return;
+                        }
+                        if (!cc_token)
+                            cc_token = steam_local::read_connect_cache_value(login_lower);
+                        setup_ready =
+                            steam_local::login_config_presence(sid).userdata_present;
+                        const auto elapsed = std::chrono::steady_clock::now() - start;
+                        if (setup_ready && cc_token && !ready_after_s)
+                            ready_after_s = std::chrono::duration_cast<std::chrono::seconds>(
+                                elapsed).count();
+                        if (elapsed >= kMinSetupDwell && setup_ready && cc_token) break;
+                        if (elapsed >= kSetupTimeout) break;
+                        std::this_thread::sleep_for(kSetupPollInterval);
+                    }
+                    const auto waited = std::chrono::duration_cast<std::chrono::seconds>(
+                        std::chrono::steady_clock::now() - start).count();
+                    if (setup_ready)
+                        SAM_LOG_INFO("first-login reapply: setup ready after {}s, waited {}s; "
+                                     "restarting", ready_after_s.value_or(0), waited);
+                    else
+                        SAM_LOG_WARN("first-login reapply: userdata not created within {}s; "
+                                     "proceeding and writing login state explicitly", waited);
+                }
+
+                // Steam is now set up. Shut it down (flushes its now-full localconfig/
+                // sharedconfig and creates remotecache.vdf), apply the settings in-place so
+                // they survive, then relaunch with auto-login. One restart, first login only.
                 LaunchResult tmp;
                 if (!shutdown_running_steam(exe, tmp))
                     SAM_LOG_WARN("first-login reapply: shutdown: {}", tmp.message);
@@ -154,11 +202,18 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
                     SAM_LOG_INFO("first-login reapply: superseded; skipping relaunch");
                     return;
                 }
-                // Relaunch via Steam's stored remember-me token from the just-completed
-                // login (no second 2FA).
+                // Write the full login state ourselves so the relaunch auto-logs in like
+                // the NFA token path, instead of trusting how far Steam's setup got before
+                // we stopped it: the remember-me token (restored only if the shutdown
+                // dropped it), the loginusers entry, and the config.vdf name -> SteamID map.
+                // set_remembered_account is not enough here: it no-ops when Steam hasn't
+                // written the loginusers entry yet, which is exactly the first-login race.
+                if (cc_token && !steam_local::read_connect_cache_value(login_lower))
+                    steam_local::write_connect_cache_raw(login_lower, *cc_token);
+                steam_local::ensure_loginusers_entry(sid, login_lower, "");
+                steam_local::ensure_config_vdf_account(sid, login_lower);
                 platform::registry::set_auto_login_user(login_w);
                 platform::registry::set_remember_password(true);
-                steam_local::set_remembered_account(sid);
                 if (!platform::process::launch(exe, L"")) {
                     SAM_LOG_WARN("first-login reapply: relaunch failed; settings are on disk "
                                  "and apply on the next sign-in");

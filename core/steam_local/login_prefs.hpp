@@ -24,16 +24,15 @@ LoginPrefResult set_news_notify_off(std::uint64_t steam_id_64);
 
 // Sets CloudEnabled = "0" in the launched account's sharedconfig.vdf
 // (<Steam>/userdata/<accountid>/7/remote/sharedconfig.vdf), creating the
-// UserRoamingConfigStore > Software > Valve > Steam path if absent, then refreshes the
-// matching entry in 7/remotecache.vdf (size/sha1/time + bumped ChangeNumber) so Steam
-// treats the local copy as newer and uploads it instead of pulling a stale cloud copy
-// that would re-enable cloud. Turns off Steam Cloud for the account. MUST run while
-// Steam is shut down. Existing files are backed up first; on a first login the file is
-// created (with parent dirs). sharedconfig.vdf is cloud-synced, so on a brand-new account
-// Steam may still pull "cloud on" from the server during the first sign-in (no local
-// remotecache exists yet to outrank it), in which case it takes effect from the next
-// launch. ok=false only if Steam isn't installed or the account has no resolved SteamID;
-// the remotecache refresh is best-effort and a missing cache does not fail the call.
+// UserRoamingConfigStore > Software > Valve > Steam path if absent. Turns off Steam Cloud
+// for the account. MUST run while Steam is shut down. Existing files are backed up first;
+// on a first login the file is created (with parent dirs). sharedconfig.vdf is itself a
+// cloud-synced file (app 7), so to make the change stick for an account that already has
+// cloud data we deliberately leave 7/remotecache.vdf UNTOUCHED: that makes Steam treat the
+// edit as an ordinary pending local change and upload it (disabling Cloud server-side) on
+// the next sync, rather than re-downloading the server's "cloud on" copy. The upload lands
+// on the first-login restart's relaunch. ok=false only if Steam isn't installed or the
+// account has no resolved SteamID.
 LoginPrefResult set_cloud_enabled_off(std::uint64_t steam_id_64);
 
 // Whether the per-user config files backing the news / cloud settings already exist on
@@ -45,6 +44,9 @@ LoginPrefResult set_cloud_enabled_off(std::uint64_t steam_id_64);
 struct LoginConfigPresence {
     bool localconfig_present = false;   // backs set_news_notify_off
     bool sharedconfig_present = false;  // backs set_cloud_enabled_off
+    bool userdata_present = false;      // userdata/<accountid> dir exists: Steam set the
+                                        // account up locally (used to tell a first-login
+                                        // sign-in is far enough along to restart Steam)
 };
 LoginConfigPresence login_config_presence(std::uint64_t steam_id_64);
 

@@ -1,6 +1,5 @@
 #include "core/steam_local/login_prefs.hpp"
 
-#include <array>
 #include <cctype>
 #include <chrono>
 #include <cstdint>
@@ -14,8 +13,6 @@
 #include <string>
 #include <string_view>
 #include <system_error>
-
-#include <mbedtls/md.h>
 
 #include "core/log.hpp"
 #include "core/steam_local/loginusers.hpp"
@@ -96,27 +93,6 @@ std::span<const std::uint8_t> as_bytes(const std::string& s) {
         reinterpret_cast<const std::uint8_t*>(s.data()), s.size());
 }
 
-// Lowercase hex SHA-1 of the buffer, as Steam stores in remotecache.vdf.
-std::string sha1_hex(const std::string& data) {
-    const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
-    if (info == nullptr) return {};
-    std::array<unsigned char, 20> digest{};
-    if (mbedtls_md(info, reinterpret_cast<const unsigned char*>(data.data()), data.size(),
-                   digest.data()) != 0) {
-        return {};
-    }
-    static constexpr char kHex[] = "0123456789abcdef";
-    std::string out;
-    out.reserve(40);
-    for (unsigned char b : digest) {
-        out.push_back(kHex[b >> 4]);
-        out.push_back(kHex[b & 0x0F]);
-    }
-    return out;
-}
-
-std::int64_t now_unix() { return static_cast<std::int64_t>(std::time(nullptr)); }
-
 // Backs up `path` (UTC timestamp suffix) then atomically writes `text`. restrict_acl
 // stays false for Steam-owned files Steam must still read. On first login the file may
 // not exist yet: there is nothing to back up, so just create the parent tree and write.
@@ -166,59 +142,6 @@ std::optional<fs::path> account_userdata_dir(std::uint64_t steam_id_64, LoginPre
     return *steam / L"userdata" / std::to_wstring(account_id);
 }
 
-// Refreshes the sharedconfig.vdf entry in <userdata>/7/remotecache.vdf to match the
-// freshly-written file (size/sha/time) and bumps the appid ChangeNumber, so Steam's
-// cloud client treats the local copy as the newer one to upload. Best-effort: a missing
-// cache or entry just leaves the sharedconfig write to stand on its own.
-void update_remotecache(const fs::path& userdata, const std::string& shared_text) {
-    const fs::path cache = userdata / L"7" / L"remotecache.vdf";
-    std::error_code ec;
-    if (!fs::is_regular_file(cache, ec)) {
-        SAM_LOG_WARN("login prefs: remotecache.vdf missing; skipped cloud sync metadata");
-        return;
-    }
-    const std::string text = read_file_to_string(cache);
-    if (text.empty()) {
-        SAM_LOG_WARN("login prefs: remotecache.vdf unreadable; skipped cloud sync metadata");
-        return;
-    }
-
-    VdfNode root = parse_vdf(text);
-    VdfNode* appblk = find_child(root, "7");
-    if (appblk == nullptr) {
-        SAM_LOG_WARN("login prefs: remotecache.vdf has no appid 7 block; skipped");
-        return;
-    }
-    VdfNode* file = find_child(*appblk, "sharedconfig.vdf");
-    if (file == nullptr) {
-        SAM_LOG_WARN("login prefs: remotecache.vdf has no sharedconfig.vdf entry; skipped");
-        return;
-    }
-
-    const std::string now = std::to_string(now_unix());
-    upsert_scalar(*file, "size", std::to_string(shared_text.size()));
-    const std::string sha = sha1_hex(shared_text);
-    if (!sha.empty()) upsert_scalar(*file, "sha", sha);
-    upsert_scalar(*file, "localtime", now);
-    upsert_scalar(*file, "time", now);
-
-    // Bump ChangeNumber so the local copy outranks the cloud copy on next sync.
-    if (VdfNode* cn = find_child(*appblk, "ChangeNumber")) {
-        std::int64_t n = 0;
-        try {
-            n = std::stoll(cn->value);
-        } catch (...) {
-            n = 0;
-        }
-        cn->value = std::to_string(n + 1);
-    }
-
-    LoginPrefResult ignored;
-    if (!backup_and_write(cache, serialize_root(root), /*restrict_acl=*/false, ignored)) {
-        SAM_LOG_WARN("login prefs: remotecache.vdf update failed: {}", ignored.message);
-    }
-}
-
 }  // namespace
 
 LoginPrefResult set_news_notify_off(std::uint64_t steam_id_64) {
@@ -265,11 +188,14 @@ LoginPrefResult set_cloud_enabled_off(std::uint64_t steam_id_64) {
     const fs::path shared = *userdata / L"7" / L"remote" / L"sharedconfig.vdf";
     out.target = shared;
 
-    // On first login Steam hasn't written sharedconfig.vdf yet; start from an empty store
-    // so CloudEnabled=0 is in place before sign-in. This file is cloud-synced, so on a
-    // brand-new account Steam may still pull "cloud on" from the server during the first
-    // sign-in (no local remotecache exists yet to outrank it); it then sticks from the
-    // next launch. When the file exists we parse and amend it (backed up first).
+    // Add CloudEnabled=0 to sharedconfig.vdf (parse + amend if it exists, else start empty).
+    // This file is cloud-synced (app 7): we deliberately leave remotecache.vdf UNTOUCHED so
+    // Steam sees our edit as an ordinary pending local change and UPLOADS it on the next sync
+    // (the first-login restart's relaunch), turning Cloud off server-side so it actually
+    // sticks for accounts that already have cloud data. Rewriting remotecache to match the
+    // edit + bumping its ChangeNumber instead masked the change and made Steam distrust the
+    // local cache and re-download the server's "cloud on" copy. A brand-new account has no
+    // server copy to fight, so the local write stands on its own either way.
     std::error_code ec;
     VdfNode root;
     if (fs::is_regular_file(shared, ec)) {
@@ -288,8 +214,6 @@ LoginPrefResult set_cloud_enabled_off(std::uint64_t steam_id_64) {
     // Steam-owned cloud file: keep the inherited ACL so Steam's sync can still read it.
     if (!backup_and_write(shared, serialized, /*restrict_acl=*/false, out)) return out;
 
-    update_remotecache(*userdata, serialized);
-
     out.ok = true;
     out.message = "Steam Cloud disabled";
     SAM_LOG_INFO("login prefs: set CloudEnabled=0 for userdata/{}",
@@ -304,6 +228,7 @@ LoginConfigPresence login_config_presence(std::uint64_t steam_id_64) {
     if (!userdata) return out;  // unresolved SteamID / Steam not installed: both false
 
     std::error_code ec;
+    out.userdata_present = fs::is_directory(*userdata, ec);
     out.localconfig_present =
         fs::is_regular_file(*userdata / L"config" / L"localconfig.vdf", ec);
     out.sharedconfig_present =
