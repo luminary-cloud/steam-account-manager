@@ -118,6 +118,16 @@ bool restrict_to_current_user(const std::filesystem::path& path) {
     return rc == ERROR_SUCCESS;
 }
 
+bool set_file_read_only(const std::filesystem::path& path, bool read_only) {
+    const std::wstring p = path.wstring();
+    const DWORD attrs = GetFileAttributesW(p.c_str());
+    if (attrs == INVALID_FILE_ATTRIBUTES) return false;
+    const DWORD updated = read_only ? (attrs | FILE_ATTRIBUTE_READONLY)
+                                    : (attrs & ~FILE_ATTRIBUTE_READONLY);
+    if (updated == attrs) return true;
+    return SetFileAttributesW(p.c_str(), updated) != 0;
+}
+
 std::vector<std::uint8_t> read_binary_file(const std::filesystem::path& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) {

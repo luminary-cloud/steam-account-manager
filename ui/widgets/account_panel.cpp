@@ -15,6 +15,7 @@
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
 #include "ui/widgets/avatar.hpp"
+#include "ui/widgets/avatar_cache.hpp"
 #include "ui/widgets/ban_pills.hpp"
 #include "ui/widgets/login_method_control.hpp"
 #include "ui/widgets/rank_image.hpp"
@@ -34,6 +35,13 @@ namespace {
 constexpr float kAvatarSize = 56.0F;
 constexpr float kFooterReserved = 60.0F;
 constexpr float kFooterGap = 8.0F;
+
+// ByMykel medal icons are bare economy-image URLs that resolve to a small default size.
+// Request a fixed larger size (the same trick trade_offers uses) so the grid is crisp.
+std::string medal_image_url(const std::string& url) {
+    if (url.empty() || url.find("/economy/image/") == std::string::npos) return url;
+    return url + "/256fx256f";
+}
 
 std::string format_with_commas(int value) {
     char raw[16];
@@ -139,6 +147,20 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     const float rank_total_w = premier_w
                               + (draw_premier && draw_wingman ? kRankGap : 0.0F)
                               + wingman_w;
+
+    // Profile medals/coins (resolved name + icon, cached in the vault) shown as a centered
+    // grid under the ranks. NFA accounts never carry GC medals.
+    constexpr float kMedalSize = 48.0F;
+    constexpr float kMedalGap = 8.0F;
+    const bool show_medals = !a.is_nfa && !a.cs2.medals.empty();
+    const int medal_count = static_cast<int>(a.cs2.medals.size());
+    const int medals_per_row =
+        std::max(1, static_cast<int>((avail_w + kMedalGap) / (kMedalSize + kMedalGap)));
+    const int medal_rows =
+        show_medals ? (medal_count + medals_per_row - 1) / medals_per_row : 0;
+    const float medals_block_h =
+        static_cast<float>(medal_rows) * kMedalSize +
+        (medal_rows > 1 ? static_cast<float>(medal_rows - 1) * kMedalGap : 0.0F);
 
     struct ChipSpec {
         std::string label;
@@ -326,6 +348,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     const float chip_h = text_h + 6.0F;
     float middle_h = 0.0F;
     if (draw_premier || draw_wingman) middle_h += rank_block_h;
+    if (show_medals) middle_h += 2.0F * sp_y + medals_block_h;
     // Each section's leading ImGui::Spacing() is an empty item that adds two
     // item-spacings of gap, not one; use 2*sp_y so this estimate matches render.
     if (!chip_rows.empty()) {
@@ -488,6 +511,31 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         if (draw_wingman) {
             draw_card(wingman_e, "WINGMAN",
                       a.cs2.wingman_wins, 0, false, wingman_w);
+        }
+    }
+
+    if (show_medals) {
+        ImGui::Spacing();
+        auto* dl = ImGui::GetWindowDrawList();
+        for (int i = 0; i < medal_count;) {
+            const int row_n = std::min(medals_per_row, medal_count - i);
+            const float row_w = static_cast<float>(row_n) * kMedalSize +
+                                static_cast<float>(row_n - 1) * kMedalGap;
+            center_h_lead(row_w);
+            for (int c = 0; c < row_n; ++c, ++i) {
+                const auto& m = a.cs2.medals[static_cast<std::size_t>(i)];
+                const ImVec2 p0 = ImGui::GetCursorScreenPos();
+                ImGui::Dummy(ImVec2(kMedalSize, kMedalSize));
+                if (c + 1 < row_n) ImGui::SameLine(0.0F, kMedalGap);
+                const ImVec2 p1(p0.x + kMedalSize, p0.y + kMedalSize);
+                if (auto* srv = texture_for(medal_image_url(m.icon_url)))
+                    dl->AddImage(reinterpret_cast<ImTextureID>(srv), p0, p1);
+                else
+                    dl->AddRectFilled(
+                        p0, p1, ImGui::ColorConvertFloat4ToU32(theme::panel_hover()), 4.0F);
+                if (ImGui::IsMouseHoveringRect(p0, p1) && !m.name.empty())
+                    set_tooltip("%s", m.name.c_str());
+            }
         }
     }
 

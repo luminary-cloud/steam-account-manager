@@ -64,6 +64,11 @@ struct SendModal {
     std::unordered_set<std::uint64_t> selected;  // chosen item asset ids (single mode)
     bool bulk_ack = false;
 
+    // Saved-link rename sub-modal. Keyed by url so list edits don't invalidate the target.
+    std::string rename_url;
+    char rename_buf[128] = {};
+    bool rename_open_request = false;
+
     // Rebuilt only when the underlying inventory changes, not every frame.
     std::vector<PickItem> inv_cache;
     std::int64_t inv_cache_unix = -1;
@@ -88,6 +93,8 @@ void apply_refreshed_tokens(app::AppState& state, const core::Account& creds);
 bool tokens_changed(const core::Account& before, const core::Account& after);
 void push_toast(app::AppState& state, const std::string& id, const std::string& msg,
                 const std::string& account_id, bool warning);
+void push_toast_at(app::AppState& state, const std::string& id, const std::string& msg,
+                   const std::string& account_id, bool warning, std::int64_t expires_at);
 void recount_incoming(app::AppState& state);
 void erase_offer(app::AppState& state, const std::string& account_id,
                  const std::string& offer_id, bool from_received);

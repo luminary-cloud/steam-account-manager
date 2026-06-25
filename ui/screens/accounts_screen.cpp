@@ -44,7 +44,8 @@ void handle_card_action(app::AppState& state,
             state.flush_pending_save();
             auto result = sam::launch::launch_account(
                 a, state.settings.cs2_video.launch_options,
-                state.settings.disable_cloud_on_login, state.settings.disable_news_on_login);
+                state.settings.disable_cloud_on_login, state.settings.disable_news_on_login,
+                state.settings.remember_password_on_login);
             if (result.status != sam::launch::LaunchStatus::Ok) {
                 state.launch_error = result.message;
                 ImGui::OpenPopup("Launch failed");
@@ -315,6 +316,24 @@ void draw_accounts(app::AppState& state) {
         if (total > 0 && done < total) {
             ImGui::SameLine();
             ImGui::TextDisabled("Refreshing %d/%d", done, total);
+        }
+    }
+    ImGui::SameLine();
+    if (state.gc_autopull.active) {
+        if (action_button("Stop GC pull")) state.cancel_gc_autopull();
+        ImGui::SameLine();
+        ImGui::TextDisabled("Pulling GC %d/%d", state.gc_autopull.done, state.gc_autopull.total);
+    } else {
+        ImGui::BeginDisabled(!state.settings.cs2_gc.enabled);
+        if (action_button("Refresh GC")) state.start_gc_autopull();
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            if (!state.settings.cs2_gc.enabled)
+                set_tooltip("Enable the CS2 Game Coordinator in Settings to use auto-pull.");
+            else
+                set_tooltip("Pull CS2 GC data (medals, level, weekly drop) for every account, "
+                            "signing in where needed. Skips the account signed in to Steam on "
+                            "this PC and any still within the cache window.");
         }
     }
     if (state.settings.info.show_external_funds) {

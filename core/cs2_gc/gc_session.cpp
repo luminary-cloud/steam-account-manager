@@ -92,12 +92,16 @@ std::string title_case(std::string s) {
     return s;
 }
 
-// CS2 quest expression -> a human label like the in-game card ("Round Wins", "Kills").
+// CS2 quest expression -> a human label like the in-game card ("Round Wins", "Kills"). The
+// expression may be compound, e.g. "act_kill_human && !![weapon ak47|weapon awp|...]" for kills
+// restricted to a weapon set; keep only the leading act_* token so the card reads "Kills"
+// instead of dumping the weapon list.
 std::string action_label(const std::string& expr) {
-    if (expr == "act_win_round") return "Round Wins";
-    if (expr == "act_kill_human") return "Kills";
-    if (expr == "act_kill_chicken") return "Chicken Kills";
-    std::string e = expr.rfind("act_", 0) == 0 ? expr.substr(4) : expr;
+    const std::string base = expr.substr(0, expr.find_first_of(" \t&|!["));
+    if (base == "act_win_round") return "Round Wins";
+    if (base == "act_kill_human") return "Kills";
+    if (base == "act_kill_chicken") return "Chicken Kills";
+    std::string e = base.rfind("act_", 0) == 0 ? base.substr(4) : base;
     return title_case(e);
 }
 
@@ -200,12 +204,13 @@ MissionInfo GcSession::current_mission() const {
     const std::string& tpl = current_period_templates_;
     if (tpl.size() < 2 || tpl[0] != '\0') return out;  // need at least one mission block
 
-    // Pick the mission: the account's mission-SO id when it's in this period's template,
-    // else the first mission the template lists (the week's default for an account with no
-    // current-period progress yet -- otherwise a stale older-week SO would hide the card).
+    // Pick the mission: the account's mission-SO id when the SO belongs to THIS period and its
+    // id is in the template, else the first mission the template lists (the week's default for
+    // an account whose current-period SO hasn't arrived yet). Gating on the period stops a
+    // stale older-week SO from selecting last week's mission after the Wednesday reset.
     std::size_t start = std::string::npos;
     std::uint32_t mission_id = 0;
-    if (recurring_mission_.valid) {
+    if (recurring_mission_.valid && recurring_mission_.period == current_period_) {
         std::string marker(1, '\0');
         marker += std::to_string(recurring_mission_.mission_id);
         marker += '\0';
@@ -430,9 +435,13 @@ void GcSession::on_gc_message(std::uint32_t gc_emsg, const std::string& body) {
             player_xp_.level = a.player_level();
             player_xp_.cur_xp = a.player_cur_xp();
             player_xp_.bonus_flags = a.player_xp_bonus_flags();
+            if (a.has_medals()) {
+                player_xp_.featured_medal_defidx = a.medals().featured_display_item_defidx();
+                player_xp_.medal_defidx.assign(a.medals().display_items_defidx().begin(),
+                                               a.medals().display_items_defidx().end());
+            }
             player_xp_.valid = true;
-            SAM_LOG_DEBUG("gc: profile level={} cur_xp={} bonus_flags={}", player_xp_.level,
-                          player_xp_.cur_xp, player_xp_.bonus_flags);
+            ++so_seq_;  // medals just landed; re-post a snapshot so the UI/cache pick them up
             return;
         }
         case GcMsg::RecurringMissionSchema: {

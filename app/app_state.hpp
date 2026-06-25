@@ -35,6 +35,11 @@ namespace sam::ui::screens {
 struct Cs2ScreenState;
 }
 
+namespace sam::cs2_gc {
+struct Snapshot;
+class Cs2GcClient;
+}
+
 namespace sam::app {
 
 enum class Screen {
@@ -52,6 +57,34 @@ struct Job {
     std::string account_id;
     std::function<void()> apply;  // runs on the main thread inside drain()
 };
+
+// State for the CS2 GC auto-pull orchestrator: a sequential, rate-limited sweep that pulls
+// Game Coordinator data (medals, level/XP, weekly drop) for every eligible account, auto
+// signing-in when an account lacks a client token. Mutated only on the UI thread (tick +
+// marshaled client callbacks), so it needs no locking.
+struct GcAutoPull {
+    enum class Phase { Idle, SigningIn, Pulling };
+    bool active = false;
+    std::vector<std::string> queue;   // account ids to process, in order
+    int done = 0;                     // queue entries consumed; also the next index
+    int total = 0;                    // queue size at start (progress denominator)
+    int skipped = 0;                  // accounts skipped before queueing (info only)
+    std::string status;               // progress text for the UI
+
+    std::string current_id;           // account in flight ("" when between accounts)
+    Phase phase = Phase::Idle;
+    bool signin_pending = false;      // acquire_cm_token call outstanding
+    bool signin_ok = false;
+    bool got_data = false;            // a snapshot (or error) arrived for current_id
+    std::unique_ptr<cs2_gc::Cs2GcClient> client;
+    std::chrono::steady_clock::time_point phase_started{};
+    std::chrono::steady_clock::time_point next_start{};  // earliest start of the next account
+};
+
+// The account's client-audience refresh token (cm_refresh_token, or the NFA refresh_token
+// when it already carries the client audience), or empty when only a mobile/web token is
+// available (which the CM rejects). Defined in cs2_autopull.cpp.
+std::string cs2_client_token(const core::Account& a);
 
 struct AppState {
     bool unlocked = false;
@@ -92,6 +125,10 @@ struct AppState {
     std::jthread update_thread;
 
     std::unique_ptr<ui::screens::Cs2ScreenState> cs2_screen;
+
+    // CS2 GC auto-pull orchestrator state + a one-shot guard for the run-on-startup option.
+    GcAutoPull gc_autopull;
+    bool gc_startup_pull_done = false;
 
     // Cross-launch index of ban/cooldown events; persisted to notifications.json
     // (non-sensitive, plain JSON).
@@ -150,6 +187,8 @@ struct AppState {
     std::unordered_set<std::string> refreshing_ids;
     // In-flight external-funds (spend) fetches; UI disables "Refresh spend" while set.
     std::unordered_set<std::string> spend_fetching_ids;
+    // In-flight trade-link fetches, so a double right-click doesn't double-scrape.
+    std::unordered_set<std::string> trade_link_fetching_ids;
 
     // Ids already notified of a dead NFA token, so it fires once per dead token.
     // UI-thread only (completed-job callbacks and import). Cleared on re-import.
@@ -226,6 +265,14 @@ struct AppState {
     // passwordless accounts. `quiet` suppresses per-account toasts. Async.
     void refresh_spend(const std::string& id, bool quiet = false);
 
+    // Copies the account's trade link to the clipboard. Copies the cached value
+    // instantly while it is < 7 days old; if missing or stale, scrapes the
+    // tradeoffers/privacy page in the background (minting a web session via
+    // ensure_web_session), caches the link + a timestamp, and auto-copies the
+    // fresh link when it lands. Falls back to the stale cache if a re-fetch fails.
+    // No-op for token-only (NFA) accounts that have nothing cached. Async.
+    void copy_trade_link(const std::string& id);
+
     // Funds for every eligible account, staggered (one sign-in at a time) to stay
     // gentle on Steam's login rate limit. `only_missing` skips accounts with a
     // figure (the one-time launch fill); the toolbar button passes false.
@@ -274,6 +321,19 @@ struct AppState {
     // UI thread. Requires a stored password.
     void acquire_cm_token(const std::string& account_id,
                           std::function<void(bool, std::string)> on_done);
+
+    // Caches a GC snapshot's medals (resolved name + icon), level/XP and a pull timestamp
+    // into the account's CS2Status, then saves the vault. Shared by the manual CS2 screen
+    // and the auto-pull orchestrator.
+    void apply_gc_snapshot_cache(const std::string& account_id, const cs2_gc::Snapshot& snap);
+
+    // CS2 GC auto-pull: builds a queue of eligible accounts and sweeps them one at a time,
+    // auto signing-in as needed, rate-limited; skips the live Steam account, the manually
+    // connected account, and accounts whose cache is still fresh. tick_gc_autopull()
+    // advances it each frame; cancel_gc_autopull() stops it.
+    void start_gc_autopull();
+    void tick_gc_autopull();
+    void cancel_gc_autopull();
 
     // Seconds left on the 5-min auto-relogin cooldown; 0 = a fresh attempt allowed.
     std::int64_t relogin_cooldown_seconds(const std::string& account_id);

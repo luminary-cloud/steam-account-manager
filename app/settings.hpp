@@ -33,6 +33,12 @@ enum class LogonAction : std::uint8_t {
     OpenApp = 2,            // launch the full GUI (optionally --minimized)
 };
 
+// A saved destination trade link. Name is an optional user label; empty shows the URL.
+struct SavedTradeLink {
+    std::string url;
+    std::string name;
+};
+
 struct Settings {
     int clipboard_clear_seconds = 12;
     int auto_lock_minutes = 15;
@@ -62,6 +68,10 @@ struct Settings {
     // toggle is on; never re-enabled. See core/steam_local/login_prefs.
     bool disable_cloud_on_login = false;
     bool disable_news_on_login = false;
+    // Whether the password-login driver ticks Steam's "Remember me" box. Off makes Steam
+    // forget the session after sign-in (no saved login). Token (NFA) logins ignore this;
+    // they require a remembered session to auto-sign-in.
+    bool remember_password_on_login = true;
     std::string web_api_key;
 
     // single_proxy used only in Single mode; per-account proxies live in the vault.
@@ -150,7 +160,7 @@ struct Settings {
     struct TradeToggles {
         // A trade link is not a secret, so these live in settings.json.
         std::string default_destination_trade_url;
-        std::vector<std::string> saved_trade_urls;
+        std::vector<SavedTradeLink> saved_trade_urls;
 
         // Auto-resolve the mobile confirmation for sent offers; incoming are manual.
         bool auto_confirm_sent = true;
@@ -201,6 +211,12 @@ struct Settings {
         // Record an observed weekly-drop claim in the vault so the account-list
         // marker lights up without a manual "Mark claimed".
         bool auto_mark_claimed = true;
+        // Auto-pull GC data for every eligible account on app startup (self-skips
+        // fresh caches, so a quick restart pulls nothing).
+        bool auto_pull_on_startup = false;
+        // GC pull cache lifetime in hours (1..24); auto-pull skips an account pulled
+        // within this window. Persisted in the vault, so it survives restarts.
+        int cache_hours = 6;
     } cs2_gc;
 };
 

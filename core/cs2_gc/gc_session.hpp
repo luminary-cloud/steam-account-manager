@@ -36,6 +36,10 @@ struct PlayerXp {
     int level = 0;
     int cur_xp = 0;      // raw player_cur_xp (offset by a base; see ItemSchema consumer)
     int bonus_flags = 0;
+    // Displayed medal/collectible def_indices from the profile; the client's ItemSchema
+    // resolves these to name + icon when building a Snapshot.
+    std::vector<std::uint32_t> medal_defidx;
+    std::uint32_t featured_medal_defidx = 0;  // pinned medal def_index, 0 = none
 };
 
 // CS2 weekly recurring mission progress (from the GC SO cache). Per-account, keyed to a

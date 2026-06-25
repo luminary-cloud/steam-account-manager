@@ -695,6 +695,15 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         }
 
         sam::app::job_pump::drain(state);
+
+        // Advance the CS2 GC auto-pull sweep, and kick it once on startup if opted in
+        // (after unlock so vault credentials are available; it self-skips fresh caches).
+        state.tick_gc_autopull();
+        if (state.unlocked && state.settings.cs2_gc.auto_pull_on_startup &&
+            !state.gc_startup_pull_done) {
+            state.gc_startup_pull_done = true;
+            state.start_gc_autopull();
+        }
         {
             static unsigned long long cs2_toast_seq = 0;
             auto msgs = sam::launch::cs2_autostart::take_status_messages();

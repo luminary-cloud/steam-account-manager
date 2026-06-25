@@ -56,6 +56,16 @@ void open_send_modal_impl(app::AppState& state, const std::string& account_id) {
 void bulk_send_all(app::AppState& state, std::vector<core::Account> accs,
                    trade::TradeUrl tu);
 
+// Remember url in the saved-links list (deduped) and as the default destination.
+void remember_trade_link(app::AppState& state, const std::string& url) {
+    auto& saved = state.settings.trade.saved_trade_urls;
+    if (std::none_of(saved.begin(), saved.end(),
+                     [&](const auto& l) { return l.url == url; }))
+        saved.push_back({url, {}});
+    state.settings.trade.default_destination_trade_url = url;
+    state.save_settings();
+}
+
 void draw_send_modal_impl(app::AppState& state) {
     if (g_send.open_request) {
         ImGui::OpenPopup("Send trade offer");
@@ -209,17 +219,61 @@ void draw_send_modal_impl(app::AppState& state) {
 
     ImGui::TextDisabled("Destination trade link");
     auto& saved = state.settings.trade.saved_trade_urls;
+    int link_to_delete = -1;
     if (!saved.empty()) {
         ImGui::SetNextItemWidth(150.0F);
         if (begin_styled_combo("##saved", "Saved links")) {
-            for (const auto& s : saved) {
-                if (ImGui::Selectable(s.c_str()))
-                    std::snprintf(g_send.url_buf, sizeof(g_send.url_buf), "%s", s.c_str());
+            for (int i = 0; i < static_cast<int>(saved.size()); ++i) {
+                const auto& l = saved[i];
+                ImGui::PushID(i);
+                const char* label = l.name.empty() ? l.url.c_str() : l.name.c_str();
+                if (ImGui::Selectable(label))
+                    std::snprintf(g_send.url_buf, sizeof(g_send.url_buf), "%s", l.url.c_str());
+                if (!l.name.empty() && ImGui::IsItemHovered())
+                    set_tooltip("%s", l.url.c_str());
+                if (ImGui::BeginPopupContextItem("##linkctx")) {
+                    if (ImGui::MenuItem("Rename")) {
+                        g_send.rename_url = l.url;
+                        std::snprintf(g_send.rename_buf, sizeof(g_send.rename_buf), "%s",
+                                      l.name.c_str());
+                        g_send.rename_open_request = true;
+                    }
+                    if (ImGui::MenuItem("Delete")) link_to_delete = i;
+                    ImGui::EndPopup();
+                }
+                ImGui::PopID();
             }
             end_styled_combo();
         }
         ImGui::SameLine();
     }
+    if (link_to_delete >= 0 && link_to_delete < static_cast<int>(saved.size())) {
+        saved.erase(saved.begin() + link_to_delete);
+        state.save_settings();
+    }
+
+    // Rename sub-modal for the link chosen via the combo's right-click menu.
+    if (g_send.rename_open_request) {
+        ImGui::OpenPopup("Rename saved link");
+        g_send.rename_open_request = false;
+    }
+    if (begin_styled_modal("Rename saved link", 360.0F)) {
+        ImGui::TextUnformatted("Name");
+        ImGui::SetNextItemWidth(-1.0F);
+        ImGui::InputTextWithHint("##link-name", "Leave blank to show the URL",
+                                 g_send.rename_buf, sizeof(g_send.rename_buf));
+        ImGui::Spacing();
+        if (action_button("Save", ImVec2(100, 0))) {
+            for (auto& l : saved)
+                if (l.url == g_send.rename_url) { l.name = g_send.rename_buf; break; }
+            state.save_settings();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (action_button("Cancel", ImVec2(100, 0))) ImGui::CloseCurrentPopup();
+        end_styled_modal();
+    }
+
     ImGui::SetNextItemWidth(-1.0F);
     ImGui::InputTextWithHint("##url",
         "https://steamcommunity.com/tradeoffer/new/?partner=...&token=...",
@@ -232,10 +286,7 @@ void draw_send_modal_impl(app::AppState& state) {
         ImGui::PopStyleColor();
         ImGui::SameLine();
         if (action_button("Save link")) {
-            const std::string s = g_send.url_buf;
-            if (std::find(saved.begin(), saved.end(), s) == saved.end()) saved.push_back(s);
-            state.settings.trade.default_destination_trade_url = s;
-            state.save_settings();
+            remember_trade_link(state, g_send.url_buf);
         }
     } else if (g_send.url_buf[0] != '\0') {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
@@ -373,10 +424,7 @@ void draw_send_modal_impl(app::AppState& state) {
                 r.asset_id = asset_id;
                 give.push_back(r);
             }
-            const std::string s = g_send.url_buf;
-            if (std::find(saved.begin(), saved.end(), s) == saved.end()) saved.push_back(s);
-            state.settings.trade.default_destination_trade_url = s;
-            state.save_settings();
+            remember_trade_link(state, g_send.url_buf);
             submit_send(state, *acc, tu, std::move(give), g_send.msg_buf);
             ImGui::CloseCurrentPopup();
         }
@@ -405,10 +453,7 @@ void draw_send_modal_impl(app::AppState& state) {
             for (auto& a : state.vault.accounts) {
                 if (account_can_trade(a) && g_send.accounts.count(a.id)) accs.push_back(a);
             }
-            const std::string s = g_send.url_buf;
-            if (std::find(saved.begin(), saved.end(), s) == saved.end()) saved.push_back(s);
-            state.settings.trade.default_destination_trade_url = s;
-            state.save_settings();
+            remember_trade_link(state, g_send.url_buf);
             bulk_send_all(state, std::move(accs), tu);
             ImGui::CloseCurrentPopup();
         }
@@ -459,9 +504,16 @@ void bulk_accept_all(app::AppState& state) {
     }
     if (targets.empty()) return;
 
+    const int total = static_cast<int>(targets.size());
+    push_toast_at(state, "bulk-accept",
+                  "Bulk accept: starting for " + std::to_string(total) + " offer(s)...",
+                  "", false, 0);
+
     const int stagger = std::max(1500, state.settings.trade.refresh_stagger_ms);
-    app::job_pump::submit([&state, targets = std::move(targets), stagger]() mutable {
+    app::job_pump::submit([&state, targets = std::move(targets), stagger, total]() mutable {
         int ok = 0;
+        int failed = 0;
+        int processed = 0;
         for (auto& t : targets) {
             core::Account creds = t.acc;
             auto res = with_relogin(state, creds, [&](core::Account& a) {
@@ -473,15 +525,26 @@ void bulk_accept_all(app::AppState& state) {
                 state.post_ui_callback([&state, aid = t.acc.id, oid = t.oid] {
                     erase_offer(state, aid, oid, /*from_received=*/true);
                 });
+            } else {
+                ++failed;
             }
+            ++processed;
+            state.post_ui_callback([&state, processed, total, ok] {
+                push_toast_at(state, "bulk-accept",
+                              "Bulk accept: " + std::to_string(processed) + "/" +
+                                  std::to_string(total) + " done (" +
+                                  std::to_string(ok) + " accepted)",
+                              "", false, 0);
+            });
             std::this_thread::sleep_for(std::chrono::milliseconds(stagger));
         }
-        const int total = static_cast<int>(targets.size());
-        state.post_ui_callback([&state, ok, total] {
-            push_toast(state, "bulk-accept",
-                       "Bulk accept: " + std::to_string(ok) + "/" +
-                           std::to_string(total) + " offers accepted",
-                       "", ok != total);
+        state.post_ui_callback([&state, ok, failed, total] {
+            std::string msg = "Bulk accept done: " + std::to_string(ok) + " accepted";
+            if (failed) msg += ", " + std::to_string(failed) + " failed";
+            msg += " (" + std::to_string(total) + " offers)";
+            const std::int64_t dwell =
+                std::max(state.settings.notifications.toast_duration_seconds, 12);
+            push_toast_at(state, "bulk-accept", msg, "", ok != total, now_unix() + dwell);
         });
     });
 }
@@ -490,19 +553,48 @@ void bulk_send_all(app::AppState& state, std::vector<core::Account> accs,
                    trade::TradeUrl tu) {
     if (!tu.ok || accs.empty()) return;
 
+    const int n = static_cast<int>(accs.size());
+    push_toast_at(state, "bulk-send",
+                  "Bulk send: starting for " + std::to_string(n) + " account(s)...",
+                  "", false, 0);
+
     const int stagger = std::max(2000, state.settings.trade.refresh_stagger_ms);
     const bool auto_conf = state.settings.trade.auto_confirm_sent;
-    app::job_pump::submit([&state, accs = std::move(accs), tu, stagger, auto_conf]() mutable {
+    app::job_pump::submit([&state, accs = std::move(accs), tu, stagger, auto_conf, n]() mutable {
         int sent_ok = 0;
-        int attempted = 0;
+        int failed = 0;
+        int skipped = 0;
+        int processed = 0;
         std::vector<trade::TradeAuditEntry> audit;
+        auto post_progress = [&state, n](int done, int sent) {
+            state.post_ui_callback([&state, done, n, sent] {
+                push_toast_at(state, "bulk-send",
+                              "Bulk send: " + std::to_string(done) + "/" +
+                                  std::to_string(n) + " done (" +
+                                  std::to_string(sent) + " sent)",
+                              "", false, 0);
+            });
+        };
         for (auto& seed : accs) {
             core::Account creds = seed;
             auto inv = with_relogin(state, creds, [&](core::Account& a) {
                 return trade::fetch_inventory(a, a.steam_id_64, 730, 2, 2000, 0);
             });
             if (tokens_changed(seed, creds)) apply_refreshed_tokens(state, creds);
-            if (!inv.ok) continue;
+            if (!inv.ok) {
+                trade::TradeAuditEntry e;
+                e.unix_time = now_unix();
+                e.account_id = seed.id;
+                e.account_login = seed.login;
+                e.source = trade::TradeAuditSource::UserBulk;
+                e.outcome = trade::TradeAuditOutcome::Failed;
+                e.detail = "inventory fetch failed: " + inv.error;
+                audit.push_back(std::move(e));
+                ++failed;
+                ++processed;
+                post_progress(processed, sent_ok);
+                continue;
+            }
 
             std::vector<trade::TradeAssetRef> give;
             for (const auto& it : inv.items) {
@@ -514,9 +606,13 @@ void bulk_send_all(app::AppState& state, std::vector<core::Account> accs,
                 r.amount = 1;
                 give.push_back(r);
             }
-            if (give.empty()) continue;
+            if (give.empty()) {
+                ++skipped;
+                ++processed;
+                post_progress(processed, sent_ok);
+                continue;
+            }
 
-            ++attempted;
             auto res = with_relogin(state, creds, [&](core::Account& a) {
                 return trade::send_trade_offer(a, tu, give, "");
             });
@@ -545,19 +641,25 @@ void bulk_send_all(app::AppState& state, std::vector<core::Account> accs,
                             : confirmed             ? trade::TradeAuditOutcome::SentAndConfirmed
                                                     : trade::TradeAuditOutcome::NeedsConfirmation;
             } else {
+                ++failed;
                 e.outcome = trade::TradeAuditOutcome::Failed;
                 e.detail = res.error;
             }
             SAM_LOG_INFO("trade bulk send {}: offer={} items={} outcome={}", seed.login,
                          e.offer_id, e.item_count, static_cast<int>(e.outcome));
             audit.push_back(std::move(e));
+            ++processed;
+            post_progress(processed, sent_ok);
             std::this_thread::sleep_for(std::chrono::milliseconds(stagger));
         }
-        state.post_ui_callback([&state, sent_ok, attempted, audit] {
-            push_toast(state, "bulk-send",
-                       "Bulk send: " + std::to_string(sent_ok) + "/" +
-                           std::to_string(attempted) + " accounts sent",
-                       "", sent_ok != attempted);
+        state.post_ui_callback([&state, sent_ok, failed, skipped, n, audit] {
+            std::string msg = "Bulk send done: " + std::to_string(sent_ok) + " sent";
+            if (failed) msg += ", " + std::to_string(failed) + " failed";
+            if (skipped) msg += ", " + std::to_string(skipped) + " skipped";
+            msg += " (" + std::to_string(n) + " accounts)";
+            const std::int64_t dwell =
+                std::max(state.settings.notifications.toast_duration_seconds, 12);
+            push_toast_at(state, "bulk-send", msg, "", sent_ok != n, now_unix() + dwell);
             for (const auto& e : audit) state.trade_audit.record(e);
             confirmations_trigger_refresh_all(state);
         });

@@ -58,6 +58,16 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         if (!code.empty()) platform::clipboard::set_text(code);
     }
 
+    // Copies the cached link instantly; on a cache miss/expiry copy_trade_link
+    // scrapes it in the background and copies when ready. Hidden only for token-
+    // only (NFA) accounts with nothing cached, which can't scrape one.
+    const bool has_trade_link = a.trade_url.has_value() && !a.trade_url->empty();
+    const bool can_fetch_trade = has_sid && !a.is_nfa &&
+                                 (!a.refresh_token.empty() || !a.password.empty());
+    if ((has_trade_link || can_fetch_trade) && ImGui::MenuItem("Copy trade link")) {
+        state.copy_trade_link(a.id);
+    }
+
     // Needs a web-capable refresh token (or a saved password to mint one), so
     // it's hidden for token-only (NFA) accounts.
     const bool can_browser = has_sid && !a.is_nfa &&

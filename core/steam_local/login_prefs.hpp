@@ -33,6 +33,12 @@ LoginPrefResult set_news_notify_off(std::uint64_t steam_id_64);
 // the next sync, rather than re-downloading the server's "cloud on" copy. The upload lands
 // on the first-login restart's relaunch. ok=false only if Steam isn't installed or the
 // account has no resolved SteamID.
+//
+// When amending an existing sharedconfig.vdf the file is then locked read-only: Steam
+// rewrites it from memory on shutdown and would otherwise flip CloudEnabled back to 1, so
+// the read-only attribute makes that rewrite fail and the 0 sticks. A read-only file is
+// still readable, so sign-in is unaffected, and re-running this clears the lock first. A
+// brand-new (first-login) file is left writable so Steam's own setup isn't blocked.
 LoginPrefResult set_cloud_enabled_off(std::uint64_t steam_id_64);
 
 // Whether the per-user config files backing the news / cloud settings already exist on

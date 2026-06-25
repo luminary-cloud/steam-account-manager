@@ -146,6 +146,7 @@
     <ClCompile Include="app\app_state.cpp" />
     <ClCompile Include="app\app_state_refresh.cpp" />
     <ClCompile Include="app\app_state_login.cpp" />
+    <ClCompile Include="app\cs2_autopull.cpp" />
     <ClCompile Include="app\vault_saver.cpp" />
     <ClCompile Include="app\app_paths.cpp" />
     <ClCompile Include="app\gamesense_loader.cpp" />
@@ -190,6 +191,7 @@
     <ClCompile Include="core\steam_spend\spend_parser.cpp" />
     <ClCompile Include="core\profile\edit.cpp" />
     <ClCompile Include="core\trade\trade_url.cpp" />
+    <ClCompile Include="core\trade\trade_link_fetch.cpp" />
     <ClCompile Include="core\trade\inventory.cpp" />
     <ClCompile Include="core\trade\offers.cpp" />
     <ClCompile Include="core\trade\actions.cpp" />
@@ -334,6 +336,7 @@
     <ClInclude Include="core\profile\edit.hpp" />
     <ClInclude Include="core\trade\models.hpp" />
     <ClInclude Include="core\trade\trade_url.hpp" />
+    <ClInclude Include="core\trade\trade_link_fetch.hpp" />
     <ClInclude Include="core\trade\inventory.hpp" />
     <ClInclude Include="core\trade\offers.hpp" />
     <ClInclude Include="core\trade\actions.hpp" />

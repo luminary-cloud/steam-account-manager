@@ -35,7 +35,6 @@ struct WeeklyReward {
     std::uint32_t generation_time = 0;  // unix time the current store was generated
     std::vector<std::uint64_t> item_ids;
     std::vector<DisplayItem> items;  // resolved candidates for display/selection
-    bool claimed = false;            // this period's pick is known (the drop was claimed)
     std::vector<std::string> claimed_names;  // names of the items picked this period
 };
 
@@ -63,6 +62,8 @@ struct Snapshot {
     WeeklyReward reward;
     PlayerProgress progress;
     WeeklyMission mission;
+    std::vector<DisplayItem> medals;  // profile medals/coins, id = def_index
+    std::uint32_t featured_medal_defidx = 0;  // pinned medal def_index, 0 = none
 };
 
 struct Cs2Credentials {

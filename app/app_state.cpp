@@ -13,6 +13,7 @@
 #include "core/account_store/ban_diff.hpp"
 #include "core/account_store/store.hpp"
 #include "core/crypto/rng.hpp"
+#include "core/cs2_gc/cs2_gc_client.hpp"
 #include "core/http/client.hpp"
 #include "core/log.hpp"
 #include "core/steam_api/ban_check.hpp"
@@ -143,6 +144,27 @@ core::Account* AppState::find_account(const std::string& id) {
     return nullptr;
 }
 
+void AppState::apply_gc_snapshot_cache(const std::string& account_id,
+                                       const cs2_gc::Snapshot& snap) {
+    core::Account* acc = find_account(account_id);
+    if (acc == nullptr) return;
+    const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+    acc->cs2.gc_last_pulled_unix = now;
+    if (snap.progress.valid) {
+        acc->cs2.cs2_player_level = snap.progress.level;
+        acc->cs2.cs2_player_xp = snap.progress.xp_in_level;
+    }
+    acc->cs2.featured_medal_defidx = snap.featured_medal_defidx;
+    acc->cs2.medals.clear();
+    acc->cs2.medals.reserve(snap.medals.size());
+    for (const auto& m : snap.medals)
+        acc->cs2.medals.push_back({static_cast<std::uint32_t>(m.id), m.name, m.icon_url});
+    vault_dirty = true;
+    save_vault_if_dirty();
+}
+
 void AppState::save_vault_if_dirty() {
     if (!vault_dirty || master_password.empty()) return;
     vault_saver.start(vault_path());
@@ -211,6 +233,7 @@ void AppState::save_settings() {
     j["streamproof"]             = settings.streamproof;
     j["disable_cloud_on_login"]  = settings.disable_cloud_on_login;
     j["disable_news_on_login"]   = settings.disable_news_on_login;
+    j["remember_password_on_login"] = settings.remember_password_on_login;
     j["web_api_key"]             = settings.web_api_key;
     j["proxy_mode"]              = static_cast<int>(settings.proxy_mode);
     j["single_proxy"]            = settings.single_proxy;
@@ -280,7 +303,13 @@ void AppState::save_settings() {
 
     auto& tj = j["trade"];
     tj["default_destination_trade_url"] = settings.trade.default_destination_trade_url;
-    tj["saved_trade_urls"]              = settings.trade.saved_trade_urls;
+    auto& sl = tj["saved_trade_urls"] = nlohmann::json::array();
+    for (const auto& l : settings.trade.saved_trade_urls) {
+        nlohmann::json o;
+        o["url"]  = l.url;
+        o["name"] = l.name;
+        sl.push_back(std::move(o));
+    }
     tj["auto_confirm_sent"]             = settings.trade.auto_confirm_sent;
     tj["per_account_cooldown_seconds"]  = settings.trade.per_account_cooldown_seconds;
     tj["inventory_cooldown_seconds"]    = settings.trade.inventory_cooldown_seconds;
@@ -310,6 +339,8 @@ void AppState::save_settings() {
     gj["show_inventory"]      = settings.cs2_gc.show_inventory;
     gj["show_storage_units"]  = settings.cs2_gc.show_storage_units;
     gj["auto_mark_claimed"]   = settings.cs2_gc.auto_mark_claimed;
+    gj["auto_pull_on_startup"] = settings.cs2_gc.auto_pull_on_startup;
+    gj["cache_hours"]         = settings.cs2_gc.cache_hours;
 
     auto path = settings_path();
     std::filesystem::create_directories(path.parent_path());
@@ -367,6 +398,7 @@ void AppState::load_settings() {
     get("streamproof",             settings.streamproof);
     get("disable_cloud_on_login",  settings.disable_cloud_on_login);
     get("disable_news_on_login",   settings.disable_news_on_login);
+    get("remember_password_on_login", settings.remember_password_on_login);
     get("web_api_key",             settings.web_api_key);
     get("single_proxy",            settings.single_proxy);
     if (j.contains("proxy_mode")) {
@@ -480,7 +512,21 @@ void AppState::load_settings() {
             }
         };
         get_t("default_destination_trade_url", settings.trade.default_destination_trade_url);
-        get_t("saved_trade_urls",              settings.trade.saved_trade_urls);
+        // Accept both the legacy form (array of URL strings) and the current form
+        // (array of {url, name} objects); legacy files migrate on the next save.
+        if (tj.contains("saved_trade_urls") && tj["saved_trade_urls"].is_array()) {
+            settings.trade.saved_trade_urls.clear();
+            for (const auto& e : tj["saved_trade_urls"]) {
+                if (e.is_string()) {
+                    settings.trade.saved_trade_urls.push_back({e.get<std::string>(), {}});
+                } else if (e.is_object()) {
+                    SavedTradeLink l;
+                    l.url  = e.value("url", std::string{});
+                    l.name = e.value("name", std::string{});
+                    if (!l.url.empty()) settings.trade.saved_trade_urls.push_back(std::move(l));
+                }
+            }
+        }
         get_t("auto_confirm_sent",             settings.trade.auto_confirm_sent);
         get_t("per_account_cooldown_seconds",  settings.trade.per_account_cooldown_seconds);
         get_t("inventory_cooldown_seconds",    settings.trade.inventory_cooldown_seconds);
@@ -539,6 +585,9 @@ void AppState::load_settings() {
         get_g("show_inventory",      settings.cs2_gc.show_inventory);
         get_g("show_storage_units",  settings.cs2_gc.show_storage_units);
         get_g("auto_mark_claimed",   settings.cs2_gc.auto_mark_claimed);
+        get_g("auto_pull_on_startup", settings.cs2_gc.auto_pull_on_startup);
+        get_g("cache_hours",         settings.cs2_gc.cache_hours);
+        settings.cs2_gc.cache_hours = std::clamp(settings.cs2_gc.cache_hours, 1, 24);
     }
 }
 

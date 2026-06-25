@@ -98,6 +98,15 @@ void draw_steam_login_section(app::AppState& state) {
     hover_tooltip("When you launch an account, set NotifyAvailableGames=0 (Steam's \"Notify "
                   "me about additions or changes to my games, new releases\" off). Applies to "
                   "every account you launch; turning it off leaves Steam's setting as-is.");
+
+    if (ImGui::Checkbox("Remember password on login",
+                        &state.settings.remember_password_on_login)) {
+        state.save_settings();
+    }
+    hover_tooltip("Ticks Steam's \"Remember me\" box when signing a password account in, so "
+                  "Steam keeps the saved login. Turn off to have Steam forget the session "
+                  "after sign-in. Token (NFA) accounts ignore this; their sign-in needs a "
+                  "remembered session.");
 }
 
 void draw_cs2_gc_section(app::AppState& state) {
@@ -113,9 +122,19 @@ void draw_cs2_gc_section(app::AppState& state) {
     ImGui::Checkbox("Show storage units card", &state.settings.cs2_gc.show_storage_units);
     ImGui::Checkbox("Mark weekly drop claimed automatically",
                     &state.settings.cs2_gc.auto_mark_claimed);
-    hover_tooltip("When connected, if the GC reports this account's weekly drop is already "
-                  "gone, record it as claimed so the account list shows the green marker. Off "
-                  "leaves the marker to the manual \"Mark claimed\" action only.");
+    hover_tooltip("When connected, keep the account-list weekly-drop marker in step with the "
+                  "GC: light it once this week's drop is gone, and clear it when a new week "
+                  "resets. Off leaves the marker to the manual \"Mark claimed\" action only.");
+    ImGui::Checkbox("Auto-pull GC data on startup",
+                    &state.settings.cs2_gc.auto_pull_on_startup);
+    hover_tooltip("On launch, automatically pull CS2 GC data (medals, level, weekly drop) for "
+                  "every eligible account, signing in where needed. Skips the account signed in "
+                  "to Steam on this PC and any whose cache is still fresh, so a restart within "
+                  "the cache window does nothing.");
+    ImGui::SetNextItemWidth(200);
+    ImGui::SliderInt("GC cache duration (hours)", &state.settings.cs2_gc.cache_hours, 1, 24);
+    hover_tooltip("How long a pulled account stays cached before auto-pull will refresh it. "
+                  "The cache is saved to the vault, so it survives restarts.");
     ImGui::EndDisabled();
 }
 

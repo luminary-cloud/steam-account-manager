@@ -131,11 +131,10 @@ void Cs2GcClient::post_snapshot(GcSession& gc) {
             d.border_rgb = r.border_rgb;
             snap.reward.items.push_back(std::move(d));
         }
-    // Only assert "claimed this week" when this app performed the claim (we have the picked
-    // names). The GC gives no reliable way to tell an in-game claim from "not earned yet"
-    // -- leftover faux ids persist across weeks -- so otherwise fall back to the reset hint.
+    // Cache the picked names for the drop card's "Picked:" line. have_record ties the names to
+    // the store generation they were claimed for, so a record from a past week won't attach to
+    // a freshly generated store (the screen decides "claimed this week" from generation_time).
     const bool have_record = redeemed_gen_time_ == ps.generation_time && !redeemed_names_.empty();
-    snap.reward.claimed = ps.loaded && !reward_pending && have_record;
     if (have_record) snap.reward.claimed_names = redeemed_names_;
 
     const PlayerXp& xp = gc.player_xp();
@@ -150,6 +149,22 @@ void Cs2GcClient::post_snapshot(GcSession& gc) {
         snap.progress.level = xp.level;
         snap.progress.xp_per_level = kXpPerLevel;
         snap.progress.xp_in_level = into % kXpPerLevel;
+    }
+
+    // Resolve the profile's displayed medals/coins (a def_index list) to name + icon.
+    // resolve() reports collectibles as non-storable but still fills name/icon/border, so
+    // synthesizing a def_index-only EconItem reuses the inventory path.
+    snap.featured_medal_defidx = xp.featured_medal_defidx;
+    for (std::uint32_t def : xp.medal_defidx) {
+        EconItem fake;
+        fake.def_index = def;
+        const ResolvedItem r = schema_->resolve(fake);
+        DisplayItem d;
+        d.id = def;
+        d.name = r.name;
+        d.icon_url = r.icon_url;
+        d.border_rgb = r.border_rgb;
+        snap.medals.push_back(std::move(d));
     }
 
     const MissionInfo mi = gc.current_mission();

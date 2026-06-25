@@ -21,6 +21,9 @@
 #include "core/steam_local/loginusers.hpp"
 #include "core/steam_login/mobile_auth.hpp"
 #include "core/steam_login/session.hpp"
+#include "core/steam_login/web_session.hpp"
+#include "core/trade/trade_link_fetch.hpp"
+#include "platform/clipboard.hpp"
 #include "platform/tray_icon.hpp"
 
 namespace sam::app {
@@ -776,6 +779,125 @@ void AppState::refresh_spend(const std::string& id, bool quiet) {
             }
             vault_dirty = true;
             save_vault_if_dirty();
+        });
+    });
+}
+
+void AppState::copy_trade_link(const std::string& id) {
+    auto* acc = find_account(id);
+    if (!acc) return;
+
+    constexpr std::int64_t kTradeLinkCacheSeconds = 7 * 24 * 3600;  // re-fetch weekly
+    const std::int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+
+    auto toast = [this](const std::string& aid, std::string msg, bool warn) {
+        ui::widgets::ToastItem t;
+        t.id = "tradelink-" + aid;
+        t.message = std::move(msg);
+        t.account_id = aid;
+        t.is_warning = warn;
+        const auto n = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        t.expires_at_unix = n + settings.notifications.toast_duration_seconds;
+        toasts.push(std::move(t));
+    };
+
+    const std::string login_name = acc->login;
+    const bool cached = acc->trade_url.has_value() && !acc->trade_url->empty();
+    const std::string cached_url = cached ? *acc->trade_url : std::string{};
+    const bool fresh = cached &&
+        (now - acc->trade_url_fetched_unix) < kTradeLinkCacheSeconds;
+
+    // Fresh cache: copy straight away, no network.
+    if (fresh) {
+        platform::clipboard::set_text(cached_url);
+        toast(id, login_name + ": trade link copied", false);
+        return;
+    }
+
+    // NFA accounts can't mint a web session to scrape, so the best we can do is
+    // hand back a previously-cached link (even if stale).
+    if (acc->is_nfa) {
+        if (cached) {
+            platform::clipboard::set_text(cached_url);
+            toast(id, login_name + ": trade link copied (cached)", false);
+        } else {
+            toast(id, "Trade link: not available for token-only (NFA) accounts", true);
+        }
+        return;
+    }
+    if (acc->steam_id_64 == 0) {
+        toast(id, "Trade link: refresh the account first (no SteamID yet)", true);
+        return;
+    }
+    if (trade_link_fetching_ids.count(id)) return;
+    trade_link_fetching_ids.insert(id);
+
+    // Credentials snapshot for the worker; the vault lives on the UI thread.
+    core::Account creds;
+    creds.login                = acc->login;
+    creds.password             = acc->password;
+    creds.sda                  = acc->sda;
+    creds.steam_id_64          = acc->steam_id_64;
+    creds.session_id           = acc->session_id;
+    creds.refresh_token        = acc->refresh_token;
+    creds.access_token         = acc->access_token;
+    creds.access_token_expires = acc->access_token_expires;
+    creds.steam_login_secure   = acc->steam_login_secure;
+    creds.proxy                = acc->proxy;
+
+    const std::string aid = id;
+    SAM_LOG_INFO("tradelink: fetch requested for '{}'", login_name);
+
+    job_pump::submit([this, aid, login_name, creds, cached_url, now, toast]() mutable {
+        http::ScopedProxy proxy_guard(std::string(creds.proxy.data(), creds.proxy.size()));
+
+        // The privacy page only needs a normal web session (no step-up auth), so a
+        // refreshed steamLoginSecure cookie is enough.
+        std::string err;
+        std::string url;
+        if (!steam_login::ensure_web_session(creds)) {
+            SAM_LOG_WARN("tradelink: no web session for '{}'", login_name);
+            err = "sign-in failed";
+        } else {
+            url = core::trade::fetch_trade_link(creds, &err);
+        }
+
+        // Carry the (possibly refreshed) session back to persist it.
+        crypto::SecureString rt = creds.refresh_token;
+        crypto::SecureString at = creds.access_token;
+        crypto::SecureString ls = creds.steam_login_secure;
+        std::string sid = creds.session_id;
+        const std::int64_t exp = creds.access_token_expires;
+
+        post_ui_callback([this, aid, login_name, url, err, cached_url, now, toast,
+                          rt = std::move(rt), at = std::move(at), ls = std::move(ls),
+                          sid = std::move(sid), exp]() mutable {
+            trade_link_fetching_ids.erase(aid);
+            auto* a = find_account(aid);
+            if (!a) return;
+            if (!rt.empty()) a->refresh_token = std::move(rt);
+            if (!at.empty()) { a->access_token = std::move(at); a->access_token_expires = exp; }
+            if (!ls.empty()) a->steam_login_secure = std::move(ls);
+            if (!sid.empty()) a->session_id = std::move(sid);
+
+            if (!url.empty()) {
+                a->trade_url = url;
+                a->trade_url_fetched_unix = now;
+                vault_dirty = true;
+                save_vault_if_dirty();
+                platform::clipboard::set_text(url);
+                SAM_LOG_INFO("tradelink: '{}' fetched and copied", login_name);
+                toast(aid, login_name + ": trade link copied", false);
+            } else if (!cached_url.empty()) {
+                // Re-fetch failed but we have an older link; better than nothing.
+                platform::clipboard::set_text(cached_url);
+                toast(aid, login_name + ": using cached trade link", true);
+            } else {
+                toast(aid, "Trade link: fetch failed (" +
+                          (err.empty() ? std::string("unknown") : err) + ")", true);
+            }
         });
     });
 }

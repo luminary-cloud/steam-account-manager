@@ -94,13 +94,20 @@ std::span<const std::uint8_t> as_bytes(const std::string& s) {
 }
 
 // Backs up `path` (UTC timestamp suffix) then atomically writes `text`. restrict_acl
-// stays false for Steam-owned files Steam must still read. On first login the file may
-// not exist yet: there is nothing to back up, so just create the parent tree and write.
-// Fills out.message on failure.
+// stays false for Steam-owned files Steam must still read. lock_read_only re-applies the
+// read-only attribute after the write so Steam's shutdown rewrite can't flip our value
+// back; it only kicks in when the file already existed, since locking a brand-new file
+// would block Steam's own first-login setup writes. On first login the file may not exist
+// yet: there is nothing to back up, so just create the parent tree and write. Fills
+// out.message on failure.
 bool backup_and_write(const fs::path& path, const std::string& text, bool restrict_acl,
-                      LoginPrefResult& out) {
+                      bool lock_read_only, LoginPrefResult& out) {
     std::error_code ec;
-    if (fs::is_regular_file(path, ec)) {
+    const bool existed = fs::is_regular_file(path, ec);
+    if (existed) {
+        // A prior run may have locked this file read-only; clear it so the backup copy
+        // and the atomic replace below can overwrite it.
+        platform::set_file_read_only(path, false);
         fs::path bak = path;
         bak += L".bak." + timestamp_suffix();
         fs::copy_file(path, bak, fs::copy_options::overwrite_existing, ec);
@@ -122,6 +129,7 @@ bool backup_and_write(const fs::path& path, const std::string& text, bool restri
         out.message = std::string("write failed: ") + ex.what();
         return false;
     }
+    if (lock_read_only && existed) platform::set_file_read_only(path, true);
     return true;
 }
 
@@ -169,8 +177,11 @@ LoginPrefResult set_news_notify_off(std::uint64_t steam_id_64) {
     upsert_scalar_ci(news, "NotifyAvailableGames", "0");
 
     // localconfig.vdf is read by the main Steam client as the same user, so the default
-    // restricted ACL is fine here (matches cs2_config::apply_launch_options).
-    if (!backup_and_write(path, serialize_root(root), /*restrict_acl=*/true, out)) return out;
+    // restricted ACL is fine here (matches cs2_config::apply_launch_options). Steam
+    // legitimately rewrites this file constantly (game state, etc.), so never lock it.
+    if (!backup_and_write(path, serialize_root(root), /*restrict_acl=*/true,
+                          /*lock_read_only=*/false, out))
+        return out;
 
     out.ok = true;
     out.message = "news notifications disabled";
@@ -211,8 +222,14 @@ LoginPrefResult set_cloud_enabled_off(std::uint64_t steam_id_64) {
     upsert_scalar_ci(steam_blk, "CloudEnabled", "0");
 
     const std::string serialized = serialize_root(root);
-    // Steam-owned cloud file: keep the inherited ACL so Steam's sync can still read it.
-    if (!backup_and_write(shared, serialized, /*restrict_acl=*/false, out)) return out;
+    // Steam-owned cloud file: keep the inherited ACL so Steam's sync can still read it, but
+    // lock it read-only afterwards. Steam otherwise rewrites sharedconfig.vdf from memory on
+    // shutdown and flips CloudEnabled back to 1; read-only makes that rewrite fail so our 0
+    // sticks. Steam can still read a read-only file, so sign-in is unaffected. Only applied
+    // when the file already exists (see backup_and_write).
+    if (!backup_and_write(shared, serialized, /*restrict_acl=*/false,
+                          /*lock_read_only=*/true, out))
+        return out;
 
     out.ok = true;
     out.message = "Steam Cloud disabled";

@@ -82,6 +82,15 @@ struct PreviousSnapshot {
 // (non-expiring) cooldown, which Steam renders as "Never" with Level >= 1.
 inline constexpr std::int64_t kCooldownNever = INT64_MAX;
 
+// A profile medal/coin/badge. The GC returns only a def_index; the name + icon are
+// resolved via the CS2 item schema at pull time and cached here so the detail panel can
+// render them (and they survive restarts) without a live GC connection.
+struct CS2Medal {
+    std::uint32_t def_index = 0;
+    std::string name;
+    std::string icon_url;
+};
+
 // Populated by scraping /gcpd/730.
 struct CS2Status {
     int premier_rating  = -1;
@@ -105,6 +114,11 @@ struct CS2Status {
     std::vector<std::uint64_t> weekly_drop_claimed_ids;
     std::vector<std::string> weekly_drop_claimed_names;
     std::int64_t last_refreshed_unix = 0;
+    // CS2 Game Coordinator pull cache (distinct from the GCPD scrape above). 0 = never
+    // pulled; auto-pull skips an account until now - gc_last_pulled_unix exceeds the TTL.
+    std::int64_t gc_last_pulled_unix = 0;
+    std::uint32_t featured_medal_defidx = 0;  // pinned medal def_index, 0 = none
+    std::vector<CS2Medal> medals;             // displayed medals/coins, resolved name + icon
 };
 
 // "TotalSpend" from help.steampowered.com/accountdata/AccountSpend.
@@ -150,6 +164,7 @@ struct Account {
     TrustLabel trust = TrustLabel::Unset;
     LoginMethod login_method = LoginMethod::Normal;
     std::optional<std::string> trade_url;
+    std::int64_t trade_url_fetched_unix = 0;  // 0 = never fetched; drives the 7-day re-fetch
 
     // Per-account outbound proxy: scheme://[user:pass@]host:port (socks5, http,
     // https), empty = direct. May embed credentials, hence SecureString.

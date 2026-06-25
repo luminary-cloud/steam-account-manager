@@ -90,6 +90,7 @@
     <ClCompile Include="core\steam_spend\spend_parser.cpp"><Filter>core\steam_spend</Filter></ClCompile>
     <ClCompile Include="core\profile\edit.cpp"><Filter>core\profile</Filter></ClCompile>
     <ClCompile Include="core\trade\trade_url.cpp"><Filter>core\trade</Filter></ClCompile>
+    <ClCompile Include="core\trade\trade_link_fetch.cpp"><Filter>core\trade</Filter></ClCompile>
     <ClCompile Include="core\trade\inventory.cpp"><Filter>core\trade</Filter></ClCompile>
     <ClCompile Include="core\trade\offers.cpp"><Filter>core\trade</Filter></ClCompile>
     <ClCompile Include="core\trade\actions.cpp"><Filter>core\trade</Filter></ClCompile>
@@ -378,6 +379,7 @@
     <ClInclude Include="core\profile\edit.hpp"><Filter>core\profile</Filter></ClInclude>
     <ClInclude Include="core\trade\models.hpp"><Filter>core\trade</Filter></ClInclude>
     <ClInclude Include="core\trade\trade_url.hpp"><Filter>core\trade</Filter></ClInclude>
+    <ClInclude Include="core\trade\trade_link_fetch.hpp"><Filter>core\trade</Filter></ClInclude>
     <ClInclude Include="core\trade\inventory.hpp"><Filter>core\trade</Filter></ClInclude>
     <ClInclude Include="core\trade\offers.hpp"><Filter>core\trade</Filter></ClInclude>
     <ClInclude Include="core\trade\actions.hpp"><Filter>core\trade</Filter></ClInclude>

@@ -95,15 +95,22 @@ bool tokens_changed(const core::Account& before, const core::Account& after) {
            before.session_id != after.session_id;
 }
 
-void push_toast(app::AppState& state, const std::string& id, const std::string& msg,
-                const std::string& account_id, bool warning) {
+// expires_at == 0 keeps the toast sticky; otherwise it is an absolute unix expiry.
+void push_toast_at(app::AppState& state, const std::string& id, const std::string& msg,
+                   const std::string& account_id, bool warning, std::int64_t expires_at) {
     ui::widgets::ToastItem t;
     t.id = id;
     t.message = msg;
     t.account_id = account_id;
     t.is_warning = warning;
-    t.expires_at_unix = now_unix() + state.settings.notifications.toast_duration_seconds;
+    t.expires_at_unix = expires_at;
     state.toasts.push(std::move(t));
+}
+
+void push_toast(app::AppState& state, const std::string& id, const std::string& msg,
+                const std::string& account_id, bool warning) {
+    push_toast_at(state, id, msg, account_id, warning,
+                  now_unix() + state.settings.notifications.toast_duration_seconds);
 }
 
 void recount_incoming(app::AppState& state) {

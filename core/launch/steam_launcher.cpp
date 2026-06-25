@@ -66,8 +66,10 @@ bool shutdown_running_steam(const std::filesystem::path& exe_path, LaunchResult&
 }
 
 LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_options,
-                            bool disable_cloud_on_login, bool disable_news_on_login) {
-    // NFA accounts have no password to type; sign them in via token injection.
+                            bool disable_cloud_on_login, bool disable_news_on_login,
+                            bool remember_password) {
+    // NFA accounts have no password to type; sign them in via token injection. The token
+    // path needs a remembered session to auto-sign-in, so it ignores remember_password.
     if (a.is_nfa)
         return launch_account_with_token(a, cs2_launch_options, disable_cloud_on_login,
                                          disable_news_on_login);
@@ -123,7 +125,7 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
     creds.login = sam::crypto::make_secure(a.login);
     creds.password = a.password;
     if (a.sda) creds.shared_secret = a.sda->shared_secret;
-    creds.remember_password = true;
+    creds.remember_password = remember_password;
     creds.expected_account_id = static_cast<std::uint32_t>(a.steam_id_64 & 0xFFFFFFFFull);
 
     if (defer_news || defer_cloud) {

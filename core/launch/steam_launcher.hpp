@@ -34,10 +34,15 @@ struct LaunchResult {
 //
 // `disable_cloud_on_login` / `disable_news_on_login`, when set, force Steam Cloud and
 // the new-release news notification off for the account in the same Steam-down window.
+//
+// `remember_password` controls the login window's "Remember me" checkbox for password
+// logins (off => Steam doesn't save the session). It has no effect on NFA accounts, whose
+// token sign-in requires a remembered session regardless.
 LaunchResult launch_account(const core::Account& account,
                             std::string_view cs2_launch_options = {},
                             bool disable_cloud_on_login = false,
-                            bool disable_news_on_login = false);
+                            bool disable_news_on_login = false,
+                            bool remember_password = true);
 
 // Resolves the configured steam.exe path, or returns nullopt and fills `out`
 // with a SteamNotInstalled reason. Shared by the password and token paths.

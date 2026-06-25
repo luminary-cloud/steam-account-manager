@@ -24,33 +24,19 @@ namespace sam::ui::screens {
 
 namespace {
 
-// The account's client-audience refresh token, or empty when it can only mint a
-// mobile/web session (which the CM rejects). NFA token accounts qualify today.
-std::string client_token(const core::Account& a) {
-    // Prefer the dedicated SteamClient token (password accounts); fall back to the
-    // primary refresh token when it already carries the client audience (NFA).
-    if (!a.cm_refresh_token.empty() &&
-        steam_login::jwt_audience(a.cm_refresh_token).find("client") != std::string::npos)
-        return std::string(a.cm_refresh_token.begin(), a.cm_refresh_token.end());
-    if (steam_login::jwt_audience(a.refresh_token).find("client") != std::string::npos)
-        return std::string(a.refresh_token.begin(), a.refresh_token.end());
-    return {};
-}
-
 // True when this account's weekly drop has been claimed for the current weekly period.
-// The GC offers no explicit "claimed" flag, so combine the signals we do have:
-//   - reward.claimed: this app performed the claim (we cached the picked names),
-//   - marked_claimed: an in-app claim or the manual "Mark claimed" menu set the reset time,
-//   - earned_this_week: the personal store carries a generation_time inside the current week
-//     (it is regenerated when a drop is granted on rank-up, and persists across weeks
-//     otherwise), so a zero balance with a this-week store means it was already taken.
-bool drop_claimed_this_week(const cs2_gc::WeeklyReward& reward, const core::Account& acct) {
+// The GC has no explicit "claimed" flag, so the loaded store's generation_time is the source
+// of truth: it is set when a drop is granted on rank-up, so a zero balance whose generation
+// falls in the current week (since the last Wednesday reset) means this week's drop was taken.
+// Crucially the GC keeps showing last week's drop after the reset -- same generation, zero
+// balance -- until a new one is granted, so a pre-reset generation must NOT count as claimed;
+// that is what resets the card at the week boundary. The persistent reset marker is kept in
+// step with this in on_snapshot, since account-list contexts have no live store of their own.
+bool drop_claimed_this_week(const cs2_gc::WeeklyReward& reward) {
     if (!reward.loaded || reward.available) return false;
     const std::int64_t now = now_seconds();
     const std::int64_t last_reset = next_weekly_reset(now) - 7 * 86400;
-    const bool earned_this_week = reward.generation_time >= static_cast<std::uint32_t>(last_reset);
-    const bool marked_claimed = acct.cs2.weekly_drop_reset_unix > now;
-    return reward.claimed || marked_claimed || earned_this_week;
+    return reward.generation_time >= static_cast<std::uint32_t>(last_reset);
 }
 
 // Persona name, or the privacy-aware login when there is no persona, matching the label
@@ -189,7 +175,7 @@ void start_client(app::AppState& state, const core::Account& acct) {
     s.status = "Starting";
 
     cs2_gc::Cs2Credentials creds;
-    creds.refresh_token = client_token(acct);
+    creds.refresh_token = app::cs2_client_token(acct);
     creds.steam_id = acct.steam_id_64;
     creds.proxy = std::string(acct.proxy.begin(), acct.proxy.end());
     creds.claimed_generation = acct.cs2.weekly_drop_claimed_generation;
@@ -213,18 +199,23 @@ void start_client(app::AppState& state, const core::Account& acct) {
         st->post_ui_callback([st, aid, valid, snap = std::move(snap)]() mutable {
             if (!valid()) return;
             st->cs2_screen->snapshot = std::move(snap);
-            // Reflect an externally-observed weekly-drop claim in the vault so the
-            // account-list marker lights up the way on_reward_claimed does for in-app
-            // claims. Guarded by the reset time so it writes at most once per period.
+            st->apply_gc_snapshot_cache(aid, st->cs2_screen->snapshot);
+            // Keep the persistent weekly-drop marker (what the account list reads, with no
+            // live store of its own) in step with the GC store: light it once this week's drop
+            // is taken, and clear it after a new week has reset even while the GC still shows
+            // last week's drop. Gated on the setting; manual marking owns it when off.
             core::Account* acc = st->find_account(aid);
             if (acc == nullptr) return;
-            const std::int64_t now = now_seconds();
-            if (st->settings.cs2_gc.auto_mark_claimed &&
-                acc->cs2.weekly_drop_reset_unix <= now &&
-                drop_claimed_this_week(st->cs2_screen->snapshot.reward, *acc)) {
-                acc->cs2.weekly_drop_reset_unix = next_weekly_reset(now);
-                st->vault_dirty = true;
-                st->save_vault_if_dirty();
+            const cs2_gc::WeeklyReward& reward = st->cs2_screen->snapshot.reward;
+            if (st->settings.cs2_gc.auto_mark_claimed && reward.loaded && !reward.available) {
+                const std::int64_t now = now_seconds();
+                const bool claimed = drop_claimed_this_week(reward);
+                const bool marked = acc->cs2.weekly_drop_reset_unix > now;
+                if (claimed != marked) {
+                    acc->cs2.weekly_drop_reset_unix = claimed ? next_weekly_reset(now) : 0;
+                    st->vault_dirty = true;
+                    st->save_vault_if_dirty();
+                }
             }
         });
     };
@@ -490,7 +481,7 @@ void draw_inventory(Cs2ScreenState& s, float width) {
 
 // Weekly-drop card: the claim UI while a drop is redeemable, else the level-progress bar
 // plus the claimed/not-ready status (see drop_claimed_this_week for the detection).
-void draw_weekly_drop(Cs2ScreenState& s, const core::Account& acct, float width) {
+void draw_weekly_drop(Cs2ScreenState& s, float width) {
     ImGui::BeginChild("##cs2_drop", ImVec2(width, 0.0F),
                       ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
     ImGui::TextUnformatted("Weekly drop");
@@ -539,7 +530,7 @@ void draw_weekly_drop(Cs2ScreenState& s, const core::Account& acct, float width)
     } else {
         // A headline line above the bar so this card's progress bar lines up with the
         // mission card's (which has its name line above its bar).
-        const bool claimed = drop_claimed_this_week(reward, acct);
+        const bool claimed = drop_claimed_this_week(reward);
         std::string names;
         if (claimed)
             for (const std::string& n : reward.claimed_names) {
@@ -659,7 +650,7 @@ void draw_cs2(app::AppState& state) {
     }
     Cs2ScreenState& s = *state.cs2_screen;
 
-    if (client_token(*acct).empty()) {
+    if (app::cs2_client_token(*acct).empty()) {
         if (acct->password.empty()) {
             ImGui::TextWrapped("This account needs a one-time CS2 client sign-in, but no password is "
                                "stored. Add it through Full Login first.");
@@ -750,7 +741,7 @@ void draw_cs2(app::AppState& state) {
     // SameLine.
     const auto& gc = state.settings.cs2_gc;
     std::vector<std::function<void(float)>> cards;
-    if (gc.show_weekly_drop)    cards.push_back([&](float w) { draw_weekly_drop(s, *acct, w); });
+    if (gc.show_weekly_drop)    cards.push_back([&](float w) { draw_weekly_drop(s, w); });
     if (gc.show_weekly_mission) cards.push_back([&](float w) { draw_weekly_mission(s, w); });
     if (gc.show_storage_units)  cards.push_back([&](float w) { draw_units(s, w); });
     if (gc.show_inventory)      cards.push_back([&](float w) { draw_inventory(s, w); });

@@ -161,6 +161,15 @@ void from_json(const json& j, BanStatus& b) {
     b.last_refreshed_unix = j.value("last_refreshed_unix", static_cast<std::int64_t>(0));
 }
 
+void to_json(json& j, const CS2Medal& m) {
+    j = json{{"def_index", m.def_index}, {"name", m.name}, {"icon_url", m.icon_url}};
+}
+void from_json(const json& j, CS2Medal& m) {
+    m.def_index = j.value("def_index", static_cast<std::uint32_t>(0));
+    m.name      = j.value("name", std::string{});
+    m.icon_url  = j.value("icon_url", std::string{});
+}
+
 void to_json(json& j, const CS2Status& c) {
     j = json{
         {"premier_rating",       c.premier_rating},
@@ -178,6 +187,9 @@ void to_json(json& j, const CS2Status& c) {
         {"weekly_drop_claimed_ids",   c.weekly_drop_claimed_ids},
         {"weekly_drop_claimed_names", c.weekly_drop_claimed_names},
         {"last_refreshed_unix",  c.last_refreshed_unix},
+        {"gc_last_pulled_unix",  c.gc_last_pulled_unix},
+        {"featured_medal_defidx", c.featured_medal_defidx},
+        {"medals",               c.medals},
     };
 }
 void to_json(json& j, const PreviousSnapshot& p) {
@@ -220,6 +232,9 @@ void from_json(const json& j, CS2Status& c) {
     c.weekly_drop_claimed_names =
         j.value("weekly_drop_claimed_names", std::vector<std::string>{});
     c.last_refreshed_unix   = j.value("last_refreshed_unix", static_cast<std::int64_t>(0));
+    c.gc_last_pulled_unix   = j.value("gc_last_pulled_unix", static_cast<std::int64_t>(0));
+    c.featured_medal_defidx = j.value("featured_medal_defidx", static_cast<std::uint32_t>(0));
+    c.medals                = j.value("medals", std::vector<CS2Medal>{});
 }
 
 void to_json(json& j, const ExternalFundsStatus& f) {
@@ -260,6 +275,7 @@ void to_json(json& j, const Account& a) {
     j["trust"]                = static_cast<int>(a.trust);
     j["login_method"]         = static_cast<int>(a.login_method);
     if (a.trade_url.has_value()) j["trade_url"] = *a.trade_url;
+    if (a.trade_url_fetched_unix) j["trade_url_fetched_unix"] = a.trade_url_fetched_unix;
     j["proxy"]                = secure_to_string(a.proxy);
     j["web"]                  = a.web;
     j["bans"]                 = a.bans;
@@ -298,6 +314,7 @@ void from_json(const json& j, Account& a) {
     if (j.contains("trade_url") && j["trade_url"].is_string()) {
         a.trade_url = j["trade_url"].get<std::string>();
     }
+    a.trade_url_fetched_unix = j.value("trade_url_fetched_unix", std::int64_t{0});
     a.proxy = string_to_secure(j.value("proxy", std::string{}));
     if (j.contains("web"))  a.web  = j.at("web").get<WebProfile>();
     if (j.contains("bans")) a.bans = j.at("bans").get<BanStatus>();
