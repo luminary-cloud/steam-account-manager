@@ -322,7 +322,8 @@ void draw_accounts(app::AppState& state) {
     if (state.gc_autopull.active) {
         if (action_button("Stop GC pull")) state.cancel_gc_autopull();
         ImGui::SameLine();
-        ImGui::TextDisabled("Pulling GC %d/%d", state.gc_autopull.done, state.gc_autopull.total);
+        ImGui::TextDisabled("Pulling GC %d/%d", state.gc_autopull.received,
+                            state.gc_autopull.total);
     } else {
         ImGui::BeginDisabled(!state.settings.cs2_gc.enabled);
         if (action_button("Refresh GC")) state.start_gc_autopull();
@@ -331,9 +332,9 @@ void draw_accounts(app::AppState& state) {
             if (!state.settings.cs2_gc.enabled)
                 set_tooltip("Enable the CS2 Game Coordinator in Settings to use auto-pull.");
             else
-                set_tooltip("Pull CS2 GC data (medals, level, weekly drop) for every account, "
-                            "signing in where needed. Skips the account signed in to Steam on "
-                            "this PC and any still within the cache window.");
+                set_tooltip("Pull CS2 medals and profile level for every account: signs in one "
+                            "account and queries the rest by Steam ID. Skips accounts still "
+                            "within the cache window.");
         }
     }
     if (state.settings.info.show_external_funds) {

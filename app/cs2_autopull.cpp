@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -20,12 +22,12 @@ namespace {
 
 using steady_clock = std::chrono::steady_clock;
 
-// One account in flight at a time, with a gap between them, plus per-phase ceilings so a
-// hung sign-in or pull can't stall the whole sweep. This is the rate limiting.
-constexpr auto kInterAccountDelay = std::chrono::seconds(6);
+// Per-phase ceilings so a hung sign-in or connect can't stall the sweep. The puller pulls
+// every profile over one session, so there is no inter-account delay any more.
 constexpr auto kSigninTimeout = std::chrono::seconds(45);
-constexpr auto kPullTimeout = std::chrono::seconds(75);
+constexpr auto kConnectTimeout = std::chrono::seconds(90);  // matches GcSession::launch's deadline
 constexpr std::int64_t kTokenExpiryMargin = 300;  // re-mint a client token this early
+constexpr int kMaxPullerAttempts = 3;  // distinct accounts to try as the puller before giving up
 
 std::int64_t now_unix() {
     return std::chrono::duration_cast<std::chrono::seconds>(
@@ -46,7 +48,7 @@ std::int64_t client_token_expiry(const core::Account& a) {
 }
 
 // True when the account has no usable client token, or its token expires within the margin
-// (so the GC connect would be rejected) -- i.e. a sign-in is needed before pulling.
+// (so the GC connect would be rejected) -- i.e. a sign-in is needed before connecting.
 bool needs_signin(const core::Account& a, std::int64_t now) {
     if (cs2_client_token(a).empty()) return true;
     const std::int64_t exp = client_token_expiry(a);
@@ -64,101 +66,149 @@ bool is_manually_connected(const AppState& st, const std::string& aid) {
     return st.cs2_screen && st.cs2_screen->client && st.cs2_screen->account_id == aid;
 }
 
-// Retire the live client (if any), reset per-account state, advance the queue index, and
-// arm the inter-account delay.
-void finish_current(GcAutoPull& g, steady_clock::time_point now) {
-    if (g.client) cs2_gc::retire(std::move(g.client));
-    g.phase = GcAutoPull::Phase::Idle;
-    g.current_id.clear();
-    g.got_data = false;
-    g.signin_pending = false;
-    g.signin_ok = false;
-    ++g.done;
-    g.next_start = now + kInterAccountDelay;
+// Forward declarations for the puller state machine (mutually recursive on failure).
+void start_puller(AppState& st, GcAutoPull& g, steady_clock::time_point now);
+void advance_puller(AppState& st, GcAutoPull& g, steady_clock::time_point now);
+void begin_connect(AppState& st, GcAutoPull& g);
+void end_autopull(GcAutoPull& g, std::string status);
+
+// Accounts eligible to BE the puller, best first: a ready client token (no sign-in) before
+// those that must sign in. Never the live Steam account (the puller announces games_played
+// and would fight the running client) nor an account already connected on the manual screen
+// (avoids a second session for the same account). Those two can still be pull TARGETS.
+std::vector<std::string> build_puller_candidates(const AppState& st, std::int64_t now) {
+    std::vector<std::string> ready;
+    std::vector<std::string> signin;
+    for (const auto& a : st.vault.accounts) {
+        if (a.steam_id_64 == 0) continue;
+        if (is_active_steam_user(a)) continue;
+        if (is_manually_connected(st, a.id)) continue;
+        if (!needs_signin(a, now)) ready.push_back(a.id);
+        else if (!a.password.empty()) signin.push_back(a.id);
+    }
+    ready.insert(ready.end(), signin.begin(), signin.end());
+    return ready;
 }
 
-// Phase B: open a GC session for the current account and stream its data into the cache.
-void begin_pull_phase(AppState& st, GcAutoPull& g) {
-    core::Account* a = st.find_account(g.current_id);
+// Open the GC via the current puller and wire the batch callbacks. All callbacks run on the
+// client worker thread, so each marshals onto the UI thread and re-checks gc_autopull.active.
+void begin_connect(AppState& st, GcAutoPull& g) {
+    core::Account* a = st.find_account(g.puller_id);
     if (a == nullptr) {
-        finish_current(g, steady_clock::now());
+        advance_puller(st, g, steady_clock::now());
         return;
     }
-    g.phase = GcAutoPull::Phase::Pulling;
+    g.phase = GcAutoPull::Phase::Connecting;
     g.phase_started = steady_clock::now();
-    g.got_data = false;
-    g.status = "Pulling " + a->login;
-    SAM_LOG_INFO("gc-autopull: pulling '{}'", a->login);
+    g.connected = false;
+    g.batch_done = false;
+    g.status = "Connecting to CS2 via " + a->login;
+    SAM_LOG_INFO("gc-autopull: connecting GC via puller '{}'", a->login);
 
     cs2_gc::Cs2Credentials creds;
     creds.refresh_token = cs2_client_token(*a);
     creds.steam_id = a->steam_id_64;
     creds.proxy = std::string(a->proxy.begin(), a->proxy.end());
-    creds.claimed_generation = a->cs2.weekly_drop_claimed_generation;
-    creds.claimed_ids = a->cs2.weekly_drop_claimed_ids;
-    creds.claimed_names = a->cs2.weekly_drop_claimed_names;
 
     AppState* stp = &st;
-    const std::string aid = g.current_id;
     cs2_gc::Cs2Callbacks cb;
-    cb.on_status = [stp, aid](std::string text) {
-        stp->post_ui_callback([stp, aid, text = std::move(text)] {
-            if (stp->gc_autopull.current_id == aid) stp->gc_autopull.status = std::move(text);
+    cb.on_status = [stp](std::string text) {
+        stp->post_ui_callback([stp, text = std::move(text)] {
+            GcAutoPull& g = stp->gc_autopull;
+            if (!g.active) return;
+            g.status = text;
+            if (text == "Ready") g.connected = true;
         });
     };
-    cb.on_snapshot = [stp, aid](cs2_gc::Snapshot snap) {
-        stp->post_ui_callback([stp, aid, snap = std::move(snap)]() mutable {
-            stp->apply_gc_snapshot_cache(aid, snap);
-            // A valid progress block means the profile (and so the medals) arrived; this
-            // account is done. The tick loop retires the client and moves on.
-            if (stp->gc_autopull.current_id == aid && snap.progress.valid)
-                stp->gc_autopull.got_data = true;
+    cb.on_profile = [stp](cs2_gc::ProfilePull pp) {
+        stp->post_ui_callback([stp, pp = std::move(pp)]() mutable {
+            GcAutoPull& g = stp->gc_autopull;
+            if (!g.active) return;
+            auto it = g.targets.find(pp.account_id);
+            if (it == g.targets.end()) return;  // not a target (or already applied)
+            cs2_gc::Snapshot snap;
+            snap.progress = pp.progress;
+            snap.medals = std::move(pp.medals);
+            snap.featured_medal_defidx = pp.featured_medal_defidx;
+            stp->apply_gc_snapshot_cache(it->second, snap);
+            ++g.received;
+            g.status = "Pulling GC " + std::to_string(g.received) + "/" + std::to_string(g.total);
         });
     };
-    cb.on_error = [stp, aid](std::string err) {
-        stp->post_ui_callback([stp, aid, err = std::move(err)] {
-            SAM_LOG_WARN("gc-autopull: '{}' error: {}", aid, err);
-            if (stp->gc_autopull.current_id == aid) stp->gc_autopull.got_data = true;
+    cb.on_profiles_done = [stp](int received, int requested) {
+        stp->post_ui_callback([stp, received, requested] {
+            GcAutoPull& g = stp->gc_autopull;
+            if (!g.active) return;
+            g.batch_done = true;
+            SAM_LOG_INFO("gc-autopull: batch complete {}/{}", received, requested);
+        });
+    };
+    cb.on_error = [stp](std::string err) {
+        stp->post_ui_callback([stp, err = std::move(err)] {
+            GcAutoPull& g = stp->gc_autopull;
+            if (!g.active) return;
+            SAM_LOG_WARN("gc-autopull: puller error: {}", err);
+            g.batch_done = true;  // Pulling ends; Connecting falls back to the next candidate
         });
     };
     g.client = std::make_unique<cs2_gc::Cs2GcClient>(std::move(creds), std::move(cb));
 }
 
-// Start the next queued account: re-validate the live skips, then either run the automatic
-// sign-in (Phase A) or jump straight to the pull (Phase B).
-void start_current_account(AppState& st, GcAutoPull& g, steady_clock::time_point now) {
-    const std::string aid = g.queue[static_cast<std::size_t>(g.done)];
+// Start the candidate at puller_idx: sign it in first if its client token is missing/stale,
+// otherwise connect straight away.
+void start_puller(AppState& st, GcAutoPull& g, steady_clock::time_point now) {
+    const std::string aid = g.puller_candidates[g.puller_idx];
     core::Account* a = st.find_account(aid);
-    if (a == nullptr || a->steam_id_64 == 0 || is_active_steam_user(*a) ||
-        is_manually_connected(st, aid)) {
-        ++g.done;  // consume the slot; nothing started, so no inter-account delay
+    if (a == nullptr) {  // vanished; skip to the next candidate
+        advance_puller(st, g, now);
         return;
     }
-
-    g.current_id = aid;
+    g.puller_id = aid;
     g.phase_started = now;
+    g.connected = false;
+    g.batch_done = false;
     if (needs_signin(*a, now_unix())) {
-        if (a->password.empty()) {  // no stored password -> can't auto-sign-in
-            SAM_LOG_INFO("gc-autopull: skip '{}' (needs manual CS2 sign-in)", a->login);
-            g.current_id.clear();
-            ++g.done;
-            return;
-        }
         g.phase = GcAutoPull::Phase::SigningIn;
         g.signin_pending = true;
         g.signin_ok = false;
         g.status = "Signing in " + a->login;
-        SAM_LOG_INFO("gc-autopull: signing in '{}'", a->login);
+        SAM_LOG_INFO("gc-autopull: signing in puller '{}'", a->login);
         AppState* stp = &st;
         st.acquire_cm_token(aid, [stp, aid](bool ok, std::string err) {
-            if (stp->gc_autopull.current_id != aid) return;  // run moved on / cancelled
+            if (!stp->gc_autopull.active || stp->gc_autopull.puller_id != aid) return;
             stp->gc_autopull.signin_pending = false;
             stp->gc_autopull.signin_ok = ok;
-            if (!ok) SAM_LOG_WARN("gc-autopull: sign-in failed for '{}': {}", aid, err);
+            if (!ok) SAM_LOG_WARN("gc-autopull: puller sign-in failed for '{}': {}", aid, err);
         });
         return;
     }
-    begin_pull_phase(st, g);
+    begin_connect(st, g);
+}
+
+// A puller failed (sign-in, connect, or early drop); retire it and try the next candidate,
+// ending the sweep once the list is exhausted or the attempt cap is hit.
+void advance_puller(AppState& st, GcAutoPull& g, steady_clock::time_point now) {
+    if (g.client) cs2_gc::retire(std::move(g.client));
+    g.connected = false;
+    g.signin_pending = false;
+    g.batch_done = false;
+    ++g.puller_idx;
+    if (g.puller_idx >= g.puller_candidates.size() ||
+        g.puller_idx >= static_cast<std::size_t>(kMaxPullerAttempts)) {
+        end_autopull(g, "GC auto-pull: could not reach the CS2 GC");
+        return;
+    }
+    start_puller(st, g, now);
+}
+
+void end_autopull(GcAutoPull& g, std::string status) {
+    if (g.client) cs2_gc::retire(std::move(g.client));  // always our own puller, never the manual client
+    g.active = false;
+    g.phase = GcAutoPull::Phase::Idle;
+    g.connected = false;
+    g.signin_pending = false;
+    g.status = std::move(status);
+    SAM_LOG_INFO("gc-autopull: {} ({} of {} applied)", g.status, g.received, g.total);
 }
 
 }  // namespace
@@ -185,39 +235,44 @@ void AppState::start_gc_autopull() {
     const std::int64_t now = now_unix();
     const int hours = std::clamp(settings.cs2_gc.cache_hours, 1, 24);
     const std::int64_t ttl = static_cast<std::int64_t>(hours) * 3600;
-    const std::string manual_id =
-        (cs2_screen && cs2_screen->client) ? cs2_screen->account_id : std::string{};
 
+    // Targets: every account with a resolved SteamID whose cache is stale. The live Steam
+    // user and the manually-connected account are included (reading a public profile is
+    // harmless and refreshes their card for free) -- they just can't be the puller.
     int skipped = 0;
-    std::vector<std::string> queue;
+    std::unordered_map<std::uint32_t, std::string> targets;
     for (const auto& a : vault.accounts) {
-        if (a.steam_id_64 == 0) continue;  // no resolved SteamID -> can't reach the GC
-        if (is_active_steam_user(a)) { ++skipped; continue; }
-        if (!manual_id.empty() && a.id == manual_id) { ++skipped; continue; }
-        if (a.cs2.gc_last_pulled_unix != 0 && now - a.cs2.gc_last_pulled_unix < ttl)
-            continue;  // cache still fresh
-        if (needs_signin(a, now) && a.password.empty()) {
-            SAM_LOG_INFO("gc-autopull: skip '{}' (needs manual CS2 sign-in)", a.login);
-            ++skipped;
+        if (a.steam_id_64 == 0) continue;  // no resolved SteamID -> can't be addressed
+        if (a.cs2.gc_last_pulled_unix != 0 && now - a.cs2.gc_last_pulled_unix < ttl) {
+            ++skipped;  // cache still fresh
             continue;
         }
-        queue.push_back(a.id);
+        targets[static_cast<std::uint32_t>(a.steam_id_64 & 0xffffffffULL)] = a.id;
     }
 
-    if (queue.empty()) {
+    if (targets.empty()) {
         gc_autopull.status =
-            "GC auto-pull: nothing to do (" + std::to_string(skipped) + " skipped)";
-        SAM_LOG_INFO("gc-autopull: nothing to pull ({} skipped)", skipped);
+            "GC auto-pull: nothing to do (" + std::to_string(skipped) + " fresh)";
+        SAM_LOG_INFO("gc-autopull: nothing to pull ({} fresh)", skipped);
+        return;
+    }
+
+    std::vector<std::string> pullers = build_puller_candidates(*this, now);
+    if (pullers.empty()) {
+        gc_autopull.status = "GC auto-pull: no account can reach the CS2 GC";
+        SAM_LOG_INFO("gc-autopull: no eligible puller account");
         return;
     }
 
     gc_autopull.active = true;
-    gc_autopull.queue = std::move(queue);
-    gc_autopull.total = static_cast<int>(gc_autopull.queue.size());
+    gc_autopull.targets = std::move(targets);
+    gc_autopull.total = static_cast<int>(gc_autopull.targets.size());
     gc_autopull.skipped = skipped;
+    gc_autopull.puller_candidates = std::move(pullers);
     gc_autopull.status = "Starting GC auto-pull";
-    gc_autopull.next_start = steady_clock::now();
-    SAM_LOG_INFO("gc-autopull: queued {} account(s), {} skipped", gc_autopull.total, skipped);
+    SAM_LOG_INFO("gc-autopull: {} target(s), {} fresh, {} puller candidate(s)",
+                 gc_autopull.total, skipped, gc_autopull.puller_candidates.size());
+    start_puller(*this, gc_autopull, steady_clock::now());
 }
 
 void AppState::tick_gc_autopull() {
@@ -227,34 +282,48 @@ void AppState::tick_gc_autopull() {
 
     switch (g.phase) {
         case GcAutoPull::Phase::SigningIn:
-            if (!g.signin_pending) {
-                if (g.signin_ok) begin_pull_phase(*this, g);
-                else finish_current(g, now);
-            } else if (now - g.phase_started > kSigninTimeout) {
-                SAM_LOG_WARN("gc-autopull: sign-in timed out for '{}'", g.current_id);
-                finish_current(g, now);
+            if (g.signin_pending) {
+                if (now - g.phase_started > kSigninTimeout) {
+                    SAM_LOG_WARN("gc-autopull: puller sign-in timed out for '{}'", g.puller_id);
+                    advance_puller(*this, g, now);
+                }
+            } else if (g.signin_ok) {
+                begin_connect(*this, g);
+            } else {
+                advance_puller(*this, g, now);
             }
             return;
-        case GcAutoPull::Phase::Pulling:
-            if (g.got_data) {
-                finish_current(g, now);
-            } else if (now - g.phase_started > kPullTimeout) {
-                SAM_LOG_WARN("gc-autopull: pull timed out for '{}'", g.current_id);
-                finish_current(g, now);
+        case GcAutoPull::Phase::Connecting:
+            if (g.connected) {
+                std::vector<std::uint32_t> ids;
+                ids.reserve(g.targets.size());
+                for (const auto& kv : g.targets) ids.push_back(kv.first);
+                if (g.client) g.client->pull_profiles(std::move(ids));
+                g.phase = GcAutoPull::Phase::Pulling;
+                g.phase_started = now;
+                g.status = "Pulling GC 0/" + std::to_string(g.total);
+            } else if (g.batch_done) {  // an on_error landed before "Ready"
+                advance_puller(*this, g, now);
+            } else if (now - g.phase_started > kConnectTimeout) {
+                SAM_LOG_WARN("gc-autopull: GC connect timed out via '{}'", g.puller_id);
+                advance_puller(*this, g, now);
             }
             return;
+        case GcAutoPull::Phase::Pulling: {
+            // Allow the batch its paced duration (~0.4s/account) plus slack before bailing.
+            const auto limit =
+                std::chrono::seconds(30) + std::chrono::milliseconds(400) * g.total;
+            if (g.batch_done) {
+                end_autopull(g, "GC auto-pull done");
+            } else if (now - g.phase_started > limit) {
+                SAM_LOG_WARN("gc-autopull: batch timed out");
+                end_autopull(g, "GC auto-pull timed out");
+            }
+            return;
+        }
         case GcAutoPull::Phase::Idle:
-            break;
+            return;
     }
-
-    if (now < g.next_start) return;  // inter-account delay
-    if (g.done >= g.total) {
-        g.active = false;
-        g.status = "GC auto-pull done";
-        SAM_LOG_INFO("gc-autopull: complete ({} processed, {} pre-skipped)", g.done, g.skipped);
-        return;
-    }
-    start_current_account(*this, g, now);
 }
 
 void AppState::cancel_gc_autopull() {
@@ -262,7 +331,8 @@ void AppState::cancel_gc_autopull() {
     if (gc_autopull.client) cs2_gc::retire(std::move(gc_autopull.client));
     gc_autopull.active = false;
     gc_autopull.phase = GcAutoPull::Phase::Idle;
-    gc_autopull.current_id.clear();
+    gc_autopull.connected = false;
+    gc_autopull.signin_pending = false;
     gc_autopull.status = "GC auto-pull stopped";
     SAM_LOG_INFO("gc-autopull: cancelled");
 }

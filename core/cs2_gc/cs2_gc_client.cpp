@@ -19,6 +19,47 @@
 
 namespace sam::cs2_gc {
 
+namespace {
+
+// CS2 profile level/XP -> the display progress (level + XP into the current level).
+// player_cur_xp is offset by a known base; 5000 XP per level.
+PlayerProgress make_progress(const PlayerXp& xp) {
+    PlayerProgress p;
+    if (!xp.valid) return p;
+    constexpr int kXpBase = 327680000;
+    constexpr int kXpPerLevel = 5000;
+    int into = xp.cur_xp - kXpBase;
+    if (into < 0) into = 0;
+    p.valid = true;
+    p.level = xp.level;
+    p.xp_per_level = kXpPerLevel;
+    p.xp_in_level = into % kXpPerLevel;
+    return p;
+}
+
+// Resolve a profile's displayed medal/coin def_indices to name + icon. resolve() reports
+// collectibles as non-storable but still fills name/icon/border, so a def_index-only
+// EconItem reuses the inventory resolution path.
+std::vector<DisplayItem> resolve_medals(const ItemSchema& schema,
+                                        const std::vector<std::uint32_t>& defidx) {
+    std::vector<DisplayItem> out;
+    out.reserve(defidx.size());
+    for (std::uint32_t def : defidx) {
+        EconItem fake;
+        fake.def_index = def;
+        const ResolvedItem r = schema.resolve(fake);
+        DisplayItem d;
+        d.id = def;
+        d.name = r.name;
+        d.icon_url = r.icon_url;
+        d.border_rgb = r.border_rgb;
+        out.push_back(std::move(d));
+    }
+    return out;
+}
+
+}  // namespace
+
 Cs2GcClient::Cs2GcClient(Cs2Credentials creds, Cs2Callbacks cb)
     : creds_(std::move(creds)), cb_(std::move(cb)) {
     thread_ = std::thread([this] { run(); });
@@ -67,6 +108,11 @@ void Cs2GcClient::claim_reward(std::vector<std::uint64_t> item_ids) {
 }
 
 void Cs2GcClient::refresh() { enqueue({Op::Refresh, 0, 0, {}}); }
+
+void Cs2GcClient::pull_profiles(std::vector<std::uint32_t> account_ids) {
+    std::vector<std::uint64_t> ids(account_ids.begin(), account_ids.end());
+    enqueue({Op::PullProfiles, 0, 0, std::move(ids)});
+}
 
 void Cs2GcClient::post_snapshot(GcSession& gc) {
     Snapshot snap;
@@ -138,34 +184,9 @@ void Cs2GcClient::post_snapshot(GcSession& gc) {
     if (have_record) snap.reward.claimed_names = redeemed_names_;
 
     const PlayerXp& xp = gc.player_xp();
-    if (xp.valid) {
-        // player_cur_xp is offset by a known base; 5000 XP per level. Confirm the base
-        // against the in-game number via the profile log.
-        constexpr int kXpBase = 327680000;
-        constexpr int kXpPerLevel = 5000;
-        int into = xp.cur_xp - kXpBase;
-        if (into < 0) into = 0;
-        snap.progress.valid = true;
-        snap.progress.level = xp.level;
-        snap.progress.xp_per_level = kXpPerLevel;
-        snap.progress.xp_in_level = into % kXpPerLevel;
-    }
-
-    // Resolve the profile's displayed medals/coins (a def_index list) to name + icon.
-    // resolve() reports collectibles as non-storable but still fills name/icon/border, so
-    // synthesizing a def_index-only EconItem reuses the inventory path.
+    snap.progress = make_progress(xp);
     snap.featured_medal_defidx = xp.featured_medal_defidx;
-    for (std::uint32_t def : xp.medal_defidx) {
-        EconItem fake;
-        fake.def_index = def;
-        const ResolvedItem r = schema_->resolve(fake);
-        DisplayItem d;
-        d.id = def;
-        d.name = r.name;
-        d.icon_url = r.icon_url;
-        d.border_rgb = r.border_rgb;
-        snap.medals.push_back(std::move(d));
-    }
+    snap.medals = resolve_medals(*schema_, xp.medal_defidx);
 
     const MissionInfo mi = gc.current_mission();
     if (mi.valid) {
@@ -345,6 +366,63 @@ void Cs2GcClient::run() {
             case Op::Refresh:
                 post_snapshot(gc);
                 break;
+            case Op::PullProfiles: {
+                // Request each account's public profile over this one GC session, pacing the
+                // requests so we never trip a GC throttle, then wait a short tail for late
+                // replies. One login replaces the old login-per-account sweep.
+                constexpr int kPaceMs = 350;          // ~3 requests/sec
+                constexpr int kTailTimeoutMs = 6000;  // grace for stragglers after the last send
+                const int requested = static_cast<int>(cmd.items.size());
+                int received = 0;
+                std::unordered_set<std::uint32_t> pending;
+                for (std::uint64_t id : cmd.items)
+                    pending.insert(static_cast<std::uint32_t>(id));
+
+                auto absorb = [&] {
+                    for (ProfileResult& r : gc.take_profiles()) {
+                        if (pending.erase(r.account_id) == 0) continue;  // dup / unrequested
+                        ++received;
+                        if (!cb_.on_profile) continue;
+                        PlayerXp xp;
+                        xp.valid = true;
+                        xp.level = r.level;
+                        xp.cur_xp = r.cur_xp;
+                        xp.medal_defidx = r.medal_defidx;
+                        xp.featured_medal_defidx = r.featured_medal_defidx;
+                        ProfilePull pp;
+                        pp.account_id = r.account_id;
+                        pp.progress = make_progress(xp);
+                        pp.featured_medal_defidx = r.featured_medal_defidx;
+                        pp.medals = resolve_medals(*schema_, r.medal_defidx);
+                        cb_.on_profile(std::move(pp));
+                    }
+                };
+
+                bool dropped = false;
+                for (std::uint64_t raw : cmd.items) {
+                    if (stop_.load()) break;
+                    gc.request_profile(static_cast<std::uint32_t>(raw));
+                    const auto deadline =
+                        std::chrono::steady_clock::now() + std::chrono::milliseconds(kPaceMs);
+                    while (std::chrono::steady_clock::now() < deadline) {
+                        if (!gc.pump(150)) { dropped = true; break; }
+                        absorb();
+                    }
+                    if (dropped) break;
+                }
+                const auto tail =
+                    std::chrono::steady_clock::now() + std::chrono::milliseconds(kTailTimeoutMs);
+                while (!dropped && !pending.empty() && !stop_.load() &&
+                       std::chrono::steady_clock::now() < tail) {
+                    if (!gc.pump(200)) { dropped = true; break; }
+                    absorb();
+                }
+                // on_profiles_done ends the sweep with whatever arrived; a dropped connection
+                // is reported by the main loop's next pump (and leaves unreplied accounts'
+                // caches untouched).
+                if (cb_.on_profiles_done) cb_.on_profiles_done(received, requested);
+                break;
+            }
         }
     }
 

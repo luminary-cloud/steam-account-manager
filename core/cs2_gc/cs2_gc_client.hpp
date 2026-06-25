@@ -66,6 +66,15 @@ struct Snapshot {
     std::uint32_t featured_medal_defidx = 0;  // pinned medal def_index, 0 = none
 };
 
+// A resolved foreign-profile pull for one account: exactly the slice
+// apply_gc_snapshot_cache consumes (progress + medals + featured), keyed by 32-bit account id.
+struct ProfilePull {
+    std::uint32_t account_id = 0;  // maps to a vault account via steam_id_64 & 0xffffffff
+    PlayerProgress progress;
+    std::vector<DisplayItem> medals;
+    std::uint32_t featured_medal_defidx = 0;
+};
+
 struct Cs2Credentials {
     std::string refresh_token;  // must carry the "client" audience
     std::uint64_t steam_id = 0;
@@ -90,6 +99,10 @@ struct Cs2Callbacks {
     std::function<void(std::uint32_t generation_time, std::vector<std::uint64_t> ids,
                        std::vector<std::string> names)>
         on_reward_claimed;
+    // Batch profile pull (single-puller auto-pull): fired once per account that replied, then
+    // on_profiles_done with the received/requested tallies once the batch finishes.
+    std::function<void(ProfilePull)> on_profile;
+    std::function<void(int received, int requested)> on_profiles_done;
 };
 
 // Owns a warm CM + GC session for one account on a dedicated thread. Connects on
@@ -111,13 +124,18 @@ public:
     // Re-posts a snapshot of the current SO cache (the GC keeps it live, so this just
     // pushes the latest state to the UI). Live changes auto-refresh too; this is manual.
     void refresh();
+    // Request each account's public profile (medals + level/XP) over this one live GC
+    // session, firing on_profile per reply then on_profiles_done. ids = steam_id_64 lower 32.
+    void pull_profiles(std::vector<std::uint32_t> account_ids);
     // Signals the worker to wind down without blocking; the join still happens in the
     // destructor. Use retire() to destroy a client off the UI thread.
     void begin_stop();
     void stop();
 
 private:
-    enum class Op { LoadUnit, MoveIn, MoveOut, MoveInMany, MoveOutMany, ClaimReward, Refresh };
+    enum class Op {
+        LoadUnit, MoveIn, MoveOut, MoveInMany, MoveOutMany, ClaimReward, Refresh, PullProfiles
+    };
     struct Command {
         Op op;
         std::uint64_t unit_id = 0;

@@ -42,6 +42,17 @@ struct PlayerXp {
     std::uint32_t featured_medal_defidx = 0;  // pinned medal def_index, 0 = none
 };
 
+// One profile reply from a ClientRequestPlayersProfile (own or any foreign account_id).
+// Raw GC numbers; the client resolves medal def_indices and the XP->progress mapping.
+struct ProfileResult {
+    std::uint32_t account_id = 0;
+    int level = 0;
+    int cur_xp = 0;
+    int bonus_flags = 0;
+    std::vector<std::uint32_t> medal_defidx;
+    std::uint32_t featured_medal_defidx = 0;
+};
+
 // CS2 weekly recurring mission progress (from the GC SO cache). Per-account, keyed to a
 // period; the name/target come from the mission schedule's templates, matched by id.
 struct RecurringMission {
@@ -83,6 +94,11 @@ public:
     bool pop_notification(GcNotification& out);
     const PersonalStore& personal_store() const { return personal_store_; }
     const PlayerXp& player_xp() const { return player_xp_; }
+    // Request any account's public profile (medals + level/XP) over this live GC session.
+    // Replies land in take_profiles(); the own account also updates player_xp().
+    void request_profile(std::uint32_t account_id);
+    // Move-drain the profile replies accumulated since the last call.
+    std::vector<ProfileResult> take_profiles();
     // The current weekly mission resolved for display (combines the account's mission SO
     // with the schedule template). `valid` is false until both have arrived.
     MissionInfo current_mission() const;
@@ -120,6 +136,7 @@ private:
     std::deque<GcNotification> notifications_;
     PersonalStore personal_store_;
     PlayerXp player_xp_;
+    std::deque<ProfileResult> profile_results_;  // ClientRequestPlayersProfile replies, FIFO
     RecurringMission recurring_mission_;
     std::string current_period_templates_;     // raw template blob for the active period
     std::uint32_t current_period_ = 0;         // schedule period (unix start) containing now

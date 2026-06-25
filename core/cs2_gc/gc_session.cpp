@@ -187,11 +187,23 @@ void GcSession::send_hello() {
     send_gc(GcMsg::ClientHello, hello);
 }
 
-void GcSession::request_players_profile() {
+void GcSession::request_profile(std::uint32_t account_id) {
     CMsgGCCStrike15_v2_ClientRequestPlayersProfile req;
-    req.set_account_id(static_cast<std::uint32_t>(cm_.steam_id() & 0xffffffffULL));
+    req.set_account_id(account_id);
     req.set_request_level(32);
     send_gc(GcMsg::RequestPlayersProfile, req);
+}
+
+void GcSession::request_players_profile() {
+    request_profile(static_cast<std::uint32_t>(cm_.steam_id() & 0xffffffffULL));
+}
+
+std::vector<ProfileResult> GcSession::take_profiles() {
+    std::vector<ProfileResult> out;
+    out.reserve(profile_results_.size());
+    for (auto& r : profile_results_) out.push_back(std::move(r));
+    profile_results_.clear();
+    return out;
 }
 
 void GcSession::request_mission_schedule() {
@@ -430,18 +442,35 @@ void GcSession::on_gc_message(std::uint32_t gc_emsg, const std::string& body) {
         }
         case GcMsg::PlayersProfile: {
             CMsgGCCStrike15_v2_PlayersProfile p;
-            if (!p.ParseFromString(body) || p.account_profiles_size() == 0) return;
-            const auto& a = p.account_profiles(0);
-            player_xp_.level = a.player_level();
-            player_xp_.cur_xp = a.player_cur_xp();
-            player_xp_.bonus_flags = a.player_xp_bonus_flags();
-            if (a.has_medals()) {
-                player_xp_.featured_medal_defidx = a.medals().featured_display_item_defidx();
-                player_xp_.medal_defidx.assign(a.medals().display_items_defidx().begin(),
-                                               a.medals().display_items_defidx().end());
+            if (!p.ParseFromString(body)) return;
+            // A reply carries one profile per requested account; route each by its own
+            // account_id (batch requests interleave, so order isn't reliable).
+            const auto own = static_cast<std::uint32_t>(cm_.steam_id() & 0xffffffffULL);
+            for (const auto& a : p.account_profiles()) {
+                ProfileResult r;
+                r.account_id = a.account_id();
+                r.level = a.player_level();
+                r.cur_xp = a.player_cur_xp();
+                r.bonus_flags = a.player_xp_bonus_flags();
+                if (a.has_medals()) {
+                    r.featured_medal_defidx = a.medals().featured_display_item_defidx();
+                    r.medal_defidx.assign(a.medals().display_items_defidx().begin(),
+                                          a.medals().display_items_defidx().end());
+                }
+                // The session's own profile also feeds player_xp() -- launch()'s wait and the
+                // live screen read it -- and bumps so_seq_ to re-post a snapshot. Foreign
+                // profiles only queue, so a puller never churns snapshots for other accounts.
+                if (r.account_id == own) {
+                    player_xp_.level = r.level;
+                    player_xp_.cur_xp = r.cur_xp;
+                    player_xp_.bonus_flags = r.bonus_flags;
+                    player_xp_.featured_medal_defidx = r.featured_medal_defidx;
+                    player_xp_.medal_defidx = r.medal_defidx;
+                    player_xp_.valid = true;
+                    ++so_seq_;
+                }
+                profile_results_.push_back(std::move(r));
             }
-            player_xp_.valid = true;
-            ++so_seq_;  // medals just landed; re-post a snapshot so the UI/cache pick them up
             return;
         }
         case GcMsg::RecurringMissionSchema: {

@@ -58,27 +58,30 @@ struct Job {
     std::function<void()> apply;  // runs on the main thread inside drain()
 };
 
-// State for the CS2 GC auto-pull orchestrator: a sequential, rate-limited sweep that pulls
-// Game Coordinator data (medals, level/XP, weekly drop) for every eligible account, auto
-// signing-in when an account lacks a client token. Mutated only on the UI thread (tick +
-// marshaled client callbacks), so it needs no locking.
+// State for the CS2 GC auto-pull orchestrator: ONE "puller" account signs in, connects to
+// the Game Coordinator, then requests every eligible account's public profile (medals,
+// level/XP) by account_id -- one login instead of one-per-account. Mutated only on the UI
+// thread (tick + marshaled client callbacks), so it needs no locking.
 struct GcAutoPull {
-    enum class Phase { Idle, SigningIn, Pulling };
+    enum class Phase { Idle, SigningIn, Connecting, Pulling };
     bool active = false;
-    std::vector<std::string> queue;   // account ids to process, in order
-    int done = 0;                     // queue entries consumed; also the next index
-    int total = 0;                    // queue size at start (progress denominator)
-    int skipped = 0;                  // accounts skipped before queueing (info only)
-    std::string status;               // progress text for the UI
-
-    std::string current_id;           // account in flight ("" when between accounts)
     Phase phase = Phase::Idle;
-    bool signin_pending = false;      // acquire_cm_token call outstanding
+    std::string status;  // progress text for the UI
+
+    std::unordered_map<std::uint32_t, std::string> targets;  // 32-bit account id -> vault id
+    int total = 0;     // targets at start (progress denominator)
+    int received = 0;  // profiles applied (progress numerator)
+    int skipped = 0;   // accounts skipped before queueing (info only)
+
+    std::vector<std::string> puller_candidates;  // ordered vault ids to try as the puller
+    std::size_t puller_idx = 0;                  // current candidate in puller_candidates
+    std::string puller_id;                       // active puller's vault id
+    bool signin_pending = false;                 // acquire_cm_token call outstanding
     bool signin_ok = false;
-    bool got_data = false;            // a snapshot (or error) arrived for current_id
+    bool connected = false;   // puller posted on_status == "Ready"
+    bool batch_done = false;  // on_profiles_done / on_error fired
     std::unique_ptr<cs2_gc::Cs2GcClient> client;
     std::chrono::steady_clock::time_point phase_started{};
-    std::chrono::steady_clock::time_point next_start{};  // earliest start of the next account
 };
 
 // The account's client-audience refresh token (cm_refresh_token, or the NFA refresh_token
@@ -327,10 +330,10 @@ struct AppState {
     // and the auto-pull orchestrator.
     void apply_gc_snapshot_cache(const std::string& account_id, const cs2_gc::Snapshot& snap);
 
-    // CS2 GC auto-pull: builds a queue of eligible accounts and sweeps them one at a time,
-    // auto signing-in as needed, rate-limited; skips the live Steam account, the manually
-    // connected account, and accounts whose cache is still fresh. tick_gc_autopull()
-    // advances it each frame; cancel_gc_autopull() stops it.
+    // CS2 GC auto-pull: signs in ONE puller account, connects to the GC, then requests every
+    // eligible account's profile (medals + level/XP) by account_id; skips accounts whose cache
+    // is still fresh. The puller is auto-picked (never the live Steam account or the manually
+    // connected one). tick_gc_autopull() advances it each frame; cancel_gc_autopull() stops it.
     void start_gc_autopull();
     void tick_gc_autopull();
     void cancel_gc_autopull();
