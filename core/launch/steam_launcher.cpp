@@ -8,6 +8,7 @@
 #include <thread>
 
 #include "core/cs2_config/launch_options.hpp"
+#include "core/launch/cs2_autostart.hpp"
 #include "core/launch/login_driver.hpp"
 #include "core/launch/token_launcher.hpp"
 #include "core/log.hpp"
@@ -67,7 +68,7 @@ bool shutdown_running_steam(const std::filesystem::path& exe_path, LaunchResult&
 
 LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_options,
                             bool disable_cloud_on_login, bool disable_news_on_login,
-                            bool remember_password) {
+                            bool remember_password, std::filesystem::path gamesense_loader) {
     // NFA accounts have no password to type; sign them in via token injection. The token
     // path needs a remembered session to auto-sign-in, so it ignores remember_password.
     if (a.is_nfa)
@@ -91,17 +92,15 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
     // it: re-apply after the sign-in via on_login_confirmed below. When the file already
     // exists the in-place edit survives, so keep the pre-write + single launch (no restart).
     //
-    // Deferring restarts Steam after sign-in, which would race the CS2 auto-launch the
-    // caller kicks off against this first instance, so only defer for the plain login
-    // method; CS2-autostart accounts keep the pre-write (the setting applies next login).
-    const bool can_defer = a.login_method == core::LoginMethod::Normal;
+    // The deferred path restarts Steam after sign-in. For CS2-autostart methods the reapply
+    // callback resumes the CS2 launch itself once Steam is back up (see below), so the
+    // restart no longer races the auto-launch and every login method can defer.
     const auto presence = steam_local::login_config_presence(a.steam_id_64);
-    const bool defer_news = disable_news_on_login && !presence.localconfig_present && can_defer;
-    const bool defer_cloud =
-        disable_cloud_on_login && !presence.sharedconfig_present && can_defer;
+    const bool defer_news = disable_news_on_login && !presence.localconfig_present;
+    const bool defer_cloud = disable_cloud_on_login && !presence.sharedconfig_present;
     // LaunchOptions live in localconfig.vdf, so the first-login wipe hits them too.
     const bool defer_launch_options =
-        !cs2_launch_options.empty() && !presence.localconfig_present && can_defer;
+        !cs2_launch_options.empty() && !presence.localconfig_present;
 
     if (disable_news_on_login && !defer_news) {
         const auto r = steam_local::set_news_notify_off(a.steam_id_64);
@@ -132,6 +131,7 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
     creds.expected_account_id = static_cast<std::uint32_t>(a.steam_id_64 & 0xFFFFFFFFull);
 
     if (defer_news || defer_cloud || defer_launch_options) {
+        out.first_login_deferred = true;
         // Steam account names are ASCII, so a byte-wise widen of the lowercased login is fine.
         const std::string login_lower = core::to_lower(a.login);
         const std::wstring login_w(login_lower.begin(), login_lower.end());
@@ -139,8 +139,12 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
         const std::uint64_t sid = a.steam_id_64;
         // string_view-backed; copy so it outlives this call into the async callback.
         const std::string opts(cs2_launch_options);
+        // CS2-autostart methods resume their launch from inside the callback, after the
+        // relaunch, so it doesn't race the restart.
+        const core::LoginMethod method = a.login_method;
+        const std::filesystem::path loader = std::move(gamesense_loader);
         creds.on_login_confirmed =
-            [exe, login_w, login_lower, sid, opts, defer_news, defer_cloud,
+            [exe, login_w, login_lower, sid, opts, method, loader, defer_news, defer_cloud,
              defer_launch_options](const std::function<bool()>& still_current) {
                 // ActiveUser flips the moment Steam authenticates, long before it creates
                 // the account's userdata or writes its login state (loginusers/config.vdf),
@@ -233,6 +237,14 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
                 }
                 SAM_LOG_INFO("first-login reapply: applied prefs and relaunched as {}",
                              login_lower);
+
+                // Resume the CS2 auto-launch the caller skipped for the deferred case:
+                // Steam is back up and signing in on this final instance, so there's no
+                // restart left to race it.
+                if (method != core::LoginMethod::Normal) {
+                    SAM_LOG_INFO("first-login reapply: starting CS2 autostart post-relaunch");
+                    cs2_autostart::start_async(method, sid, loader);
+                }
             };
     }
 

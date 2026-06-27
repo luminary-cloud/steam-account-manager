@@ -8,6 +8,8 @@
 
 namespace sam::core {
 
+// Order matters: the value is persisted as an int (settings.accounts_sort) and indexes
+// the sort dropdown's labels in accounts_screen.cpp. Append new keys; never reorder.
 enum class SortKey {
     PersonaAsc,
     PersonaDesc,
@@ -16,6 +18,12 @@ enum class SortKey {
     CreatedDesc,
     PremierDesc,
     SteamLevelDesc,
+    Cs2LevelDesc,
+    NoCooldownFirst,
+    DropUnclaimedFirst,
+    Cs2XpDesc,
+    TotalSpendDesc,
+    CooldownSoonest,
 };
 
 struct AccountFilter {

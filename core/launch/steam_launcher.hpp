@@ -20,6 +20,10 @@ struct LaunchResult {
     LaunchStatus status = LaunchStatus::Ok;
     std::string message;
     bool guard_code_was_typed = false;
+    // True when a first-login config reapply was armed: Steam will be restarted after
+    // sign-in, and for CS2-autostart methods the reapply callback resumes the CS2 launch
+    // itself once Steam is back up. The caller must NOT start CS2 autostart in that case.
+    bool first_login_deferred = false;
 };
 
 // Launches Steam logged in as `account`: closes any running steam.exe, spawns the
@@ -38,11 +42,16 @@ struct LaunchResult {
 // `remember_password` controls the login window's "Remember me" checkbox for password
 // logins (off => Steam doesn't save the session). It has no effect on NFA accounts, whose
 // token sign-in requires a remembered session regardless.
+//
+// `gamesense_loader` is passed through to cs2_autostart only when a first-login reapply
+// is deferred for a CS2-autostart account: the reapply callback launches CS2 (and injects
+// gamesense) after its restart. Ignored otherwise; the caller drives autostart directly.
 LaunchResult launch_account(const core::Account& account,
                             std::string_view cs2_launch_options = {},
                             bool disable_cloud_on_login = false,
                             bool disable_news_on_login = false,
-                            bool remember_password = true);
+                            bool remember_password = true,
+                            std::filesystem::path gamesense_loader = {});
 
 // Resolves the configured steam.exe path, or returns nullopt and fills `out`
 // with a SteamNotInstalled reason. Shared by the password and token paths.

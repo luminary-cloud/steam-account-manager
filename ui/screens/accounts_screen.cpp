@@ -42,10 +42,16 @@ void handle_card_action(app::AppState& state,
     switch (act) {
         case widgets::CardAction::Launch: {
             state.flush_pending_save();
+            // Resolve the gamesense loader up front: on a deferred first login it's handed
+            // to launch_account so the reapply callback can start CS2 after its restart.
+            std::filesystem::path loader;
+            if (a.login_method == core::LoginMethod::LaunchCs2Gamesense) {
+                if (auto p = app::gamesense_loader_path()) loader = *p;
+            }
             auto result = sam::launch::launch_account(
                 a, state.settings.cs2_video.launch_options,
                 state.settings.disable_cloud_on_login, state.settings.disable_news_on_login,
-                state.settings.remember_password_on_login);
+                state.settings.remember_password_on_login, loader);
             if (result.status != sam::launch::LaunchStatus::Ok) {
                 state.launch_error = result.message;
                 ImGui::OpenPopup("Launch failed");
@@ -57,11 +63,9 @@ void handle_card_action(app::AppState& state,
             if (state.settings.cs2_video.mode != app::CS2ConfigMode::None) {
                 state.apply_cs2_video_config(a);
             }
-            if (a.login_method != core::LoginMethod::Normal) {
-                std::filesystem::path loader;
-                if (a.login_method == core::LoginMethod::LaunchCs2Gamesense) {
-                    if (auto p = app::gamesense_loader_path()) loader = *p;
-                }
+            // For CS2-autostart methods: on a deferred first login the reapply callback
+            // starts CS2 after its restart; otherwise (repeat login) kick it off now.
+            if (a.login_method != core::LoginMethod::Normal && !result.first_login_deferred) {
                 sam::launch::cs2_autostart::start_async(a.login_method, a.steam_id_64,
                                                         std::move(loader));
             }
@@ -369,13 +373,19 @@ void draw_accounts(app::AppState& state) {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(180);
         const char* sort_labels =
-            "Persona name (A-Z)\0"
-            "Persona name (Z-A)\0"
-            "Login (A-Z)\0"
+            "Persona A-Z\0"
+            "Persona Z-A\0"
+            "Login A-Z\0"
             "Last login\0"
             "Created\0"
-            "Premier rating\0"
-            "Steam level\0";
+            "Premier\0"
+            "Steam lvl\0"
+            "CS2 lvl\0"
+            "No cooldown\0"
+            "Drop unclaimed\0"
+            "CS2 XP\0"
+            "Spend ($)\0"
+            "Cooldown soon\0";
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
         if (ImGui::Combo("##sort", &state.settings.accounts_sort, sort_labels)) {
             state.save_settings();
@@ -405,7 +415,7 @@ void draw_accounts(app::AppState& state) {
     filter.now_unix = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     filter.sort = static_cast<core::SortKey>(std::clamp(state.settings.accounts_sort,
-                                                         0, 6));
+                                                         0, 12));
     const auto visible = core::apply_filter(state.vault.accounts, filter);
 
     if (state.selection_mode) {
