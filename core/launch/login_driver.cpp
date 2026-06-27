@@ -188,12 +188,13 @@ WindowState classify(const Elt& doc) {
 
 bool drive_login_state(const Elt& doc, const Credentials& creds) {
     auto children = doc.all_children();
-    std::vector<Elt> edits, buttons, groups;
+    std::vector<Elt> edits, buttons, groups, checkboxes;
     for (auto& c : children) {
         switch (c.control_type()) {
-            case UIA_EditControlTypeId:   edits.push_back(c);   break;
-            case UIA_ButtonControlTypeId: buttons.push_back(c); break;
-            case UIA_GroupControlTypeId:  groups.push_back(c);  break;
+            case UIA_EditControlTypeId:     edits.push_back(c);      break;
+            case UIA_ButtonControlTypeId:   buttons.push_back(c);    break;
+            case UIA_GroupControlTypeId:    groups.push_back(c);     break;
+            case UIA_CheckBoxControlTypeId: checkboxes.push_back(c); break;
             default: break;
         }
     }
@@ -216,7 +217,20 @@ bool drive_login_state(const Elt& doc, const Credentials& creds) {
         zero_wstring(pass);
     }
 
-    if (!groups.empty()) {
+    // Steam renders "Remember me" two ways across machines (same version): a real
+    // CheckBox control (Toggle pattern) or a Group acting as a checkbox (Image child =
+    // ticked, Invoke to flip). Prefer the CheckBox, fall back to the Group.
+    if (!checkboxes.empty()) {
+        Elt& cb = checkboxes[0];
+        const auto state = cb.toggle_state();  // nullopt = unknown/indeterminate
+        const bool need_toggle =
+            state ? (*state != creds.remember_password) : creds.remember_password;
+        if (need_toggle) {
+            cb.focus();
+            cb.wait_until_enabled(500ms);
+            cb.toggle();
+        }
+    } else if (!groups.empty()) {
         // Presence of an Image child = checkbox is currently ticked.
         const bool checked =
             groups[0].first_child_by_control_type(UIA_ImageControlTypeId).has_value();
@@ -225,6 +239,8 @@ bool drive_login_state(const Elt& doc, const Credentials& creds) {
             groups[0].wait_until_enabled(500ms);
             groups[0].invoke();
         }
+    } else {
+        SAM_LOG_WARN("login_driver: remember-me: no CheckBox or Group child found");
     }
 
     sign_in.focus();

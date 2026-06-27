@@ -74,6 +74,11 @@ public:
     bool set_value(std::wstring_view text);   // ValuePattern::SetValue
     bool invoke();                             // InvokePattern::Invoke
 
+    // TogglePattern (checkboxes). toggle_state() is nullopt when the pattern is
+    // unsupported or the state is indeterminate; toggle() flips it.
+    std::optional<bool> toggle_state() const;
+    bool toggle();
+
     bool wait_until_enabled(std::chrono::milliseconds timeout);
 
 private:

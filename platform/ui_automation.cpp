@@ -284,6 +284,26 @@ bool Session::Element::invoke() {
     return SUCCEEDED(ip->Invoke());
 }
 
+std::optional<bool> Session::Element::toggle_state() const {
+    if (!raw_) return std::nullopt;
+    ComPtr<IUIAutomationTogglePattern> tp;
+    HRESULT hr = raw_->GetCurrentPatternAs(UIA_TogglePatternId, IID_PPV_ARGS(&tp));
+    if (FAILED(hr) || !tp) return std::nullopt;
+    ToggleState st = ToggleState_Indeterminate;
+    if (FAILED(tp->get_CurrentToggleState(&st))) return std::nullopt;
+    if (st == ToggleState_On) return true;
+    if (st == ToggleState_Off) return false;
+    return std::nullopt;
+}
+
+bool Session::Element::toggle() {
+    if (!raw_) return false;
+    ComPtr<IUIAutomationTogglePattern> tp;
+    HRESULT hr = raw_->GetCurrentPatternAs(UIA_TogglePatternId, IID_PPV_ARGS(&tp));
+    if (FAILED(hr) || !tp) return false;
+    return SUCCEEDED(tp->Toggle());
+}
+
 bool Session::Element::wait_until_enabled(std::chrono::milliseconds timeout) {
     using clk = std::chrono::steady_clock;
     const auto deadline = clk::now() + timeout;

@@ -99,6 +99,9 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
     const bool defer_news = disable_news_on_login && !presence.localconfig_present && can_defer;
     const bool defer_cloud =
         disable_cloud_on_login && !presence.sharedconfig_present && can_defer;
+    // LaunchOptions live in localconfig.vdf, so the first-login wipe hits them too.
+    const bool defer_launch_options =
+        !cs2_launch_options.empty() && !presence.localconfig_present && can_defer;
 
     if (disable_news_on_login && !defer_news) {
         const auto r = steam_local::set_news_notify_off(a.steam_id_64);
@@ -128,15 +131,17 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
     creds.remember_password = remember_password;
     creds.expected_account_id = static_cast<std::uint32_t>(a.steam_id_64 & 0xFFFFFFFFull);
 
-    if (defer_news || defer_cloud) {
+    if (defer_news || defer_cloud || defer_launch_options) {
         // Steam account names are ASCII, so a byte-wise widen of the lowercased login is fine.
         const std::string login_lower = core::to_lower(a.login);
         const std::wstring login_w(login_lower.begin(), login_lower.end());
         const std::filesystem::path exe = *exe_path;
         const std::uint64_t sid = a.steam_id_64;
+        // string_view-backed; copy so it outlives this call into the async callback.
+        const std::string opts(cs2_launch_options);
         creds.on_login_confirmed =
-            [exe, login_w, login_lower, sid, defer_news,
-             defer_cloud](const std::function<bool()>& still_current) {
+            [exe, login_w, login_lower, sid, opts, defer_news, defer_cloud,
+             defer_launch_options](const std::function<bool()>& still_current) {
                 // ActiveUser flips the moment Steam authenticates, long before it creates
                 // the account's userdata or writes its login state (loginusers/config.vdf),
                 // so stopping Steam right away kills it mid-setup and the relaunch has
@@ -187,6 +192,11 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
                 // Let Steam's final config flush settle before we edit and relaunch.
                 std::this_thread::sleep_for(std::chrono::milliseconds(800));
 
+                if (defer_launch_options) {
+                    const auto r = cs2_config::apply_launch_options(sid, opts);
+                    if (!r.ok)
+                        SAM_LOG_WARN("first-login reapply: launch options: {}", r.message);
+                }
                 if (defer_news) {
                     const auto r = steam_local::set_news_notify_off(sid);
                     if (!r.ok) SAM_LOG_WARN("first-login reapply: news: {}", r.message);
