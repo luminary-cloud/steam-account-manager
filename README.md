@@ -8,7 +8,7 @@
 ![platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
 
 A native Windows manager for your Steam accounts: one encrypted vault, Steam Guard
-codes, mobile confirmations, trade offers, and one-click login.
+codes, mobile confirmations, trade offers, CS2 tools, and one-click login.
 
 <details>
 <summary><b>Show screenshot</b></summary>
@@ -49,6 +49,7 @@ installer, no telemetry, nothing leaves your machine.
 ### Trade offers
 - View, accept, or decline incoming and outgoing offers, with full item and escrow detail.
 - Build and send offers from your inventory to a trade URL, with optional auto-confirm.
+- Fetch and copy an account's own trade link, cached and auto-refreshed.
 - Optional background poller and a local trade audit log.
 
 ### Account review
@@ -59,6 +60,14 @@ installer, no telemetry, nothing leaves your machine.
 - External funds (total spend) per account.
 - New bans, cooldown changes, and VAC-Live flips surface as card badges, in-app toasts,
   and optional Windows tray notifications, and are logged. Every indicator is toggleable.
+
+### CS2 (Game Coordinator)
+- Connect an account to view and manage its live inventory, moving items in and out of
+  storage units.
+- Profile medals with icons, weekly drop tracking with one-click claim, and weekly
+  mission progress.
+- Auto-pull signs in a single account on startup and fetches every account's medals and
+  level by Steam ID, on a cache window you set.
 
 ### Launch
 - One-click sign-in: closes Steam, relaunches, and types the login and Steam Guard code
@@ -74,6 +83,11 @@ installer, no telemetry, nothing leaves your machine.
 - Per-account launch method: stop after login, launch CS2, or launch CS2 with a
   user-supplied external loader.
 - Open any account signed-in in your browser from the right-click menu.
+
+### Background refresh
+- Refresh every account on launch, or schedule a logon task that refreshes in the
+  background and notifies on new bans or cooldown changes.
+- The logon task can instead just open the app, optionally minimized.
 
 ### Import and export
 - Passphrase-protected `.sambundle` to carry accounts between machines, with a merge
