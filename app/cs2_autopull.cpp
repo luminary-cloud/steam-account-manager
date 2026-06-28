@@ -23,7 +23,8 @@ namespace {
 using steady_clock = std::chrono::steady_clock;
 
 // Per-phase ceilings so a hung sign-in or connect can't stall the sweep. The puller pulls
-// every profile over one session, so there is no inter-account delay any more.
+// every profile over one session, paced ~1.6s apart to stay under the GC's profile-request
+// rate limit (see kPaceMs in cs2_gc_client.cpp).
 constexpr auto kSigninTimeout = std::chrono::seconds(45);
 constexpr auto kConnectTimeout = std::chrono::seconds(90);  // matches GcSession::launch's deadline
 constexpr std::int64_t kTokenExpiryMargin = 300;  // re-mint a client token this early
@@ -310,9 +311,10 @@ void AppState::tick_gc_autopull() {
             }
             return;
         case GcAutoPull::Phase::Pulling: {
-            // Allow the batch its paced duration (~0.4s/account) plus slack before bailing.
+            // Allow the batch its paced duration (~1.6s/account, the GC rate limit) plus slack
+            // before bailing.
             const auto limit =
-                std::chrono::seconds(30) + std::chrono::milliseconds(400) * g.total;
+                std::chrono::seconds(30) + std::chrono::milliseconds(1600) * g.total;
             if (g.batch_done) {
                 end_autopull(g, "GC auto-pull done");
             } else if (now - g.phase_started > limit) {

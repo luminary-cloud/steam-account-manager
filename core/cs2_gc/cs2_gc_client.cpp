@@ -369,8 +369,10 @@ void Cs2GcClient::run() {
             case Op::PullProfiles: {
                 // Request each account's public profile over this one GC session, pacing the
                 // requests so we never trip a GC throttle, then wait a short tail for late
-                // replies. One login replaces the old login-per-account sweep.
-                constexpr int kPaceMs = 350;          // ~3 requests/sec
+                // replies. One login replaces the old login-per-account sweep. The GC rate-limits
+                // profile requests to ~1 per 1.5s, so anything faster gets silently dropped after
+                // a short burst -- pace just over that.
+                constexpr int kPaceMs = 1600;         // GC limit is 1 SteamID / ~1.5s
                 constexpr int kTailTimeoutMs = 6000;  // grace for stragglers after the last send
                 const int requested = static_cast<int>(cmd.items.size());
                 int received = 0;

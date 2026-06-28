@@ -150,8 +150,8 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
 
     // Profile medals/coins (resolved name + icon, cached in the vault) shown as a centered
     // grid under the ranks. NFA accounts never carry GC medals.
-    constexpr float kMedalSize = 48.0F;
-    constexpr float kMedalGap = 8.0F;
+    constexpr float kMedalSize = 36.0F;
+    constexpr float kMedalGap = 4.0F;
     const bool show_medals = !a.is_nfa && !a.cs2.medals.empty();
     const int medal_count = static_cast<int>(a.cs2.medals.size());
     const int medals_per_row =
