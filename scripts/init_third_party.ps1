@@ -143,4 +143,13 @@ Ensure-SingleFile -Name "puff" `
     -Url "https://raw.githubusercontent.com/madler/zlib/v1.3.1/contrib/puff/puff.h" `
     -RelPath "puff.h"
 
+Ensure-GitClone -Name "minhook" `
+    -Url "https://github.com/TsudaKageyu/minhook.git" `
+    -Tag "v1.3.3" `
+    -Shallow
+
+Ensure-SingleFile -Name "xorstr" `
+    -Url "https://raw.githubusercontent.com/JustasMasiulis/xorstr/master/include/xorstr.hpp" `
+    -RelPath "xorstr.hpp"
+
 Write-Step "done"

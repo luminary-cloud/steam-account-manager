@@ -7,6 +7,7 @@
 #include <string>
 
 #include "core/cs2_config/launch_options.hpp"
+#include "core/launch/hwid_inject.hpp"
 #include "core/launch/steam_launcher.hpp"
 #include "core/log.hpp"
 #include "core/strings.hpp"
@@ -43,15 +44,16 @@ LaunchResult fail(const std::string& message) {
 LaunchResult launch_account_with_token(const core::Account& a,
                                        std::string_view cs2_launch_options,
                                        bool disable_cloud_on_login,
-                                       bool disable_news_on_login) {
+                                       bool disable_news_on_login,
+                                       std::uint32_t hwid_component_mask) {
     if (a.refresh_token.empty() || a.steam_id_64 == 0)
-        return fail("NFA login needs a refresh token and a resolved Steam ID.");
+        return fail("Token login needs a refresh token and a resolved Steam ID.");
     if (a.login.empty())
-        return fail("NFA login needs the account name; edit the account and set it.");
+        return fail("Token login needs the account name; edit the account and set it.");
 
     const std::int64_t exp = steam_login::jwt_expiry(a.refresh_token);
     if (exp != 0 && exp <= now_seconds())
-        return fail("The NFA token is expired; import a fresh one.");
+        return fail("The login token is expired; re-mint or import a fresh one.");
     if (steam_login::jwt_audience(a.refresh_token).find("client") == std::string::npos)
         return fail("This token can't sign into the Steam client (no \"client\" audience).");
 
@@ -92,6 +94,10 @@ LaunchResult launch_account_with_token(const core::Account& a,
         out.message = "CreateProcess for steam.exe failed";
         return out;
     }
+
+    auto hwid_res = maybe_inject_hwid(a, *pid, hwid_component_mask);
+    out.hwid_outcome = hwid_res.outcome;
+    out.hwid_error = std::move(hwid_res.error);
 
     SAM_LOG_INFO("token-launch: started steam.exe pid={} as login={}", *pid, login);
     return out;

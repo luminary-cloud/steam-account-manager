@@ -21,6 +21,8 @@
     <Filter Include="core\notifications"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000001a}</UniqueIdentifier></Filter>
     <Filter Include="core\crypto"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000009}</UniqueIdentifier></Filter>
     <Filter Include="core\http"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000000a}</UniqueIdentifier></Filter>
+    <Filter Include="core\hwid"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000043}</UniqueIdentifier></Filter>
+    <Filter Include="core\hwid\gen"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000044}</UniqueIdentifier></Filter>
     <Filter Include="core\launch"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000000b}</UniqueIdentifier></Filter>
     <Filter Include="core\steam_local"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000014}</UniqueIdentifier></Filter>
     <Filter Include="platform"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000000c}</UniqueIdentifier></Filter>
@@ -122,6 +124,13 @@
     <ClCompile Include="core\launch\cs2_autostart.cpp"><Filter>core\launch</Filter></ClCompile>
     <ClCompile Include="core\launch\code_clipboard.cpp"><Filter>core\launch</Filter></ClCompile>
     <ClCompile Include="core\launch\token_launcher.cpp"><Filter>core\launch</Filter></ClCompile>
+    <ClCompile Include="core\launch\hwid_inject.cpp"><Filter>core\launch</Filter></ClCompile>
+
+    <ClCompile Include="core\hwid\hwid_profile.cpp"><Filter>core\hwid</Filter></ClCompile>
+    <ClCompile Include="core\hwid\hwid_gen.cpp"><Filter>core\hwid</Filter></ClCompile>
+    <ClCompile Include="core\hwid\hwid_ipc.cpp"><Filter>core\hwid</Filter></ClCompile>
+    <ClCompile Include="core\hwid\injector.cpp"><Filter>core\hwid</Filter></ClCompile>
+    <ClCompile Include="core\hwid\hwid_reader.cpp"><Filter>core\hwid</Filter></ClCompile>
 
     <ClCompile Include="core\steam_local\loginusers.cpp"><Filter>core\steam_local</Filter></ClCompile>
     <ClCompile Include="core\steam_local\login_prefs.cpp"><Filter>core\steam_local</Filter></ClCompile>
@@ -417,6 +426,17 @@
     <ClInclude Include="core\launch\cs2_autostart.hpp"><Filter>core\launch</Filter></ClInclude>
     <ClInclude Include="core\launch\code_clipboard.hpp"><Filter>core\launch</Filter></ClInclude>
     <ClInclude Include="core\launch\token_launcher.hpp"><Filter>core\launch</Filter></ClInclude>
+    <ClInclude Include="core\launch\hwid_inject.hpp"><Filter>core\launch</Filter></ClInclude>
+
+    <ClInclude Include="core\hwid\ipc_layout.hpp"><Filter>core\hwid</Filter></ClInclude>
+    <ClInclude Include="core\hwid\hwid_profile.hpp"><Filter>core\hwid</Filter></ClInclude>
+    <ClInclude Include="core\hwid\hwid_gen.hpp"><Filter>core\hwid</Filter></ClInclude>
+    <ClInclude Include="core\hwid\hwid_ipc.hpp"><Filter>core\hwid</Filter></ClInclude>
+    <ClInclude Include="core\hwid\injector.hpp"><Filter>core\hwid</Filter></ClInclude>
+    <ClInclude Include="core\hwid\hwid_reader.hpp"><Filter>core\hwid</Filter></ClInclude>
+    <ClInclude Include="core\hwid\hardware_pool.hpp"><Filter>core\hwid</Filter></ClInclude>
+    <ClInclude Include="core\hwid\hwid_components.hpp"><Filter>core\hwid</Filter></ClInclude>
+    <ClInclude Include="core\hwid\gen\hwid_dll_bytes.hpp"><Filter>core\hwid\gen</Filter></ClInclude>
 
     <ClInclude Include="core\steam_local\loginusers.hpp"><Filter>core\steam_local</Filter></ClInclude>
     <ClInclude Include="core\steam_local\login_prefs.hpp"><Filter>core\steam_local</Filter></ClInclude>

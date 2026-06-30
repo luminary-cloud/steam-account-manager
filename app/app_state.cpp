@@ -234,6 +234,7 @@ void AppState::save_settings() {
     j["disable_cloud_on_login"]  = settings.disable_cloud_on_login;
     j["disable_news_on_login"]   = settings.disable_news_on_login;
     j["remember_password_on_login"] = settings.remember_password_on_login;
+    j["sign_in_method"]          = static_cast<int>(settings.sign_in_method);
     j["web_api_key"]             = settings.web_api_key;
     j["proxy_mode"]              = static_cast<int>(settings.proxy_mode);
     j["single_proxy"]            = settings.single_proxy;
@@ -342,6 +343,10 @@ void AppState::save_settings() {
     gj["auto_pull_on_startup"] = settings.cs2_gc.auto_pull_on_startup;
     gj["cache_hours"]         = settings.cs2_gc.cache_hours;
 
+    auto& hj = j["hwid"];
+    hj["always_spoof"]   = settings.hwid.always_spoof;
+    hj["component_mask"] = settings.hwid.component_mask;
+
     auto path = settings_path();
     std::filesystem::create_directories(path.parent_path());
     std::ofstream out(path);
@@ -399,6 +404,11 @@ void AppState::load_settings() {
     get("disable_cloud_on_login",  settings.disable_cloud_on_login);
     get("disable_news_on_login",   settings.disable_news_on_login);
     get("remember_password_on_login", settings.remember_password_on_login);
+    if (j.contains("sign_in_method")) {
+        int v = j["sign_in_method"].get<int>();
+        if (v < 0 || v > 1) v = 0;
+        settings.sign_in_method = static_cast<SignInMethod>(v);
+    }
     get("web_api_key",             settings.web_api_key);
     get("single_proxy",            settings.single_proxy);
     if (j.contains("proxy_mode")) {
@@ -588,6 +598,17 @@ void AppState::load_settings() {
         get_g("auto_pull_on_startup", settings.cs2_gc.auto_pull_on_startup);
         get_g("cache_hours",         settings.cs2_gc.cache_hours);
         settings.cs2_gc.cache_hours = std::clamp(settings.cs2_gc.cache_hours, 1, 24);
+    }
+
+    if (j.contains("hwid")) {
+        auto& hj = j["hwid"];
+        auto get_h = [&](const char* key, auto& dst) {
+            if (hj.contains(key)) {
+                dst = hj[key].get<std::remove_reference_t<decltype(dst)>>();
+            }
+        };
+        get_h("always_spoof",   settings.hwid.always_spoof);
+        get_h("component_mask", settings.hwid.component_mask);
     }
 }
 

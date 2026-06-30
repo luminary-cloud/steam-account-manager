@@ -15,8 +15,10 @@
 #include "app/gamesense_loader.hpp"
 #include "app/job_pump.hpp"
 #include "core/account_store/filter.hpp"
+#include "core/hwid/hwid_gen.hpp"
 #include "core/launch/cs2_autostart.hpp"
 #include "core/launch/steam_launcher.hpp"
+#include "core/steam_login/session.hpp"
 #include "core/profile/edit.hpp"
 #include "core/sda/totp.hpp"
 #include "platform/clipboard.hpp"
@@ -36,39 +38,104 @@ constexpr float kCardMinWidth = 360.0F;
 constexpr float kGap = 14.0F;
 constexpr float kGridInset = 10.0F;
 
+bool cm_token_valid(const core::Account& a) {
+    if (a.cm_refresh_token.empty()) return false;
+    const std::int64_t exp = a.cm_refresh_token_expires != 0
+        ? a.cm_refresh_token_expires
+        : steam_login::jwt_expiry(a.cm_refresh_token);
+    if (exp != 0 && exp <= std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count())
+        return false;
+    return steam_login::jwt_audience(a.cm_refresh_token).find("client") != std::string::npos;
+}
+
+void do_launch(app::AppState& state, core::Account& a, bool use_token) {
+    std::filesystem::path loader;
+    if (a.login_method == core::LoginMethod::LaunchCs2Gamesense) {
+        if (auto p = app::gamesense_loader_path()) loader = *p;
+    }
+    auto result = sam::launch::launch_account(
+        a, state.settings.cs2_video.launch_options,
+        state.settings.disable_cloud_on_login, state.settings.disable_news_on_login,
+        state.settings.remember_password_on_login, loader,
+        state.settings.hwid.component_mask, use_token);
+    if (result.status != sam::launch::LaunchStatus::Ok) {
+        state.launch_error = result.message;
+        ImGui::OpenPopup("Launch failed");
+        return;
+    }
+    if (result.hwid_outcome == sam::launch::InjectOutcome::Success) {
+        state.last_hwid_account_id = a.id;
+        ui::widgets::ToastItem t;
+        t.id = "hwid-" + a.id;
+        t.message = "HWID spoofed for " + a.login;
+        t.account_id = a.id;
+        t.is_warning = true;
+        t.expires_at_unix = now_seconds() + state.settings.notifications.toast_duration_seconds;
+        state.toasts.push(std::move(t));
+    } else if (result.hwid_outcome == sam::launch::InjectOutcome::Failed) {
+        ui::widgets::ToastItem t;
+        t.id = "hwid-fail-" + a.id;
+        t.message = "HWID spoof failed for " + a.login + ": " + result.hwid_error;
+        t.account_id = a.id;
+        t.expires_at_unix = now_seconds() + state.settings.notifications.toast_duration_seconds;
+        state.toasts.push(std::move(t));
+    }
+    a.last_login_unix = now_seconds();
+    state.vault_dirty = true;
+    state.save_vault_if_dirty();
+    if (state.settings.cs2_video.mode != app::CS2ConfigMode::None) {
+        state.apply_cs2_video_config(a);
+    }
+    if (a.login_method != core::LoginMethod::Normal && !result.first_login_deferred) {
+        sam::launch::cs2_autostart::start_async(a.login_method, a.steam_id_64,
+                                                std::move(loader));
+    }
+}
+
 void handle_card_action(app::AppState& state,
                         core::Account& a,
                         widgets::CardAction act) {
     switch (act) {
         case widgets::CardAction::Launch: {
             state.flush_pending_save();
-            // Resolve the gamesense loader up front: on a deferred first login it's handed
-            // to launch_account so the reapply callback can start CS2 after its restart.
-            std::filesystem::path loader;
-            if (a.login_method == core::LoginMethod::LaunchCs2Gamesense) {
-                if (auto p = app::gamesense_loader_path()) loader = *p;
+            if (state.settings.hwid.always_spoof && !a.hwid_excluded && !a.hwid.has_value()) {
+                a.hwid = core::hwid::generate_profile();
+                state.vault_dirty = true;
+                state.save_vault_if_dirty();
             }
-            auto result = sam::launch::launch_account(
-                a, state.settings.cs2_video.launch_options,
-                state.settings.disable_cloud_on_login, state.settings.disable_news_on_login,
-                state.settings.remember_password_on_login, loader);
-            if (result.status != sam::launch::LaunchStatus::Ok) {
-                state.launch_error = result.message;
-                ImGui::OpenPopup("Launch failed");
+            const bool use_token =
+                !a.is_nfa &&
+                state.settings.sign_in_method == app::SignInMethod::TokenInject;
+
+            if (use_token && !cm_token_valid(a)) {
+                if (a.password.empty()) {
+                    state.launch_error =
+                        "Token injection needs a stored password to mint the login "
+                        "token, but this account has no password.";
+                    ImGui::OpenPopup("Launch failed");
+                    break;
+                }
+                state.pending_token_launch = {a.id, true, false, false, {}};
+                const std::string aid = a.id;
+                state.acquire_cm_token(aid, [&state, aid](bool ok, std::string err) {
+                    state.pending_token_launch.minting = false;
+                    state.pending_token_launch.mint_done = true;
+                    state.pending_token_launch.mint_ok = ok;
+                    state.pending_token_launch.mint_error = std::move(err);
+                });
+                {
+                    ui::widgets::ToastItem t;
+                    t.id = "token-mint-" + a.id;
+                    t.message = "Minting login token for " + a.login + "...";
+                    t.account_id = a.id;
+                    t.expires_at_unix = now_seconds() + 15;
+                    state.toasts.push(std::move(t));
+                }
                 break;
             }
-            a.last_login_unix = now_seconds();
-            state.vault_dirty = true;
-            state.save_vault_if_dirty();
-            if (state.settings.cs2_video.mode != app::CS2ConfigMode::None) {
-                state.apply_cs2_video_config(a);
-            }
-            // For CS2-autostart methods: on a deferred first login the reapply callback
-            // starts CS2 after its restart; otherwise (repeat login) kick it off now.
-            if (a.login_method != core::LoginMethod::Normal && !result.first_login_deferred) {
-                sam::launch::cs2_autostart::start_async(a.login_method, a.steam_id_64,
-                                                        std::move(loader));
-            }
+
+            do_launch(state, a, use_token);
             break;
         }
         case widgets::CardAction::CopyCode:
@@ -491,6 +558,20 @@ void draw_accounts(app::AppState& state) {
                     : err;
                 ImGui::OpenPopup("Launch failed");
             }
+        }
+    }
+
+    if (state.pending_token_launch.mint_done) {
+        auto& ptl = state.pending_token_launch;
+        const std::string aid = ptl.account_id;
+        const bool ok = ptl.mint_ok;
+        std::string err = std::move(ptl.mint_error);
+        ptl = {};
+        if (!ok) {
+            state.launch_error = "Could not mint login token: " + err;
+            ImGui::OpenPopup("Launch failed");
+        } else if (auto* acc = state.find_account(aid)) {
+            do_launch(state, *acc, true);
         }
     }
 

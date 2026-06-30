@@ -37,6 +37,16 @@ jobs:
             /verbosity:minimal `
             /nologo
 
+      - name: Verify HWID DLL
+        shell: pwsh
+        run: |
+          $dll = "build/Release/hwid_spoofer.dll"
+          if (-not (Test-Path $dll)) {
+              Write-Error "Build did not produce $dll"
+              exit 1
+          }
+          Get-Item $dll | Format-List Length, LastWriteTime
+
       - name: Verify binary
         shell: pwsh
         run: |

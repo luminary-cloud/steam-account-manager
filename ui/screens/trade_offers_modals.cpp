@@ -711,18 +711,32 @@ void draw_history_modal_impl(app::AppState& state, bool* p_open) {
     ImGui::TextDisabled("(%zu entries)", state.trade_audit.entries().size());
 
     ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.035F, 0.035F, 0.035F, 1.0F));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0F);
     ImGui::BeginChild("##history-body", ImVec2(0, -36.0F));
-    constexpr ImGuiTableFlags flags = ImGuiTableFlags_Borders |
-                                      ImGuiTableFlags_SizingStretchProp |
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+
+    ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, ImVec4(1.0F, 1.0F, 1.0F, 0.025F));
+    constexpr ImGuiTableFlags flags = ImGuiTableFlags_SizingStretchProp |
                                       ImGuiTableFlags_RowBg |
-                                      ImGuiTableFlags_ScrollY;
+                                      ImGuiTableFlags_ScrollY |
+                                      ImGuiTableFlags_PadOuterX;
     if (ImGui::BeginTable("##history", 5, flags)) {
-        ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 110.0F);
-        ImGui::TableSetupColumn("Account", ImGuiTableColumnFlags_WidthFixed, 140.0F);
-        ImGui::TableSetupColumn("Result", ImGuiTableColumnFlags_WidthFixed, 120.0F);
-        ImGui::TableSetupColumn("Source", ImGuiTableColumnFlags_WidthFixed, 60.0F);
-        ImGui::TableSetupColumn("Detail", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableHeadersRow();
+        ImGui::TableSetupColumn("##time", ImGuiTableColumnFlags_WidthFixed, 110.0F);
+        ImGui::TableSetupColumn("##account", ImGuiTableColumnFlags_WidthFixed, 140.0F);
+        ImGui::TableSetupColumn("##result", ImGuiTableColumnFlags_WidthFixed, 120.0F);
+        ImGui::TableSetupColumn("##source", ImGuiTableColumnFlags_WidthFixed, 60.0F);
+        ImGui::TableSetupColumn("##detail", ImGuiTableColumnFlags_WidthStretch);
+
+        ImGui::TableNextRow();
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
+        ImGui::TableNextColumn(); ImGui::TextUnformatted("Time");
+        ImGui::TableNextColumn(); ImGui::TextUnformatted("Account");
+        ImGui::TableNextColumn(); ImGui::TextUnformatted("Result");
+        ImGui::TableNextColumn(); ImGui::TextUnformatted("Source");
+        ImGui::TableNextColumn(); ImGui::TextUnformatted("Detail");
+        ImGui::PopStyleColor();
 
         const std::string search_lower = core::to_lower(g_history_search);
         const auto& es = state.trade_audit.entries();
@@ -780,6 +794,7 @@ void draw_history_modal_impl(app::AppState& state, bool* p_open) {
         }
         ImGui::EndTable();
     }
+    ImGui::PopStyleColor();
     ImGui::EndChild();
 
     if (action_button("Close", ImVec2(100, 0))) {

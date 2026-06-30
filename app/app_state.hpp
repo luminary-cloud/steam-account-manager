@@ -141,6 +141,9 @@ struct AppState {
     // post_ui_callback so the deque stays UI-thread-only.
     ui::widgets::ToastStack toasts;
 
+    core::hwid::HwidProfile real_hardware;
+    std::string last_hwid_account_id;
+
     // Nav-rail badge count. Not polled in the background; reflects the most recent
     // observed state. `loaded` distinguishes "0 known" from "never queried".
     std::atomic<int> pending_confirmations_count{0};
@@ -346,6 +349,14 @@ struct AppState {
     void post_ui_callback(std::function<void()> fn);
 
     std::string launch_error;
+
+    struct PendingTokenLaunch {
+        std::string account_id;
+        bool minting = false;
+        bool mint_done = false;
+        bool mint_ok = false;
+        std::string mint_error;
+    } pending_token_launch;
 };
 
 }  // namespace sam::app

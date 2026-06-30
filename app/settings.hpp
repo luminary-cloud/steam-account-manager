@@ -18,6 +18,12 @@ enum class ProxyMode : std::uint8_t {
     PerAccount = 2,
 };
 
+// How the app signs a password account into the Steam client.
+enum class SignInMethod : std::uint8_t {
+    Driver = 0,       // UI automation (types password + 2FA into Steam's login window)
+    TokenInject = 1,  // inject a client-scoped JWT into Steam's ConnectCache (no login window)
+};
+
 // What's copied into the launched account's CS2 (appid 730) config on login.
 enum class CS2ConfigMode : std::uint8_t {
     None = 0,
@@ -72,6 +78,7 @@ struct Settings {
     // forget the session after sign-in (no saved login). Token (NFA) logins ignore this;
     // they require a remembered session to auto-sign-in.
     bool remember_password_on_login = true;
+    SignInMethod sign_in_method = SignInMethod::Driver;
     std::string web_api_key;
 
     // single_proxy used only in Single mode; per-account proxies live in the vault.
@@ -218,6 +225,11 @@ struct Settings {
         // within this window. Persisted in the vault, so it survives restarts.
         int cache_hours = 6;
     } cs2_gc;
+
+    struct HwidToggles {
+        bool always_spoof = false;
+        std::uint32_t component_mask = 0x3FFu;
+    } hwid;
 };
 
 }  // namespace sam::app

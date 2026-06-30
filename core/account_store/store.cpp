@@ -277,6 +277,8 @@ void to_json(json& j, const Account& a) {
     if (a.trade_url.has_value()) j["trade_url"] = *a.trade_url;
     if (a.trade_url_fetched_unix) j["trade_url_fetched_unix"] = a.trade_url_fetched_unix;
     j["proxy"]                = secure_to_string(a.proxy);
+    if (a.hwid.has_value()) j["hwid"] = *a.hwid;
+    if (a.hwid_excluded) j["hwid_excluded"] = true;
     j["web"]                  = a.web;
     j["bans"]                 = a.bans;
     j["cs2"]                  = a.cs2;
@@ -316,6 +318,10 @@ void from_json(const json& j, Account& a) {
     }
     a.trade_url_fetched_unix = j.value("trade_url_fetched_unix", std::int64_t{0});
     a.proxy = string_to_secure(j.value("proxy", std::string{}));
+    if (j.contains("hwid") && !j["hwid"].is_null()) {
+        a.hwid = j.at("hwid").get<hwid::HwidProfile>();
+    }
+    if (j.contains("hwid_excluded")) a.hwid_excluded = j["hwid_excluded"].get<bool>();
     if (j.contains("web"))  a.web  = j.at("web").get<WebProfile>();
     if (j.contains("bans")) a.bans = j.at("bans").get<BanStatus>();
     if (j.contains("cs2"))  a.cs2  = j.at("cs2").get<CS2Status>();

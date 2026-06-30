@@ -301,17 +301,28 @@ void draw_show_secrets_modal(app::AppState& app, ShowSecretsState& state) {
     ImGui::PopStyleColor();
     ImGui::Spacing();
 
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.035F, 0.035F, 0.035F, 1.0F));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0F);
     ImGui::BeginChild("##secrets-body", ImVec2(0, -36.0F));
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
 
-    constexpr ImGuiTableFlags flags = ImGuiTableFlags_Borders |
-                                       ImGuiTableFlags_SizingStretchProp |
+    ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, ImVec4(1.0F, 1.0F, 1.0F, 0.025F));
+    constexpr ImGuiTableFlags flags = ImGuiTableFlags_SizingStretchProp |
                                        ImGuiTableFlags_RowBg |
-                                       ImGuiTableFlags_ScrollY;
+                                       ImGuiTableFlags_ScrollY |
+                                       ImGuiTableFlags_PadOuterX;
     if (ImGui::BeginTable("##secrets", 3, flags)) {
-        ImGui::TableSetupColumn("Account", ImGuiTableColumnFlags_WidthFixed, 160.0F);
-        ImGui::TableSetupColumn("Field",   ImGuiTableColumnFlags_WidthFixed, 140.0F);
-        ImGui::TableSetupColumn("Value",   ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableHeadersRow();
+        ImGui::TableSetupColumn("##account", ImGuiTableColumnFlags_WidthFixed, 160.0F);
+        ImGui::TableSetupColumn("##field",   ImGuiTableColumnFlags_WidthFixed, 140.0F);
+        ImGui::TableSetupColumn("##value",   ImGuiTableColumnFlags_WidthStretch);
+
+        ImGui::TableNextRow();
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
+        ImGui::TableNextColumn(); ImGui::TextUnformatted("Account");
+        ImGui::TableNextColumn(); ImGui::TextUnformatted("Field");
+        ImGui::TableNextColumn(); ImGui::TextUnformatted("Value");
+        ImGui::PopStyleColor();
 
         auto row = [&](const std::string& acc_label, const char* field,
                        const std::string& value) {
@@ -347,6 +358,7 @@ void draw_show_secrets_modal(app::AppState& app, ShowSecretsState& state) {
 
         ImGui::EndTable();
     }
+    ImGui::PopStyleColor();
 
     ImGui::EndChild();
 

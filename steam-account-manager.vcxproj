@@ -281,6 +281,12 @@
     <ClCompile Include="ui\widgets\sda_wizard_dialogs.cpp" />
     <ClCompile Include="core\sda\mafile_export.cpp" />
     <ClCompile Include="core\sda\conf_audit.cpp" />
+    <ClCompile Include="core\hwid\hwid_profile.cpp" />
+    <ClCompile Include="core\hwid\hwid_gen.cpp" />
+    <ClCompile Include="core\hwid\hwid_ipc.cpp" />
+    <ClCompile Include="core\hwid\injector.cpp" />
+    <ClCompile Include="core\hwid\hwid_reader.cpp" />
+    <ClCompile Include="core\launch\hwid_inject.cpp" />
   </ItemGroup>
   <ItemGroup Label="Project headers">
     <ClInclude Include="app\resource.h" />
@@ -429,6 +435,16 @@
     <ClInclude Include="ui\widgets\toast_stack.hpp" />
     <ClInclude Include="ui\widgets\sda_backup_dialogs.hpp" />
     <ClInclude Include="ui\widgets\sda_wizard_dialogs.hpp" />
+    <ClInclude Include="core\hwid\ipc_layout.hpp" />
+    <ClInclude Include="core\hwid\hwid_components.hpp" />
+    <ClInclude Include="core\hwid\hwid_profile.hpp" />
+    <ClInclude Include="core\hwid\hwid_gen.hpp" />
+    <ClInclude Include="core\hwid\hwid_ipc.hpp" />
+    <ClInclude Include="core\hwid\injector.hpp" />
+    <ClInclude Include="core\hwid\hwid_reader.hpp" />
+    <ClInclude Include="core\hwid\hardware_pool.hpp" />
+    <ClInclude Include="core\hwid\gen\hwid_dll_bytes.hpp" />
+    <ClInclude Include="core\launch\hwid_inject.hpp" />
   </ItemGroup>
   <Target Name="GenProtos" BeforeTargets="ClCompile" Inputs="@(SteamProtoFiles)" Outputs="$(ProjectDir)core\steam_auth\gen\.timestamp">
     <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(ProjectDir)scripts\gen_protos.ps1&quot;" WorkingDirectory="$(ProjectDir)" ContinueOnError="false" />
@@ -1084,8 +1100,15 @@
     <None Include=".gitattributes" />
     <None Include="scripts\gen_protos.ps1" />
     <None Include="scripts\init_third_party.ps1" />
+    <None Include="scripts\embed_dll.ps1" />
     <None Include=".github\workflows\build.yml" />
   </ItemGroup>
+  <Target Name="EmbedHwidDll" BeforeTargets="ClCompile"
+          Inputs="$(SolutionDir)build\$(Configuration)\hwid_spoofer.dll"
+          Outputs="$(ProjectDir)core\hwid\gen\hwid_dll_bytes.hpp"
+          Condition="Exists('$(SolutionDir)build\$(Configuration)\hwid_spoofer.dll')">
+    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(ProjectDir)scripts\embed_dll.ps1&quot; &quot;$(SolutionDir)build\$(Configuration)\hwid_spoofer.dll&quot; &quot;$(ProjectDir)core\hwid\gen\hwid_dll_bytes.hpp&quot;" />
+  </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
 </Project>

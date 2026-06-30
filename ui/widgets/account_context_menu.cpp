@@ -11,6 +11,7 @@
 #include "app/app_paths.hpp"
 #include "core/account_store/account.hpp"
 #include "core/cs2/friend_code.hpp"
+#include "core/hwid/hwid_gen.hpp"
 #include "core/sda/totp.hpp"
 #include "platform/clipboard.hpp"
 #include "ui/util.hpp"
@@ -156,6 +157,48 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         }
         if (claimed && ImGui::MenuItem("Clear")) {
             set_drop(0);
+        }
+        ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("HWID spoofer")) {
+        const bool enabled = a.hwid.has_value();
+        const bool always  = state.settings.hwid.always_spoof;
+
+        if (always && !a.hwid_excluded && ImGui::MenuItem("Exclude from spoof")) {
+            if (auto* acc = state.find_account(a.id)) {
+                acc->hwid_excluded = true;
+                state.vault_dirty = true;
+                state.save_vault_if_dirty();
+            }
+        }
+        if (always && a.hwid_excluded && ImGui::MenuItem("Include in spoof")) {
+            if (auto* acc = state.find_account(a.id)) {
+                acc->hwid_excluded = false;
+                state.vault_dirty = true;
+                state.save_vault_if_dirty();
+            }
+        }
+        if (!always && !enabled && ImGui::MenuItem("Enable")) {
+            if (auto* acc = state.find_account(a.id)) {
+                acc->hwid = core::hwid::generate_profile();
+                state.vault_dirty = true;
+                state.save_vault_if_dirty();
+            }
+        }
+        if (enabled && ImGui::MenuItem("Regenerate")) {
+            if (auto* acc = state.find_account(a.id)) {
+                acc->hwid = core::hwid::generate_profile();
+                state.vault_dirty = true;
+                state.save_vault_if_dirty();
+            }
+        }
+        if (!always && enabled && ImGui::MenuItem("Disable")) {
+            if (auto* acc = state.find_account(a.id)) {
+                acc->hwid = std::nullopt;
+                state.vault_dirty = true;
+                state.save_vault_if_dirty();
+            }
         }
         ImGui::EndMenu();
     }

@@ -4,6 +4,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.14.37203.1 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "steam-account-manager", "steam-account-manager.vcxproj", "{AA47F5E5-C4F2-4468-8F9F-C80406387A4D}"
+	ProjectSection(ProjectDependencies) = postProject
+		{6C3F4E2A-B7D1-4A8E-9F5C-D2E8A1B3C4F5} = {6C3F4E2A-B7D1-4A8E-9F5C-D2E8A1B3C4F5}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "hwid_spoofer", "hwid_dll\hwid_spoofer.vcxproj", "{6C3F4E2A-B7D1-4A8E-9F5C-D2E8A1B3C4F5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +20,10 @@ Global
 		{AA47F5E5-C4F2-4468-8F9F-C80406387A4D}.Debug|x64.Build.0 = Debug|x64
 		{AA47F5E5-C4F2-4468-8F9F-C80406387A4D}.Release|x64.ActiveCfg = Release|x64
 		{AA47F5E5-C4F2-4468-8F9F-C80406387A4D}.Release|x64.Build.0 = Release|x64
+		{6C3F4E2A-B7D1-4A8E-9F5C-D2E8A1B3C4F5}.Debug|x64.ActiveCfg = Debug|x64
+		{6C3F4E2A-B7D1-4A8E-9F5C-D2E8A1B3C4F5}.Debug|x64.Build.0 = Debug|x64
+		{6C3F4E2A-B7D1-4A8E-9F5C-D2E8A1B3C4F5}.Release|x64.ActiveCfg = Release|x64
+		{6C3F4E2A-B7D1-4A8E-9F5C-D2E8A1B3C4F5}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

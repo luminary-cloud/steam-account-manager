@@ -82,6 +82,22 @@ void draw_privacy_section(app::AppState& state) {
 
 void draw_steam_login_section(app::AppState& state) {
     separator_text("Steam login");
+
+    {
+        int method = static_cast<int>(state.settings.sign_in_method);
+        ImGui::SetNextItemWidth(200);
+        if (ImGui::Combo("Sign-in method", &method,
+                         "Sign-in driver\0Token injection\0")) {
+            state.settings.sign_in_method = static_cast<app::SignInMethod>(method);
+            state.save_settings();
+        }
+        hover_tooltip("Sign-in driver: automates the Steam login window (types password and "
+                      "Steam Guard code). Token injection: writes a saved login token directly "
+                      "into Steam's config so it auto-signs in without a login window. Token "
+                      "injection requires a stored password to mint the token on first use. "
+                      "NFA accounts always use token injection regardless of this setting.");
+    }
+
     if (ImGui::Checkbox("Disable Steam Cloud on login",
                         &state.settings.disable_cloud_on_login)) {
         state.save_settings();
@@ -99,14 +115,20 @@ void draw_steam_login_section(app::AppState& state) {
                   "me about additions or changes to my games, new releases\" off). Applies to "
                   "every account you launch; turning it off leaves Steam's setting as-is.");
 
-    if (ImGui::Checkbox("Remember password on login",
-                        &state.settings.remember_password_on_login)) {
-        state.save_settings();
+    {
+        const bool token_mode =
+            state.settings.sign_in_method == app::SignInMethod::TokenInject;
+        ImGui::BeginDisabled(token_mode);
+        if (ImGui::Checkbox("Remember password on login",
+                            &state.settings.remember_password_on_login)) {
+            state.save_settings();
+        }
+        hover_tooltip("Ticks Steam's \"Remember me\" box when signing a password account in, so "
+                      "Steam keeps the saved login. Turn off to have Steam forget the session "
+                      "after sign-in. Token injection always needs a remembered session, so this "
+                      "is ignored when using that method.");
+        ImGui::EndDisabled();
     }
-    hover_tooltip("Ticks Steam's \"Remember me\" box when signing a password account in, so "
-                  "Steam keeps the saved login. Turn off to have Steam forget the session "
-                  "after sign-in. Token (NFA) accounts ignore this; their sign-in needs a "
-                  "remembered session.");
 }
 
 void draw_cs2_gc_section(app::AppState& state) {
@@ -407,6 +429,128 @@ void render_cs2(app::AppState& state) {
     draw_cs2_gc_section(state);
 }
 
+void render_hwid(app::AppState& state) {
+    if (ImGui::Checkbox("Always spoof HWID", &state.settings.hwid.always_spoof))
+        state.save_settings();
+    hover_tooltip("Automatically spoof hardware identifiers for every account on launch.\n"
+                  "Excluded accounts can be set via the right-click menu.");
+
+    ImGui::Spacing();
+    separator_text("Components");
+
+    auto& mask = state.settings.hwid.component_mask;
+    auto flag_checkbox = [&](const char* label, std::uint32_t bit) {
+        bool on = (mask & bit) != 0;
+        if (ImGui::Checkbox(label, &on)) {
+            if (on) mask |= bit;
+            else    mask &= ~bit;
+            state.save_settings();
+        }
+    };
+
+    const float grid_w = ImGui::GetContentRegionAvail().x - kContentPaddingX;
+    if (ImGui::BeginTable("##hwid-comp-grid", 3, ImGuiTableFlags_SizingStretchSame,
+            ImVec2(grid_w, 0.0f))) {
+        ImGui::TableNextColumn(); flag_checkbox("Machine GUID",  0x001u);
+        ImGui::TableNextColumn(); flag_checkbox("MAC address",   0x002u);
+        ImGui::TableNextColumn(); flag_checkbox("Disk serial",   0x004u);
+
+        ImGui::TableNextColumn(); flag_checkbox("PC name",       0x008u);
+        ImGui::TableNextColumn(); flag_checkbox("GPU",           0x010u);
+        ImGui::TableNextColumn(); flag_checkbox("Motherboard",   0x020u);
+
+        ImGui::TableNextColumn(); flag_checkbox("RAM",           0x040u);
+        ImGui::TableNextColumn(); flag_checkbox("Monitor",       0x080u);
+        ImGui::TableNextColumn(); flag_checkbox("Storage",       0x100u);
+
+        ImGui::TableNextColumn(); flag_checkbox("Sound card",    0x200u);
+
+        ImGui::EndTable();
+    }
+
+    ImGui::Spacing();
+    separator_text("Hardware comparison");
+
+    const auto* last_acc = state.last_hwid_account_id.empty()
+        ? nullptr : state.find_account(state.last_hwid_account_id);
+    if (!last_acc || !last_acc->hwid.has_value()) {
+        ImGui::TextDisabled("No account has been spoofed this session.");
+    } else {
+        const auto& real = state.real_hardware;
+        const auto& fake = *last_acc->hwid;
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.055F, 0.055F, 0.055F, 1.0F));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0F);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 14));
+
+        if (ImGui::BeginChild("##hwid-cmp-card", ImVec2(grid_w, 0),
+                ImGuiChildFlags_AutoResizeY)) {
+
+            const auto dim = theme::dim_text();
+
+            if (ImGui::BeginTable("##hwid-cmp", 3,
+                    ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_PadOuterX,
+                    ImVec2(-1, 0.0f))) {
+                ImGui::TableSetupColumn("##comp", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+                ImGui::TableSetupColumn("##real");
+                ImGui::TableSetupColumn("##spoofed");
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::PushStyleColor(ImGuiCol_Text, dim);
+                ImGui::TextUnformatted("Component");
+                ImGui::TableNextColumn(); ImGui::TextUnformatted("Real");
+                ImGui::TableNextColumn(); ImGui::TextUnformatted("Spoofed");
+                ImGui::PopStyleColor();
+
+                auto row = [&](const char* label, const std::string& r, const std::string& s) {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::PushStyleColor(ImGuiCol_Text, dim);
+                    ImGui::TextUnformatted(label);
+                    ImGui::PopStyleColor();
+                    ImGui::TableNextColumn(); ImGui::TextUnformatted(r.c_str());
+                    ImGui::TableNextColumn(); ImGui::TextUnformatted(s.c_str());
+                };
+                auto row_int = [&](const char* label, int r, int s) {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::PushStyleColor(ImGuiCol_Text, dim);
+                    ImGui::TextUnformatted(label);
+                    ImGui::PopStyleColor();
+                    ImGui::TableNextColumn(); ImGui::Text("%d", r);
+                    ImGui::TableNextColumn(); ImGui::Text("%d", s);
+                };
+
+                row("Machine GUID", real.machine_guid, fake.machine_guid);
+                row("MAC address",  real.mac_address,  fake.mac_address);
+                row("Disk serial",  real.disk_serial,  fake.disk_serial);
+                row("PC name",      real.pc_name,      fake.pc_name);
+                row("GPU",          real.gpu_name,      fake.gpu_name);
+                row("Board",        real.board_model,   fake.board_model);
+                row("Board mfr",    real.board_manufacturer, fake.board_manufacturer);
+                row_int("RAM (MB)",     real.ram_mb,        fake.ram_mb);
+                {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::PushStyleColor(ImGuiCol_Text, dim);
+                    ImGui::TextUnformatted("Monitor");
+                    ImGui::PopStyleColor();
+                    ImGui::TableNextColumn(); ImGui::Text("%dx%d @%dHz", real.monitor_width, real.monitor_height, real.monitor_refresh);
+                    ImGui::TableNextColumn(); ImGui::Text("%dx%d @%dHz", fake.monitor_width, fake.monitor_height, fake.monitor_refresh);
+                }
+                row("Sound card",   real.sound_card,    fake.sound_card);
+                row("Display",      real.display_model, fake.display_model);
+                ImGui::EndTable();
+            }
+        }
+        ImGui::EndChild();
+
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor();
+    }
+}
+
 struct CategoryDef {
     const char* label;
     void (*render)(app::AppState&);
@@ -421,6 +565,7 @@ constexpr CategoryDef kCategories[] = {
     {"Launch & Steam",     render_launch_steam},
     {"Network & Data",     render_network_data},
     {"CS2",                render_cs2},
+    {"HWID Spoofer",       render_hwid},
 };
 
 }  // namespace

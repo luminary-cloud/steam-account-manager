@@ -1,11 +1,13 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
 
 #include "core/account_store/account.hpp"
+#include "core/launch/hwid_inject.hpp"
 
 namespace sam::launch {
 
@@ -20,10 +22,9 @@ struct LaunchResult {
     LaunchStatus status = LaunchStatus::Ok;
     std::string message;
     bool guard_code_was_typed = false;
-    // True when a first-login config reapply was armed: Steam will be restarted after
-    // sign-in, and for CS2-autostart methods the reapply callback resumes the CS2 launch
-    // itself once Steam is back up. The caller must NOT start CS2 autostart in that case.
     bool first_login_deferred = false;
+    InjectOutcome hwid_outcome{};
+    std::string hwid_error;
 };
 
 // Launches Steam logged in as `account`: closes any running steam.exe, spawns the
@@ -46,12 +47,18 @@ struct LaunchResult {
 // `gamesense_loader` is passed through to cs2_autostart only when a first-login reapply
 // is deferred for a CS2-autostart account: the reapply callback launches CS2 (and injects
 // gamesense) after its restart. Ignored otherwise; the caller drives autostart directly.
+//
+// `use_token`, when true, forces the token-injection path (launch_account_with_token) even
+// for password accounts, using their cm_refresh_token. NFA accounts always use the token
+// path regardless of this flag.
 LaunchResult launch_account(const core::Account& account,
                             std::string_view cs2_launch_options = {},
                             bool disable_cloud_on_login = false,
                             bool disable_news_on_login = false,
                             bool remember_password = true,
-                            std::filesystem::path gamesense_loader = {});
+                            std::filesystem::path gamesense_loader = {},
+                            std::uint32_t hwid_component_mask = 0x3FFu,
+                            bool use_token = false);
 
 // Resolves the configured steam.exe path, or returns nullopt and fills `out`
 // with a SteamNotInstalled reason. Shared by the password and token paths.

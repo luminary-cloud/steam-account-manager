@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string_view>
 
 #include "core/account_store/account.hpp"
@@ -20,6 +21,7 @@ namespace sam::launch {
 LaunchResult launch_account_with_token(const core::Account& account,
                                        std::string_view cs2_launch_options = {},
                                        bool disable_cloud_on_login = false,
-                                       bool disable_news_on_login = false);
+                                       bool disable_news_on_login = false,
+                                       std::uint32_t hwid_component_mask = 0x3FFu);
 
 }  // namespace sam::launch

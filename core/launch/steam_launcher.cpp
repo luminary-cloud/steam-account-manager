@@ -9,6 +9,7 @@
 
 #include "core/cs2_config/launch_options.hpp"
 #include "core/launch/cs2_autostart.hpp"
+#include "core/launch/hwid_inject.hpp"
 #include "core/launch/login_driver.hpp"
 #include "core/launch/token_launcher.hpp"
 #include "core/log.hpp"
@@ -68,12 +69,18 @@ bool shutdown_running_steam(const std::filesystem::path& exe_path, LaunchResult&
 
 LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_options,
                             bool disable_cloud_on_login, bool disable_news_on_login,
-                            bool remember_password, std::filesystem::path gamesense_loader) {
-    // NFA accounts have no password to type; sign them in via token injection. The token
-    // path needs a remembered session to auto-sign-in, so it ignores remember_password.
-    if (a.is_nfa)
+                            bool remember_password, std::filesystem::path gamesense_loader,
+                            std::uint32_t hwid_component_mask, bool use_token) {
+    if (a.is_nfa) {
         return launch_account_with_token(a, cs2_launch_options, disable_cloud_on_login,
-                                         disable_news_on_login);
+                                         disable_news_on_login, hwid_component_mask);
+    }
+    if (use_token) {
+        core::Account token_view = a;
+        token_view.refresh_token = a.cm_refresh_token;
+        return launch_account_with_token(token_view, cs2_launch_options, disable_cloud_on_login,
+                                         disable_news_on_login, hwid_component_mask);
+    }
 
     LaunchResult out;
 
@@ -123,6 +130,10 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
         return out;
     }
 
+    auto hwid_res = maybe_inject_hwid(a, *pid, hwid_component_mask);
+    out.hwid_outcome = hwid_res.outcome;
+    out.hwid_error = std::move(hwid_res.error);
+
     login_driver::Credentials creds;
     creds.login = sam::crypto::make_secure(a.login);
     creds.password = a.password;
@@ -142,10 +153,13 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
         // CS2-autostart methods resume their launch from inside the callback, after the
         // relaunch, so it doesn't race the restart.
         const core::LoginMethod method = a.login_method;
+        const auto hwid_profile = a.hwid;
+        const auto hwid_mask = hwid_component_mask;
         const std::filesystem::path loader = std::move(gamesense_loader);
         creds.on_login_confirmed =
-            [exe, login_w, login_lower, sid, opts, method, loader, defer_news, defer_cloud,
-             defer_launch_options](const std::function<bool()>& still_current) {
+            [exe, login_w, login_lower, sid, opts, method, hwid_profile, hwid_mask, loader,
+             defer_news, defer_cloud, defer_launch_options](
+                const std::function<bool()>& still_current) {
                 // ActiveUser flips the moment Steam authenticates, long before it creates
                 // the account's userdata or writes its login state (loginusers/config.vdf),
                 // so stopping Steam right away kills it mid-setup and the relaunch has
@@ -230,13 +244,21 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
                 steam_local::ensure_config_vdf_account(sid, login_lower);
                 platform::registry::set_auto_login_user(login_w);
                 platform::registry::set_remember_password(true);
-                if (!platform::process::launch(exe, L"")) {
+                auto relaunch_pid = platform::process::launch(exe, L"");
+                if (!relaunch_pid) {
                     SAM_LOG_WARN("first-login reapply: relaunch failed; settings are on disk "
                                  "and apply on the next sign-in");
                     return;
                 }
                 SAM_LOG_INFO("first-login reapply: applied prefs and relaunched as {}",
                              login_lower);
+
+                if (hwid_profile.has_value()) {
+                    core::Account tmp_acc;
+                    tmp_acc.hwid = hwid_profile;
+                    tmp_acc.login = login_lower;
+                    maybe_inject_hwid(tmp_acc, *relaunch_pid, hwid_mask);
+                }
 
                 // Resume the CS2 auto-launch the caller skipped for the deferred case:
                 // Steam is back up and signing in on this final instance, so there's no

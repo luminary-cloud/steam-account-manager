@@ -7,6 +7,7 @@
 
 #include "core/account_store/account_meta.hpp"
 #include "core/crypto/secure_string.hpp"
+#include "core/hwid/hwid_profile.hpp"
 
 namespace sam::core {
 
@@ -169,6 +170,9 @@ struct Account {
     // Per-account outbound proxy: scheme://[user:pass@]host:port (socks5, http,
     // https), empty = direct. May embed credentials, hence SecureString.
     crypto::SecureString proxy;
+
+    std::optional<hwid::HwidProfile> hwid;
+    bool hwid_excluded = false;
 
     WebProfile web;
     BanStatus bans;

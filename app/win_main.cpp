@@ -29,6 +29,7 @@
 #include "core/account_store/store.hpp"
 #include "core/cs2_gc/cs2_gc_client.hpp"
 #include "core/http/client.hpp"
+#include "core/hwid/hwid_reader.hpp"
 #include "core/launch/cs2_autostart.hpp"
 #include "core/log.hpp"
 #include "core/time_aligner.hpp"
@@ -598,6 +599,7 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     }
     state.main_hwnd = hwnd;
     g_state = &state;
+    state.real_hardware = sam::core::hwid::read_real_hardware();
     sam::app::conf_poller::start(state);
 
     // Auto-unlock with the cached DPAPI-wrapped password if opted in. On failure
