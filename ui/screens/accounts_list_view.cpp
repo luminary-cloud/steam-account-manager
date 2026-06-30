@@ -499,6 +499,29 @@ ListViewResult draw_list_body(app::AppState& state,
         if (begin_styled_popup(("##group-ctx-" + key).c_str())) {
             if (ImGui::MenuItem("Rename...")) group_to_rename = key;
             if (ImGui::MenuItem("Delete"))    group_to_delete = key;
+            // "Always spoof HWID" auto-generates a profile for every account on launch
+            // unless it's individually excluded. Offer that exclude/include toggle across
+            // the whole group at once. Excluding also drops any profile already generated
+            // for the account: launch only skips spoofing when hwid has no value (the
+            // hwid_excluded flag alone just stops re-generation), so clearing it is what
+            // makes the exclusion take effect immediately.
+            if (state.settings.hwid.always_spoof && ImGui::BeginMenu("HWID spoofer")) {
+                if (ImGui::MenuItem("Exclude all from spoof")) {
+                    for (std::size_t idx : indices) {
+                        state.vault.accounts[idx].hwid_excluded = true;
+                        state.vault.accounts[idx].hwid = std::nullopt;
+                    }
+                    state.vault_dirty = true;
+                    state.save_vault_if_dirty();
+                }
+                if (ImGui::MenuItem("Include all in spoof")) {
+                    for (std::size_t idx : indices)
+                        state.vault.accounts[idx].hwid_excluded = false;
+                    state.vault_dirty = true;
+                    state.save_vault_if_dirty();
+                }
+                ImGui::EndMenu();
+            }
             end_styled_popup();
         }
 

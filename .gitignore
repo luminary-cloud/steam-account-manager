@@ -77,6 +77,9 @@ $RECYCLE.BIN/
 **/*.pb.h
 core/steam_auth/gen/.timestamp
 
+# Generated HWID DLL byte array (regenerated each build by the EmbedHwidDll target)
+core/hwid/gen/hwid_dll_bytes.hpp
+
 # Vendored libraries are fetched by scripts/init_third_party.ps1, not committed.
 /third_party/*
 !/third_party/.gitkeep

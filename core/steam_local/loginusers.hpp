@@ -45,6 +45,15 @@ bool ensure_loginusers_entry(std::uint64_t steam_id_64,
 bool ensure_config_vdf_account(std::uint64_t steam_id_64,
                                const std::string& account_name);
 
+// Sets InstallConfigStore > Software > WebStorage > Auth > AlwaysShowUserChooser = "0"
+// in <SteamInstall>/config/config.vdf. That key backs Steam's "Ask which account to use
+// each time Steam starts" option; with it on, Steam shows the account picker and ignores
+// the AutoLoginUser hint the token path sets, so a token/NFA sign-in stalls on the
+// chooser. Used by the NFA token-login path. MUST run while Steam is shut down, or Steam
+// rewrites config.vdf from memory on exit and reverts it. False if Steam isn't installed
+// or the write fails.
+bool disable_account_chooser();
+
 // Generic text-VDF tree, shared with the connect_cache writer. Round-trips
 // unknown keys so a write preserves fields Valve may add.
 struct VdfNode {

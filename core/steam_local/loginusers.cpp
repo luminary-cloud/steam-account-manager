@@ -511,4 +511,36 @@ bool ensure_config_vdf_account(std::uint64_t steam_id_64,
     return true;
 }
 
+bool disable_account_chooser() {
+    auto dir = platform::registry::read_steam_install_dir();
+    if (!dir) {
+        SAM_LOG_WARN("disable_account_chooser: Steam install dir not found");
+        return false;
+    }
+    const auto path = *dir / "config" / "config.vdf";
+
+    // parse_vdf("") yields an empty root when the file doesn't exist yet.
+    VdfNode root = parse_vdf(read_file_to_string(path));
+
+    VdfNode* auth = ensure_block_path(
+        root, {"InstallConfigStore", "Software", "WebStorage", "Auth"});
+    upsert_scalar(*auth, "AlwaysShowUserChooser", "0");
+
+    std::string serialized;
+    for (const auto& c : root.children) serialize_node(c, serialized, 0);
+
+    try {
+        platform::atomic_write_file(path,
+            std::span<const std::uint8_t>(
+                reinterpret_cast<const std::uint8_t*>(serialized.data()),
+                serialized.size()),
+            /*restrict_acl=*/false);  // Steam's sandboxed helper must read this.
+    } catch (const std::exception& ex) {
+        SAM_LOG_ERROR("disable_account_chooser: write failed: {}", ex.what());
+        return false;
+    }
+    SAM_LOG_INFO("disable_account_chooser: set AlwaysShowUserChooser=0 in {}", path.string());
+    return true;
+}
+
 }  // namespace sam::steam_local

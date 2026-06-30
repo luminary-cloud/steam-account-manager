@@ -87,6 +87,11 @@ LaunchResult launch_account_with_token(const core::Account& a,
     // this entry it ignores the injected token and shows the login window.
     if (!steam_local::ensure_config_vdf_account(a.steam_id_64, login))
         SAM_LOG_WARN("token-launch: config.vdf account entry not written");
+    // "Ask which account to use each time Steam starts" (AlwaysShowUserChooser) makes
+    // Steam show the picker and ignore AutoLoginUser, stalling the token sign-in. Clear
+    // it now while Steam is shut down so the launch below signs in silently.
+    if (!steam_local::disable_account_chooser())
+        SAM_LOG_WARN("token-launch: could not clear AlwaysShowUserChooser in config.vdf");
 
     auto pid = platform::process::launch(*steam_exe, L"");
     if (!pid) {
