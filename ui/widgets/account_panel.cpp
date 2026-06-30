@@ -11,6 +11,7 @@
 
 #include <imgui.h>
 
+#include "core/account_store/store.hpp"
 #include "ui/fonts.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
@@ -300,6 +301,13 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     }
     const bool has_meta_line = !meta_line.empty();
 
+    // The reserved Cached tag is shown as a corner pill, not a body chip, so it
+    // doesn't count toward the body tag row.
+    bool has_visible_tags = false;
+    for (const auto& tid : a.tag_ids) {
+        if (tid != core::store::kCachedTagId) { has_visible_tags = true; break; }
+    }
+
     const auto now_s = now_seconds();
     const bool has_cooldown = state.settings.info.show_cooldown
                               && a.cs2.cooldown_expires_unix > now_s;
@@ -361,7 +369,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     if (has_meta_line)      middle_h += 2.0F * sp_y + text_h;
     if (has_cooldown)       middle_h += 2.0F * sp_y + text_h;
     if (has_weekly_drop)    middle_h += 2.0F * sp_y + text_h;
-    if (!a.tag_ids.empty()) middle_h += 2.0F * sp_y + chip_h;
+    if (has_visible_tags)   middle_h += 2.0F * sp_y + chip_h;
     if (!state.settings.hide_notes && !a.notes.empty())   middle_h += 2.0F * sp_y + text_h * 2.0F;
 
     auto center_h_lead = [&](float section_w) {
@@ -432,7 +440,11 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         const ImVec2 after_header = ImGui::GetCursorScreenPos();
         const float trust_x = header_origin_screen.x + pane_inner_w - 16.0F;
         const float trust_y = header_origin_screen.y + 4.0F;
-        if (a.is_nfa) draw_nfa_pill(trust_x - 6.0F, trust_y + 7.0F);
+        // Cached imports show a "Cached" pill in place of the NFA pill.
+        if (core::store::is_cached_account(a))
+            draw_cached_pill(trust_x - 6.0F, trust_y + 7.0F);
+        else if (a.is_nfa)
+            draw_nfa_pill(trust_x - 6.0F, trust_y + 7.0F);
         ImGui::SetCursorScreenPos(ImVec2(trust_x, trust_y));
         if (draw_trust_badge(a.trust, true)) {
             state.vault_dirty = true;
@@ -583,10 +595,11 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         ImGui::PopStyleColor();
     }
 
-    if (!a.tag_ids.empty()) {
+    if (has_visible_tags) {
         ImGui::Spacing();
         bool wrapped = false;
         for (const auto& tag_id : a.tag_ids) {
+            if (tag_id == core::store::kCachedTagId) continue;  // shown as a corner pill
             for (const auto& t : state.vault.tags) {
                 if (t.id == tag_id) {
                     if (wrapped) ImGui::SameLine();

@@ -27,6 +27,14 @@ bool write_connect_cache_token(const std::string& account_name,
 // re-inject it across a restart.
 std::optional<std::string> read_connect_cache_value(const std::string& account_name);
 
+// Reads and decrypts the ConnectCache login token Steam stored for `account_name`,
+// returning the bare refresh-token JWT. Hex-decodes read_connect_cache_value, then
+// DPAPI-unwraps it with entropy = the lowercased account name (how Steam wrapped it).
+// nullopt if no value is stored, the hex is malformed, or DPAPI can't decrypt it
+// (e.g. a different Windows user wrote it). The token is client-scoped, so the
+// imported account behaves as NFA.
+std::optional<crypto::SecureString> read_connect_cache_token(const std::string& account_name);
+
 // Writes an already-wrapped ConnectCache value (as returned by
 // read_connect_cache_value) back under the same key, verbatim and without
 // re-wrapping. Steam must not be running.

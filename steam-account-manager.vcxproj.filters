@@ -179,6 +179,7 @@
     <ClCompile Include="ui\screens\sda_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\add_account_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\add_account_full_login.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\add_account_cached.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\add_account_imports.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\confirmations_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\confirmations_modals.cpp"><Filter>ui\screens</Filter></ClCompile>

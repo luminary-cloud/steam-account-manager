@@ -79,4 +79,20 @@ Account* find_existing_account(Vault& vault,
 // Idempotent across repeated imports.
 std::string ensure_nfa_group(Vault& vault);
 
+// Reserved ids for the "Cached" group + tag applied to accounts imported from the
+// local Steam client (the Import cached tab). Used to tell a cached import apart
+// from a plain NFA-token account.
+inline constexpr const char* kCachedGroupId = "grp-cached";
+inline constexpr const char* kCachedTagId = "tag-cached";
+
+// Id of the reserved "Cached" group, creating it if absent. Idempotent.
+std::string ensure_cached_group(Vault& vault);
+
+// Id of the reserved "Cached" tag, creating it if absent. Idempotent.
+std::string ensure_cached_tag(Vault& vault);
+
+// True if `a` carries the reserved cached tag, i.e. it was imported from the local
+// Steam client. Distinguishes cached imports from plain NFA-token accounts.
+bool is_cached_account(const Account& a);
+
 }  // namespace sam::core::store

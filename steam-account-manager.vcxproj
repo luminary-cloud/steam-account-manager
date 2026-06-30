@@ -249,6 +249,7 @@
     <ClCompile Include="ui\screens\sda_screen.cpp" />
     <ClCompile Include="ui\screens\add_account_screen.cpp" />
     <ClCompile Include="ui\screens\add_account_full_login.cpp" />
+    <ClCompile Include="ui\screens\add_account_cached.cpp" />
     <ClCompile Include="ui\screens\add_account_imports.cpp" />
     <ClCompile Include="ui\screens\confirmations_screen.cpp" />
     <ClCompile Include="ui\screens\confirmations_modals.cpp" />

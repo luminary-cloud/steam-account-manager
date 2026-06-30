@@ -134,4 +134,33 @@ std::optional<std::string> read_connect_cache_value(const std::string& account_n
     return entry->value;
 }
 
+std::optional<crypto::SecureString> read_connect_cache_token(
+    const std::string& account_name) {
+    auto raw = read_connect_cache_value(account_name);
+    if (!raw) return std::nullopt;
+
+    const std::vector<std::uint8_t> blob = core::from_hex(*raw);
+    if (blob.empty()) {
+        SAM_LOG_WARN("connect_cache: malformed hex for '{}'", account_name);
+        return std::nullopt;
+    }
+
+    const std::string name = core::to_lower(account_name);
+    try {
+        std::vector<std::uint8_t> plain = platform::dpapi::unprotect(
+            std::span<const std::uint8_t>(blob.data(), blob.size()),
+            std::span<const std::uint8_t>(
+                reinterpret_cast<const std::uint8_t*>(name.data()), name.size()));
+        crypto::SecureString token(
+            reinterpret_cast<const char*>(plain.data()), plain.size());
+        crypto::zero_buffer(plain.data(), plain.size());
+        if (token.empty()) return std::nullopt;
+        return token;
+    } catch (const std::exception& ex) {
+        SAM_LOG_INFO("connect_cache: can't decrypt token for '{}': {}",
+                     account_name, ex.what());
+        return std::nullopt;
+    }
+}
+
 }  // namespace sam::steam_local

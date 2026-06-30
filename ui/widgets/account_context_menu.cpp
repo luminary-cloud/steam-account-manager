@@ -102,6 +102,11 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         }
     }
 
+    if (ImGui::MenuItem("Edit notes")) {
+        state.selected_account_id = a.id;
+        state.notes_edit_requested = true;
+    }
+
     // NFA accounts can't scrape their cooldown from GCPD, so allow setting it by
     // hand from the known tiers.
     if (a.is_nfa) {

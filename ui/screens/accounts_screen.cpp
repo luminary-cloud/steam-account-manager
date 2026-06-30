@@ -24,6 +24,7 @@
 #include "platform/clipboard.hpp"
 #include "platform/file_dialog.hpp"
 #include "ui/screens/accounts_list_view.hpp"
+#include "ui/screens/add_account_screen.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
 #include "ui/widgets/account_card.hpp"
@@ -151,7 +152,7 @@ void handle_card_action(app::AppState& state,
             break;
         case widgets::CardAction::Edit:
             state.selected_account_id = a.id;
-            state.current_screen = app::Screen::AddAccount;
+            state.account_edit_requested = true;
             break;
         case widgets::CardAction::Refresh:
             state.refresh_single_account(a.id);
@@ -643,6 +644,8 @@ void draw_accounts(app::AppState& state) {
     }
 
     draw_change_username_modal(state);
+    draw_edit_notes_modal(state);
+    draw_edit_account_modal(state);
 
     widgets::draw_export_bundle_modal(state, export_state);
 }

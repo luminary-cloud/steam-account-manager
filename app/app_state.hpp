@@ -102,6 +102,10 @@ struct AppState {
     std::string search_query;
     // Requests the "Change username" modal; consumed by Accounts next frame.
     bool persona_change_requested = false;
+    // Requests the "Edit notes" modal; consumed by Accounts next frame.
+    bool notes_edit_requested = false;
+    // Requests the "Edit account" modal; consumed by Accounts next frame.
+    bool account_edit_requested = false;
     // Requests a gamesense loader file pick (the per-card popup can't host the
     // Win32 dialog); Accounts runs the dialog at a stable scope. Value is the
     // account id to switch to "CS2 + gamesense", empty = only (re)install the

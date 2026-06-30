@@ -23,4 +23,11 @@ std::vector<std::uint8_t> unprotect(std::span<const std::uint8_t> wrapped);
 std::vector<std::uint8_t> protect(std::span<const std::uint8_t> plaintext,
                                   std::span<const std::uint8_t> entropy);
 
+// Counterpart to protect(plaintext, entropy): `entropy` must match what the blob
+// was wrapped with. Used to decrypt Steam's ConnectCache tokens (entropy = account
+// name). Throws DpapiError if the blob is corrupt, the entropy is wrong, or it was
+// protected under a different user.
+std::vector<std::uint8_t> unprotect(std::span<const std::uint8_t> wrapped,
+                                    std::span<const std::uint8_t> entropy);
+
 }  // namespace sam::platform::dpapi

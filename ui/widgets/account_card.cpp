@@ -9,6 +9,7 @@
 #include <imgui.h>
 
 #include "core/account_store/account.hpp"
+#include "core/account_store/store.hpp"
 #include "core/sda/totp.hpp"
 #include "core/time_aligner.hpp"
 #include "ui/fonts.hpp"
@@ -165,7 +166,11 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         const float right_pad = 16.0F;
         const float badge_w = 14.0F;
         ImGui::SetCursorPosX(ImGui::GetWindowSize().x - badge_w - right_pad);
-        if (a.is_nfa) {
+        // Cached imports show a "Cached" pill in place of the NFA pill.
+        if (core::store::is_cached_account(a)) {
+            const ImVec2 sp = ImGui::GetCursorScreenPos();
+            draw_cached_pill(sp.x - 6.0F, sp.y + 7.0F);
+        } else if (a.is_nfa) {
             const ImVec2 sp = ImGui::GetCursorScreenPos();
             draw_nfa_pill(sp.x - 6.0F, sp.y + 7.0F);
         }
@@ -294,16 +299,19 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
     }
 
     if (!a.tag_ids.empty()) {
+        bool any = false;
         for (const auto& tag_id : a.tag_ids) {
+            if (tag_id == core::store::kCachedTagId) continue;  // shown as a corner pill
             for (const auto& t : state.vault.tags) {
                 if (t.id == tag_id) {
                     draw_tag_chip(t.name, t.color_rgba);
                     ImGui::SameLine();
+                    any = true;
                     break;
                 }
             }
         }
-        ImGui::NewLine();
+        if (any) ImGui::NewLine();
     }
 
     // Cooldown and weekly-drop indicators share the strip just above the action

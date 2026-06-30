@@ -137,10 +137,12 @@ const char* eresult_label(std::string_view er) {
     if (er == "17") return "(Banned)";
     if (er == "18") return "(AccountNotFound)";
     if (er == "20") return "(PasswordRequiredToKickSession)";
+    if (er == "29") return "(DuplicateRequest)";
     if (er == "63") return "(AccountLogonDeniedNeedTwoFactor)";
     if (er == "65") return "(TwoFactorCodeMismatch)";
     if (er == "84") return "(RateLimitExceeded)";
     if (er == "85") return "(AccountLoginDeniedNeedTwoFactor)";
+    if (er == "88") return "(TwoFactorCodeMismatch/bad time)";
     return "";
 }
 
@@ -214,6 +216,17 @@ int guard_kind_to_proto(GuardKind k) {
         if (kind == k) return proto;
     }
     return 0;
+}
+
+const char* guard_kind_name(GuardKind k) {
+    switch (k) {
+        case GuardKind::None:               return "None";
+        case GuardKind::DeviceCode:         return "DeviceCode";
+        case GuardKind::EmailCode:          return "EmailCode";
+        case GuardKind::DeviceConfirmation: return "DeviceConfirmation";
+        case GuardKind::EmailConfirmation:  return "EmailConfirmation";
+    }
+    return "?";
 }
 
 }  // namespace
@@ -317,6 +330,14 @@ BeginSessionResult begin_session(const MobileLogin& login) {
 
     out.ok = !out.client_id.empty() && out.steam_id != 0;
     if (!out.ok && out.error.empty()) out.error = "begin: malformed response";
+
+    std::string guards;
+    for (auto k : out.allowed_confirmations) {
+        if (!guards.empty()) guards += ", ";
+        guards += guard_kind_name(k);
+    }
+    SAM_LOG_INFO("auth: begin_session ok={} steamid={} allowed_confirmations=[{}]",
+                 out.ok, out.steam_id, guards);
     return out;
 }
 

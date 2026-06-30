@@ -76,4 +76,30 @@ std::vector<std::uint8_t> protect(std::span<const std::uint8_t> plaintext,
     return std::vector<std::uint8_t>(out.pbData, out.pbData + out.cbData);
 }
 
+std::vector<std::uint8_t> unprotect(std::span<const std::uint8_t> wrapped,
+                                    std::span<const std::uint8_t> entropy) {
+    DATA_BLOB in{};
+    in.cbData = static_cast<DWORD>(wrapped.size());
+    in.pbData = const_cast<BYTE*>(wrapped.data());
+
+    DATA_BLOB ent{};
+    DATA_BLOB* pent = nullptr;
+    if (!entropy.empty()) {
+        ent.cbData = static_cast<DWORD>(entropy.size());
+        ent.pbData = const_cast<BYTE*>(entropy.data());
+        pent = &ent;
+    }
+
+    DATA_BLOB out{};
+    LPWSTR description = nullptr;
+    if (!::CryptUnprotectData(&in, &description, pent, nullptr, nullptr,
+                              CRYPTPROTECT_UI_FORBIDDEN, &out)) {
+        throw DpapiError("CryptUnprotectData (entropy) failed");
+    }
+    LocalFreeGuard guard{out.pbData};
+    LocalFreeGuard desc_guard{description};
+
+    return std::vector<std::uint8_t>(out.pbData, out.pbData + out.cbData);
+}
+
 }  // namespace sam::platform::dpapi

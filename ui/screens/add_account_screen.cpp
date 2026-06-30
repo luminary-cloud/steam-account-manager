@@ -88,282 +88,6 @@ std::vector<std::filesystem::path> scan_dir_for_extension(
 
 namespace {
 
-void draw_manual(app::AppState& state, core::Account* editing) {
-    static std::array<char, 64> login{};
-    static std::string password;
-    static std::string shared_secret;
-    static std::string notes;
-    static std::string loaded_id;
-
-    constexpr const char* kPwLabel = "Password";
-    constexpr const char* kSsLabel = "Shared secret (optional)##sda";
-
-    if (editing && loaded_id != editing->id) {
-        std::snprintf(login.data(), login.size(), "%s", editing->login.c_str());
-        password = std::string(editing->password.begin(), editing->password.end());
-        shared_secret = editing->sda.has_value() ? editing->sda->shared_secret : std::string{};
-        notes = to_utf8(editing->notes);
-        loaded_id = editing->id;
-        widgets::reset_password_visibility(kPwLabel);
-        widgets::reset_password_visibility(kSsLabel);
-    } else if (!editing && !loaded_id.empty()) {
-        login = {};
-        password.clear();
-        shared_secret.clear();
-        notes.clear();
-        loaded_id.clear();
-        widgets::reset_password_visibility(kPwLabel);
-        widgets::reset_password_visibility(kSsLabel);
-    }
-
-    separator_text("Account credentials");
-
-    const bool editing_redacted =
-        editing && state.settings.privacy_mode &&
-        state.revealed_logins.find(editing->id) == state.revealed_logins.end();
-    if (editing_redacted) {
-        // Clickable redacted label stands in for the InputText; the buffer above
-        // still holds the real login so save_changes works unchanged.
-        widgets::draw_login_text(state, *editing);
-        ImGui::SameLine();
-        ImGui::TextUnformatted("Login");
-    } else {
-        ImGui::SetNextItemWidth(280.0F);
-        if (editing) ImGui::BeginDisabled();
-        ImGui::InputText("Login", login.data(), login.size());
-        if (editing) {
-            ImGui::EndDisabled();
-            hover_tooltip("Login is read-only when editing an existing account.");
-        } else {
-            hover_tooltip("Steam account name (lowercase username, not the persona/display name).");
-        }
-    }
-
-    widgets::draw_password_field(kPwLabel, password, false, 280.0F);
-    hover_tooltip("Stored encrypted with the vault master password. Used by the Launch button "
-                  "to fill the Steam client prompt; never sent to a third party.");
-
-    widgets::draw_password_field(kSsLabel, shared_secret, false, 280.0F);
-    hover_tooltip("Base64 shared_secret from your maFile. Optional. When set, the Code button "
-                  "generates Steam Guard codes and silent re-login can refresh expired sessions "
-                  "without prompting. Leave blank if you don't have it.");
-    {
-        std::array<char, 1024> nbuf{};
-        std::snprintf(nbuf.data(), nbuf.size(), "%s", notes.c_str());
-        if (ImGui::InputTextMultiline("Notes", nbuf.data(), nbuf.size(),
-                                       ImVec2(380.0F, 90.0F))) {
-            notes = nbuf.data();
-        }
-    }
-
-    ImGui::Spacing();
-    ImGui::BeginDisabled(login[0] == 0);
-    if (action_button(editing ? "Save changes" : "Save account")) {
-        std::string new_id_for_refresh;
-        if (editing) {
-            editing->password = crypto::make_secure(password);
-            editing->notes = to_wide(notes);
-            if (!shared_secret.empty()) {
-                if (!editing->sda.has_value()) {
-                    core::SteamGuardAccount g;
-                    g.account_name = editing->login;
-                    editing->sda = std::move(g);
-                }
-                editing->sda->shared_secret = shared_secret;
-                if (editing->sda->account_name.empty())
-                    editing->sda->account_name = editing->login;
-            }
-            if (editing->steam_id_64 == 0 && !editing->login.empty()) {
-                editing->steam_id_64 = steam_local::lookup_steam_id(editing->login);
-                if (editing->steam_id_64 != 0) new_id_for_refresh = editing->id;
-            }
-        } else {
-            core::Account a;
-            a.id = add_account_detail::generate_ulid();
-            a.login = login.data();
-            a.password = crypto::make_secure(password);
-            a.notes = to_wide(notes);
-            a.created_unix = now_seconds();
-            if (!shared_secret.empty()) {
-                core::SteamGuardAccount g;
-                g.account_name = a.login;
-                g.shared_secret = shared_secret;
-                a.sda = std::move(g);
-            }
-            a.steam_id_64 = steam_local::lookup_steam_id(a.login);
-            if (a.steam_id_64 != 0) new_id_for_refresh = a.id;
-            state.vault.accounts.push_back(std::move(a));
-        }
-        state.vault_dirty = true;
-        state.save_vault_if_dirty();
-        if (!new_id_for_refresh.empty()) {
-            state.refresh_single_account(new_id_for_refresh);
-        }
-        login = {};
-        password.clear();
-        shared_secret.clear();
-        notes.clear();
-        loaded_id.clear();
-        state.selected_account_id.clear();
-        state.current_screen = app::Screen::Accounts;
-    }
-    ImGui::EndDisabled();
-}
-
-// NFA accounts have no password; editing one shows its token (with reveal/copy and a
-// replace field) instead of the password-oriented manual form.
-void draw_edit_nfa_token(app::AppState& state, core::Account* editing) {
-    static std::string notes;
-    static std::array<char, 4096> replace_buf{};
-    static std::string replace_error;
-    static std::string loaded_id;
-    static std::unordered_map<std::string, std::int64_t> reveal_until;  // id -> unix
-
-    const std::string acc_id = editing->id;
-    const std::int64_t now = now_seconds();
-
-    if (loaded_id != acc_id) {
-        notes = to_utf8(editing->notes);
-        replace_buf = {};
-        replace_error.clear();
-        reveal_until[acc_id] = 0;  // start masked when switching accounts
-        loaded_id = acc_id;
-    }
-
-    separator_text("NFA account");
-
-    // Login (read-only, privacy-aware) — mirrors the manual form.
-    const bool editing_redacted =
-        state.settings.privacy_mode &&
-        state.revealed_logins.find(acc_id) == state.revealed_logins.end();
-    if (editing_redacted) {
-        widgets::draw_login_text(state, *editing);
-        ImGui::SameLine();
-        ImGui::TextUnformatted("Login");
-    } else {
-        ImGui::Text("Login: %s",
-                    editing->login.empty() ? "(unknown)" : editing->login.c_str());
-    }
-
-    if (editing->steam_id_64 != 0) {
-        ImGui::Text("Steam ID: %llu",
-                    static_cast<unsigned long long>(editing->steam_id_64));
-        ImGui::SameLine();
-        if (action_button("Copy##nfa-sid"))
-            platform::clipboard::set_text(std::to_string(editing->steam_id_64));
-    } else {
-        ImGui::TextDisabled("Steam ID: unresolved");
-    }
-
-    // Expiry from the cached value, decoding the token only as a fallback.
-    std::int64_t exp = editing->refresh_token_expires;
-    if (exp == 0 && !editing->refresh_token.empty())
-        exp = steam_login::jwt_expiry(editing->refresh_token);
-    if (exp != 0) {
-        char when[64] = {};
-        const auto t = static_cast<std::time_t>(exp);
-        std::tm tm{};
-        gmtime_s(&tm, &t);
-        std::strftime(when, sizeof(when), "%Y-%m-%d %H:%M UTC", &tm);
-        if (exp <= now) {
-            ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
-            ImGui::Text("Token expired on %s", when);
-            ImGui::PopStyleColor();
-        } else {
-            ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
-            ImGui::Text("Token valid until %s (%lld day(s) left)", when,
-                        static_cast<long long>((exp - now) / 86400));
-            ImGui::PopStyleColor();
-        }
-    }
-
-    separator_text("NFA token");
-    std::string token_plain;
-    if (!editing->refresh_token.empty())
-        token_plain.assign(editing->refresh_token.begin(), editing->refresh_token.end());
-    std::string full_token = editing->steam_id_64 != 0
-        ? std::to_string(editing->steam_id_64) + "----" + token_plain
-        : token_plain;
-
-    const bool revealed = reveal_until[acc_id] > now;
-    if (editing->refresh_token.empty()) {
-        ImGui::TextDisabled("No token stored. Paste one below to set it.");
-    } else if (revealed) {
-        ImGui::PushTextWrapPos(0.0F);
-        ImGui::TextUnformatted(full_token.c_str());
-        ImGui::PopTextWrapPos();
-    } else {
-        ImGui::TextDisabled("(hidden - click Reveal)");
-    }
-
-    if (!editing->refresh_token.empty()) {
-        if (action_button(revealed ? "Hide" : "Reveal"))
-            reveal_until[acc_id] = revealed ? 0 : (now + 30);
-        ImGui::SameLine();
-        if (action_button("Copy token")) {
-            platform::clipboard::set_text_with_auto_clear(
-                full_token, std::chrono::seconds(state.settings.clipboard_clear_seconds));
-        }
-        hover_tooltip("Copies the full SteamID----JWT token; the clipboard auto-clears.");
-    }
-
-    separator_text("Replace token");
-    ImGui::TextDisabled("Paste a fresh SteamID----JWT to update this account's token.");
-    ImGui::InputTextMultiline("##nfa-replace", replace_buf.data(), replace_buf.size(),
-                              ImVec2(440.0F, 70.0F));
-    ImGui::BeginDisabled(replace_buf[0] == 0);
-    if (action_button("Replace token")) {
-        replace_error.clear();
-        const add_account_detail::JwtImportResult r =
-            add_account_detail::import_jwt_token(state, replace_buf.data());
-        if (!r.ok) {
-            replace_error = r.error;
-        } else {
-            state.vault_dirty = true;
-            state.save_vault_if_dirty();
-            state.nfa_dead_notified.erase(r.account_id);
-            state.refresh_single_account(r.account_id);
-            // import_jwt_token may have grown the vault vector, invalidating `editing`;
-            // force a buffer reload next frame and stop touching `editing` now.
-            loaded_id.clear();
-            ImGui::EndDisabled();
-            return;
-        }
-    }
-    ImGui::EndDisabled();
-    if (!replace_error.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
-        ImGui::TextWrapped("%s", replace_error.c_str());
-        ImGui::PopStyleColor();
-    }
-
-    separator_text("Notes");
-    {
-        std::array<char, 1024> nbuf{};
-        std::snprintf(nbuf.data(), nbuf.size(), "%s", notes.c_str());
-        if (ImGui::InputTextMultiline("##nfa-notes", nbuf.data(), nbuf.size(),
-                                       ImVec2(440.0F, 80.0F))) {
-            notes = nbuf.data();
-        }
-    }
-
-    ImGui::Spacing();
-    if (action_button("Save changes")) {
-        editing->notes = to_wide(notes);
-        state.vault_dirty = true;
-        state.save_vault_if_dirty();
-        loaded_id.clear();
-        state.selected_account_id.clear();
-        state.current_screen = app::Screen::Accounts;
-    }
-    ImGui::SameLine();
-    if (action_button("Done")) {
-        loaded_id.clear();
-        state.selected_account_id.clear();
-        state.current_screen = app::Screen::Accounts;
-    }
-}
-
 void draw_import_bundle(app::AppState& state) {
     static widgets::ImportBundleState import_state;
 
@@ -396,65 +120,330 @@ void draw_import_bundle(app::AppState& state) {
 
 }  // namespace
 
-void draw_add_account(app::AppState& state) {
-    core::Account* editing = nullptr;
-    if (!state.selected_account_id.empty())
-        editing = state.find_account(state.selected_account_id);
+void draw_edit_notes_modal(app::AppState& state) {
+    static std::array<char, 1024> notes_buf{};
 
-    ImGui::TextUnformatted(editing ? "Edit account" : "Add account");
+    if (state.notes_edit_requested) {
+        state.notes_edit_requested = false;
+        notes_buf.fill('\0');
+        if (const auto* acc = state.find_account(state.selected_account_id)) {
+            std::snprintf(notes_buf.data(), notes_buf.size(), "%s",
+                          to_utf8(acc->notes).c_str());
+        }
+        ImGui::OpenPopup("Edit notes");
+    }
+
+    if (!begin_styled_modal("Edit notes", 420.0F)) return;
+
+    core::Account* acc = state.find_account(state.selected_account_id);
+    if (acc == nullptr) {
+        ImGui::TextDisabled("Account no longer exists.");
+        if (action_button("Close", ImVec2(80, 0))) ImGui::CloseCurrentPopup();
+        end_styled_modal();
+        return;
+    }
+
+    ImGui::TextUnformatted("Notes");
+    ImGui::InputTextMultiline("##edit-notes", notes_buf.data(), notes_buf.size(),
+                              ImVec2(-1.0F, 110.0F));
+
+    ImGui::Spacing();
+    if (action_button("Save", ImVec2(100, 0))) {
+        acc->notes = to_wide(notes_buf.data());
+        state.vault_dirty = true;
+        state.save_vault_if_dirty();
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (action_button("Cancel", ImVec2(100, 0))) {
+        ImGui::CloseCurrentPopup();
+    }
+    end_styled_modal();
+}
+
+void draw_edit_account_modal(app::AppState& state) {
+    constexpr const char* kPwLabel = "Password##edit";
+    constexpr const char* kSsLabel = "Shared secret (optional)##edit-sda";
+
+    static std::array<char, 64> login_buf{};
+    static std::string password;
+    static std::string shared_secret;
+    static std::string notes;
+    static std::array<char, 4096> replace_buf{};   // NFA token replacement
+    static std::string replace_error;
+    static std::int64_t reveal_until = 0;          // NFA token reveal expiry (unix)
+
+    if (state.account_edit_requested) {
+        state.account_edit_requested = false;
+        login_buf.fill('\0');
+        password.clear();
+        shared_secret.clear();
+        notes.clear();
+        replace_buf.fill('\0');
+        replace_error.clear();
+        reveal_until = 0;
+        widgets::reset_password_visibility(kPwLabel);
+        widgets::reset_password_visibility(kSsLabel);
+        if (const auto* acc = state.find_account(state.selected_account_id)) {
+            std::snprintf(login_buf.data(), login_buf.size(), "%s", acc->login.c_str());
+            password = std::string(acc->password.begin(), acc->password.end());
+            shared_secret = acc->sda.has_value() ? acc->sda->shared_secret : std::string{};
+            notes = to_utf8(acc->notes);
+        }
+        ImGui::OpenPopup("Edit account");
+    }
+
+    if (!begin_styled_modal("Edit account", 540.0F)) return;
+
+    core::Account* acc = state.find_account(state.selected_account_id);
+    if (acc == nullptr) {
+        ImGui::TextDisabled("Account no longer exists.");
+        if (action_button("Close", ImVec2(80, 0))) ImGui::CloseCurrentPopup();
+        end_styled_modal();
+        return;
+    }
+
+    const std::int64_t now = now_seconds();
+
+    if (acc->is_nfa) {
+        // Token-only account: no password, edits the refresh token plus notes.
+        separator_text("Account");
+        ImGui::Text("Login: %s",
+                    acc->login.empty() ? "(unknown)" : acc->login.c_str());
+        if (acc->steam_id_64 != 0) {
+            ImGui::Text("Steam ID: %llu",
+                        static_cast<unsigned long long>(acc->steam_id_64));
+        }
+
+        std::string token_plain;
+        if (!acc->refresh_token.empty())
+            token_plain.assign(acc->refresh_token.begin(), acc->refresh_token.end());
+        const std::string full_token = acc->steam_id_64 != 0
+            ? std::to_string(acc->steam_id_64) + "----" + token_plain
+            : token_plain;
+
+        separator_text("NFA token");
+        const bool revealed = reveal_until > now;
+        if (acc->refresh_token.empty()) {
+            ImGui::TextDisabled("No token stored. Paste one below to set it.");
+        } else if (revealed) {
+            ImGui::PushTextWrapPos(0.0F);
+            ImGui::TextUnformatted(full_token.c_str());
+            ImGui::PopTextWrapPos();
+        } else {
+            ImGui::TextDisabled("(hidden - click Reveal)");
+        }
+        if (!acc->refresh_token.empty()) {
+            if (action_button(revealed ? "Hide" : "Reveal"))
+                reveal_until = revealed ? 0 : (now + 30);
+            ImGui::SameLine();
+            if (action_button("Copy token")) {
+                platform::clipboard::set_text_with_auto_clear(
+                    full_token,
+                    std::chrono::seconds(state.settings.clipboard_clear_seconds));
+            }
+            hover_tooltip("Copies the full SteamID----JWT token; the clipboard auto-clears.");
+        }
+
+        separator_text("Replace token");
+        ImGui::TextDisabled("Paste a fresh SteamID----JWT to update this account's token.");
+        ImGui::InputTextMultiline("##nfa-replace", replace_buf.data(), replace_buf.size(),
+                                  ImVec2(-1.0F, 70.0F));
+        ImGui::BeginDisabled(replace_buf[0] == 0);
+        if (action_button("Replace token")) {
+            replace_error.clear();
+            const add_account_detail::JwtImportResult r =
+                add_account_detail::import_jwt_token(state, replace_buf.data());
+            if (!r.ok) {
+                replace_error = r.error;
+            } else {
+                state.vault_dirty = true;
+                state.save_vault_if_dirty();
+                state.nfa_dead_notified.erase(r.account_id);
+                state.refresh_single_account(r.account_id);
+                // import_jwt_token may have grown the vault vector, invalidating `acc`;
+                // reload the modal next frame against the (possibly relocated) account.
+                state.selected_account_id = r.account_id;
+                state.account_edit_requested = true;
+                ImGui::EndDisabled();
+                end_styled_modal();
+                return;
+            }
+        }
+        ImGui::EndDisabled();
+        if (!replace_error.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
+            ImGui::TextWrapped("%s", replace_error.c_str());
+            ImGui::PopStyleColor();
+        }
+
+        // Cached imports (from this PC's Steam client) can be promoted to a normal
+        // password account; plain NFA-token accounts can't.
+        if (core::store::is_cached_account(*acc)) {
+            separator_text("Account type");
+            ImGui::PushStyleColor(ImGuiCol_Text,
+                                  ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            ImGui::TextWrapped("Imported from this PC. Convert it to a full-access account "
+                               "to add a password and use it like a normally added account.");
+            ImGui::PopStyleColor();
+            if (action_button("Convert to full access")) {
+                acc->is_nfa = false;
+                auto& tids = acc->tag_ids;
+                tids.erase(std::remove(tids.begin(), tids.end(),
+                                       std::string(core::store::kCachedTagId)),
+                           tids.end());
+                if (acc->group_id == core::store::kCachedGroupId) acc->group_id.clear();
+                state.vault_dirty = true;
+                state.save_vault_if_dirty();
+                // Re-open so the modal re-renders as the regular (password) editor.
+                state.selected_account_id = acc->id;
+                state.account_edit_requested = true;
+                end_styled_modal();
+                return;
+            }
+        }
+
+        separator_text("Notes");
+        {
+            std::array<char, 1024> nbuf{};
+            std::snprintf(nbuf.data(), nbuf.size(), "%s", notes.c_str());
+            if (ImGui::InputTextMultiline("##nfa-notes", nbuf.data(), nbuf.size(),
+                                           ImVec2(-1.0F, 80.0F))) {
+                notes = nbuf.data();
+            }
+        }
+
+        ImGui::Spacing();
+        if (action_button("Save changes", ImVec2(110, 0))) {
+            acc->notes = to_wide(notes);
+            state.vault_dirty = true;
+            state.save_vault_if_dirty();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (action_button("Cancel", ImVec2(100, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        end_styled_modal();
+        return;
+    }
+
+    // Regular (password) account.
+    separator_text("Account credentials");
+
+    ImGui::SetNextItemWidth(240.0F);
+    ImGui::InputText("Username", login_buf.data(), login_buf.size());
+    hover_tooltip("Steam account name (lowercase username, not the persona/display name). "
+                  "Changing it relabels the account locally; it does not rename it on Steam.");
+
+    widgets::draw_password_field(kPwLabel, password, false, 240.0F);
+    hover_tooltip("Stored encrypted with the vault master password. Used by the Launch button "
+                  "to fill the Steam client prompt; never sent to a third party.");
+
+    widgets::draw_password_field(kSsLabel, shared_secret, false, 240.0F);
+    hover_tooltip("Base64 shared_secret from your maFile. Optional. When set, the Code button "
+                  "generates Steam Guard codes and silent re-login can refresh expired sessions "
+                  "without prompting. Leave blank if you don't have it.");
+
+    ImGui::TextUnformatted("Notes");
+    {
+        std::array<char, 1024> nbuf{};
+        std::snprintf(nbuf.data(), nbuf.size(), "%s", notes.c_str());
+        if (ImGui::InputTextMultiline("##edit-account-notes", nbuf.data(), nbuf.size(),
+                                       ImVec2(-1.0F, 90.0F))) {
+            notes = nbuf.data();
+        }
+    }
+
+    ImGui::Spacing();
+    ImGui::BeginDisabled(login_buf[0] == 0);
+    if (action_button("Save changes", ImVec2(110, 0))) {
+        std::string new_id_for_refresh;
+        const std::string old_login = acc->login;
+        acc->login = login_buf.data();
+        acc->password = crypto::make_secure(password);
+        acc->notes = to_wide(notes);
+        if (!shared_secret.empty()) {
+            if (!acc->sda.has_value()) {
+                core::SteamGuardAccount g;
+                g.account_name = acc->login;
+                acc->sda = std::move(g);
+            }
+            acc->sda->shared_secret = shared_secret;
+            // Keep the SDA's account_name aligned with the login unless it was
+            // deliberately set to something else.
+            if (acc->sda->account_name.empty() || acc->sda->account_name == old_login)
+                acc->sda->account_name = acc->login;
+        }
+        if (acc->steam_id_64 == 0 && !acc->login.empty()) {
+            acc->steam_id_64 = steam_local::lookup_steam_id(acc->login);
+            if (acc->steam_id_64 != 0) new_id_for_refresh = acc->id;
+        }
+        state.vault_dirty = true;
+        state.save_vault_if_dirty();
+        if (!new_id_for_refresh.empty()) state.refresh_single_account(new_id_for_refresh);
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (action_button("Cancel", ImVec2(100, 0))) {
+        ImGui::CloseCurrentPopup();
+    }
+    end_styled_modal();
+}
+
+void draw_add_account(app::AppState& state) {
+    // Editing an existing account is handled by the Edit account modal on the
+    // Accounts screen; this screen is add-only.
+    ImGui::TextUnformatted("Add account");
     ImGui::Spacing();
 
-    if (editing) {
-        if (editing->is_nfa) draw_edit_nfa_token(state, editing);
-        else                 draw_manual(state, editing);
-    } else {
-        const bool force_full_login = state.pending_relogin_login.has_value();
-        bool force_mafile = false;
-        bool force_info_dat = false;
-        {
-            std::lock_guard lk(state.drop_mutex);
-            if (state.pending_mafile_focus) {
-                force_mafile = true;
-                state.pending_mafile_focus = false;
-            }
-            if (state.pending_info_dat_focus) {
-                force_info_dat = true;
-                state.pending_info_dat_focus = false;
-            }
+    const bool force_full_login = state.pending_relogin_login.has_value();
+    bool force_mafile = false;
+    bool force_info_dat = false;
+    {
+        std::lock_guard lk(state.drop_mutex);
+        if (state.pending_mafile_focus) {
+            force_mafile = true;
+            state.pending_mafile_focus = false;
         }
-        if (ImGui::BeginTabBar("##add-tabs")) {
-            if (ImGui::BeginTabItem("Manual")) {
-                draw_manual(state, nullptr);
-                ImGui::EndTabItem();
-            }
-            ImGuiTabItemFlags mafile_flags = ImGuiTabItemFlags_None;
-            if (force_mafile) mafile_flags |= ImGuiTabItemFlags_SetSelected;
-            if (ImGui::BeginTabItem("Import maFile", nullptr, mafile_flags)) {
-                add_account_detail::draw_import_mafile(state);
-                ImGui::EndTabItem();
-            }
-            ImGuiTabItemFlags info_dat_flags = ImGuiTabItemFlags_None;
-            if (force_info_dat) info_dat_flags |= ImGuiTabItemFlags_SetSelected;
-            if (ImGui::BeginTabItem("Import info.dat", nullptr, info_dat_flags)) {
-                add_account_detail::draw_import_info_dat(state);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("NFA token")) {
-                add_account_detail::draw_import_jwt_token(state);
-                ImGui::EndTabItem();
-            }
-            ImGuiTabItemFlags full_flags = ImGuiTabItemFlags_None;
-            if (force_full_login) full_flags |= ImGuiTabItemFlags_SetSelected;
-            if (ImGui::BeginTabItem("Full login", nullptr, full_flags)) {
-                add_account_detail::draw_full_login(state);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Import bundle")) {
-                draw_import_bundle(state);
-                ImGui::EndTabItem();
-            }
-            ImGui::EndTabBar();
+        if (state.pending_info_dat_focus) {
+            force_info_dat = true;
+            state.pending_info_dat_focus = false;
         }
+    }
+    if (ImGui::BeginTabBar("##add-tabs")) {
+        ImGuiTabItemFlags full_flags = ImGuiTabItemFlags_None;
+        if (force_full_login) full_flags |= ImGuiTabItemFlags_SetSelected;
+        if (ImGui::BeginTabItem("Full login", nullptr, full_flags)) {
+            add_account_detail::draw_full_login(state);
+            ImGui::EndTabItem();
+        }
+        ImGuiTabItemFlags mafile_flags = ImGuiTabItemFlags_None;
+        if (force_mafile) mafile_flags |= ImGuiTabItemFlags_SetSelected;
+        if (ImGui::BeginTabItem("Import maFile", nullptr, mafile_flags)) {
+            add_account_detail::draw_import_mafile(state);
+            ImGui::EndTabItem();
+        }
+        ImGuiTabItemFlags info_dat_flags = ImGuiTabItemFlags_None;
+        if (force_info_dat) info_dat_flags |= ImGuiTabItemFlags_SetSelected;
+        if (ImGui::BeginTabItem("Import info.dat", nullptr, info_dat_flags)) {
+            add_account_detail::draw_import_info_dat(state);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("NFA token")) {
+            add_account_detail::draw_import_jwt_token(state);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Import cached")) {
+            add_account_detail::draw_import_cached(state);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Import bundle")) {
+            draw_import_bundle(state);
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
     }
 }
 

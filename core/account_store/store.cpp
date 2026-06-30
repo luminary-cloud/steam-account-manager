@@ -571,7 +571,8 @@ Account* find_existing_account(Vault& vault,
 }
 
 namespace {
-constexpr std::uint32_t kNfaColorRgba = 0xF5A623FFu;  // amber
+constexpr std::uint32_t kNfaColorRgba = 0xF5A623FFu;     // amber
+constexpr std::uint32_t kCachedColorRgba = 0x3FB68BFFu;  // teal-green
 }
 
 std::string ensure_nfa_group(Vault& vault) {
@@ -584,6 +585,37 @@ std::string ensure_nfa_group(Vault& vault) {
     g.color_rgba = kNfaColorRgba;
     vault.groups.push_back(g);
     return g.id;
+}
+
+std::string ensure_cached_group(Vault& vault) {
+    for (const auto& g : vault.groups) {
+        if (g.id == kCachedGroupId || iequals_ascii(g.name, "Cached")) return g.id;
+    }
+    Group g;
+    g.id = kCachedGroupId;
+    g.name = "Cached";
+    g.color_rgba = kCachedColorRgba;
+    vault.groups.push_back(g);
+    return g.id;
+}
+
+std::string ensure_cached_tag(Vault& vault) {
+    for (const auto& t : vault.tags) {
+        if (t.id == kCachedTagId || iequals_ascii(t.name, "Cached")) return t.id;
+    }
+    Tag t;
+    t.id = kCachedTagId;
+    t.name = "Cached";
+    t.color_rgba = kCachedColorRgba;
+    vault.tags.push_back(t);
+    return t.id;
+}
+
+bool is_cached_account(const Account& a) {
+    for (const auto& tid : a.tag_ids) {
+        if (tid == kCachedTagId) return true;
+    }
+    return false;
 }
 
 Vault subset_vault(const Vault& source, std::span<const std::string> ids) {
