@@ -72,6 +72,8 @@ installer, no telemetry, nothing leaves your machine.
 ### Launch
 - One-click sign-in: closes Steam, relaunches, and types the login and Steam Guard code
   via UI Automation, falling back to the clipboard with auto-clear.
+- Token sign-in method: inject a client-scoped JWT into Steam's ConnectCache to log in
+  without the login window, available as an alternative to the default UI Automation driver.
 - NFA accounts sign in by injecting their token into the Steam client, with no password
   or code typing.
 - Per-launch CS2 config: copy a `video.txt` or a whole `730` folder into the account's
@@ -83,6 +85,17 @@ installer, no telemetry, nothing leaves your machine.
 - Per-account launch method: stop after login, launch CS2, or launch CS2 with a
   user-supplied external loader.
 - Open any account signed-in in your browser from the right-click menu.
+
+### HWID spoofer (educational purposes only)
+- Injects a DLL into the Steam process on launch that hooks WMI, SMBIOS, DXGI, D3D9, and
+  display APIs to present spoofed hardware identifiers.
+- Spoofable components: machine GUID, MAC address, disk serial, PC name, GPU, motherboard,
+  RAM, monitor, storage, and sound card, each individually toggleable.
+- Per-account hardware profiles: each account can have its own randomly generated profile,
+  or be excluded from spoofing entirely.
+- "Always spoof" toggle applies a profile to every launch; per-component mask lets you
+  choose exactly which identifiers are replaced.
+- Hardware comparison table in Settings shows real vs. spoofed values side by side.
 
 ### Background refresh
 - Refresh every account on launch, or schedule a logon task that refreshes in the
