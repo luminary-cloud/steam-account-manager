@@ -150,6 +150,7 @@
     <ClCompile Include="app\vault_saver.cpp" />
     <ClCompile Include="app\app_paths.cpp" />
     <ClCompile Include="app\gamesense_loader.cpp" />
+    <ClCompile Include="app\luminary_loader.cpp" />
     <ClCompile Include="app\job_pump.cpp" />
     <ClCompile Include="app\conf_poller.cpp" />
     <ClCompile Include="core\time_aligner.cpp" />
@@ -297,6 +298,7 @@
     <ClInclude Include="app\vault_saver.hpp" />
     <ClInclude Include="app\app_paths.hpp" />
     <ClInclude Include="app\gamesense_loader.hpp" />
+    <ClInclude Include="app\luminary_loader.hpp" />
     <ClInclude Include="app\job_pump.hpp" />
     <ClInclude Include="app\conf_poller.hpp" />
     <ClInclude Include="core\version.hpp" />

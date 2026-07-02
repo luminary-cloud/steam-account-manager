@@ -13,6 +13,7 @@
 
 #include "app/app_paths.hpp"
 #include "app/gamesense_loader.hpp"
+#include "app/luminary_loader.hpp"
 #include "app/job_pump.hpp"
 #include "core/cs2_config/video_config.hpp"
 #include "core/crypto/secure_string.hpp"
@@ -500,6 +501,51 @@ void draw_gamesense_section(app::AppState& state) {
     hover_tooltip("The loader .exe is copied into the app data folder (data\\gamesense). "
                   "Accounts set to \"Launch CS2 + gamesense\" run it after CS2 starts. "
                   "Pick again to update the loader.");
+}
+
+void draw_luminary_section(app::AppState& state) {
+    separator_text("Luminary");
+    {
+        static std::string g_luminary_err;
+        const auto loader = app::luminary_loader_path();
+        ImGui::TextUnformatted("Loader:");
+        ImGui::SameLine();
+        if (loader) {
+            ImGui::TextDisabled("%s", loader->filename().string().c_str());
+        } else {
+            ImGui::TextDisabled("none configured");
+        }
+        if (action_button(loader ? "Update loader...##lum" : "Choose loader...##lum",
+                          ImVec2(160, 0))) {
+            platform::file_dialog::Options opts;
+            opts.parent = state.main_hwnd;
+            opts.title = L"Choose luminary loader";
+            opts.filters = {{L"Executable (*.exe)", L"*.exe"},
+                            {L"All files (*.*)", L"*.*"}};
+            const auto res = platform::file_dialog::open_file(opts);
+            if (res.ok) {
+                g_luminary_err.clear();
+                if (!app::install_luminary_loader(res.path, &g_luminary_err)) {
+                    SAM_LOG_ERROR("luminary loader install failed: {}", g_luminary_err);
+                }
+            }
+        }
+        if (loader) {
+            ImGui::SameLine();
+            if (action_button("Clear##luminary-loader", ImVec2(80, 0))) {
+                std::error_code ec;
+                std::filesystem::remove(*loader, ec);
+            }
+        }
+        if (!g_luminary_err.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
+            ImGui::TextWrapped("%s", g_luminary_err.c_str());
+            ImGui::PopStyleColor();
+        }
+    }
+    hover_tooltip("The loader .exe is copied into the app data folder (data\\luminary). "
+                  "Accounts set to \"Launch CS2 + luminary\" run it with --auto --game=cs2 "
+                  "after CS2 starts. Pick again to update the loader.");
 }
 
 void draw_storage_section(app::AppState& state) {

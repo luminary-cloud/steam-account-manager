@@ -111,6 +111,8 @@ struct AppState {
     // account id to switch to "CS2 + gamesense", empty = only (re)install the
     // loader, nullopt = no pick pending.
     std::optional<std::string> gamesense_pick_request;
+    // Same as above, but for the luminary loader.
+    std::optional<std::string> luminary_pick_request;
     // Logins currently revealed in privacy_mode.
     std::unordered_set<std::string> revealed_logins;
 

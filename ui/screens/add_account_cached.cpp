@@ -185,7 +185,7 @@ void draw_import_cached(app::AppState& state) {
             if (!c.selected) continue;
             const std::string raw =
                 c.local.account_name + "----" + std::string(c.token.begin(), c.token.end());
-            const JwtImportResult r = import_jwt_token(state, raw);
+            const JwtImportResult r = import_jwt_token(state, raw, /*assign_nfa_group=*/false);
             if (!r.ok) continue;
             ++imported_count;
             if (r.expired) ++expired_count;

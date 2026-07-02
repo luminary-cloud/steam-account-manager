@@ -15,6 +15,7 @@ void draw_confirmations_section(app::AppState& state);
 void draw_authenticator_section(app::AppState& state);
 void draw_cs2_config_section(app::AppState& state);
 void draw_gamesense_section(app::AppState& state);
+void draw_luminary_section(app::AppState& state);
 void draw_storage_section(app::AppState& state);
 
 }  // namespace settings_detail

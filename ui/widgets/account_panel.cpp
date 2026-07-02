@@ -152,9 +152,12 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     // Profile medals/coins (resolved name + icon, cached in the vault) shown as a centered
     // grid under the ranks. NFA accounts never carry GC medals.
     constexpr float kMedalSize = 36.0F;
-    constexpr float kMedalGap = 4.0F;
+    constexpr float kMedalGapNormal = 4.0F;
+    constexpr float kMedalGapCompact = 2.0F;
+    constexpr int   kMedalCompactThreshold = 10;
     const bool show_medals = !a.is_nfa && !a.cs2.medals.empty();
     const int medal_count = static_cast<int>(a.cs2.medals.size());
+    const float kMedalGap = medal_count > kMedalCompactThreshold ? kMedalGapCompact : kMedalGapNormal;
     const int medals_per_row =
         std::max(1, static_cast<int>((avail_w + kMedalGap) / (kMedalSize + kMedalGap)));
     const int medal_rows =
@@ -528,6 +531,12 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
 
     if (show_medals) {
         ImGui::Spacing();
+        const bool compact = medal_count > kMedalCompactThreshold;
+        if (compact) {
+            ImVec2 sp = ImGui::GetStyle().ItemSpacing;
+            sp.y = kMedalGapCompact;
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, sp);
+        }
         auto* dl = ImGui::GetWindowDrawList();
         for (int i = 0; i < medal_count;) {
             const int row_n = std::min(medals_per_row, medal_count - i);
@@ -549,6 +558,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
                     set_tooltip("%s", m.name.c_str());
             }
         }
+        if (compact) ImGui::PopStyleVar();
     }
 
     if (!chip_rows.empty()) {

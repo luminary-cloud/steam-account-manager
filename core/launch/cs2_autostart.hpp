@@ -16,7 +16,8 @@ namespace sam::launch::cs2_autostart {
 // worker never touches UI/vault state. A newer call supersedes any in-flight worker
 // via a generation counter. `gamesense_loader` is ignored unless method is gamesense.
 void start_async(core::LoginMethod method, std::uint64_t steam_id_64,
-                 std::filesystem::path gamesense_loader);
+                 std::filesystem::path gamesense_loader,
+                 std::filesystem::path luminary_loader = {});
 
 struct StatusMessage {
     std::string text;

@@ -3,6 +3,7 @@
 #include <string>
 
 #include "app/gamesense_loader.hpp"
+#include "app/luminary_loader.hpp"
 #include "ui/util.hpp"
 
 namespace sam::ui::widgets {
@@ -13,6 +14,7 @@ const char* method_chip_label(core::LoginMethod m) {
     switch (m) {
         case core::LoginMethod::LaunchCs2:          return "CS2";
         case core::LoginMethod::LaunchCs2Gamesense: return "CS2+GS";
+        case core::LoginMethod::LaunchCs2Luminary:  return "CS2+LUM";
         case core::LoginMethod::Normal:             break;
     }
     return "";
@@ -24,6 +26,8 @@ const char* method_tooltip(core::LoginMethod m) {
             return "On login: sign in, then launch CS2.";
         case core::LoginMethod::LaunchCs2Gamesense:
             return "On login: sign in, launch CS2, then inject gamesense.";
+        case core::LoginMethod::LaunchCs2Luminary:
+            return "On login: sign in, launch CS2, then run luminary loader.";
         case core::LoginMethod::Normal:
             break;
     }
@@ -38,6 +42,8 @@ ImU32 login_method_color(core::LoginMethod m) {
             return ImGui::GetColorU32(ImVec4(0.20F, 0.45F, 0.85F, 1.0F));
         case core::LoginMethod::LaunchCs2Gamesense:
             return ImGui::GetColorU32(ImVec4(0.55F, 0.35F, 0.85F, 1.0F));
+        case core::LoginMethod::LaunchCs2Luminary:
+            return ImGui::GetColorU32(ImVec4(0.20F, 0.70F, 0.55F, 1.0F));
         case core::LoginMethod::Normal:
             break;
     }
@@ -113,7 +119,7 @@ bool draw_login_split_button(app::AppState& state, core::Account& a, float total
                           ImVec2(cx, cy + r), login_method_color(a.login_method));
 
     if (login_hovered) set_tooltip("%s", method_tooltip(a.login_method));
-    if (caret_hovered) set_tooltip("Choose what Login does (launch CS2, inject gamesense).");
+    if (caret_hovered) set_tooltip("Choose what Login does (launch CS2, inject gamesense/luminary).");
 
     if (caret_clicked) ImGui::OpenPopup("##login-method-popup");
 
@@ -137,15 +143,23 @@ bool draw_login_split_button(app::AppState& state, core::Account& a, float total
             if (app::gamesense_loader_path()) {
                 set_method(core::LoginMethod::LaunchCs2Gamesense);
             } else {
-                // No loader yet: defer to the Accounts screen to run the file
-                // dialog (a Win32 modal can't be opened safely from inside an
-                // ImGui popup) and flip to gamesense on success.
                 state.gamesense_pick_request = a.id;
+            }
+        }
+        if (ImGui::Selectable("Launch CS2 + luminary",
+                              a.login_method == core::LoginMethod::LaunchCs2Luminary)) {
+            if (app::luminary_loader_path()) {
+                set_method(core::LoginMethod::LaunchCs2Luminary);
+            } else {
+                state.luminary_pick_request = a.id;
             }
         }
         ImGui::Separator();
         if (ImGui::Selectable("Update gamesense loader...")) {
             state.gamesense_pick_request = std::string{};
+        }
+        if (ImGui::Selectable("Update luminary loader...")) {
+            state.luminary_pick_request = std::string{};
         }
         ImGui::EndPopup();
     }

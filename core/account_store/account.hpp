@@ -23,6 +23,7 @@ enum class LoginMethod : std::uint8_t {
     Normal = 0,
     LaunchCs2 = 1,
     LaunchCs2Gamesense = 2,  // launch CS2 then inject the gamesense loader
+    LaunchCs2Luminary  = 3,  // launch CS2 then run the luminary loader (--auto --game=cs2)
 };
 
 // Mirror of a Steam Guard maFile. Everything here is sensitive.

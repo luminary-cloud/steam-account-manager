@@ -13,6 +13,7 @@
 
 #include "app/app_paths.hpp"
 #include "app/gamesense_loader.hpp"
+#include "app/luminary_loader.hpp"
 #include "app/job_pump.hpp"
 #include "core/account_store/filter.hpp"
 #include "core/hwid/hwid_gen.hpp"
@@ -55,10 +56,14 @@ void do_launch(app::AppState& state, core::Account& a, bool use_token) {
     if (a.login_method == core::LoginMethod::LaunchCs2Gamesense) {
         if (auto p = app::gamesense_loader_path()) loader = *p;
     }
+    std::filesystem::path lum_loader;
+    if (a.login_method == core::LoginMethod::LaunchCs2Luminary) {
+        if (auto p = app::luminary_loader_path()) lum_loader = *p;
+    }
     auto result = sam::launch::launch_account(
         a, state.settings.cs2_video.launch_options,
         state.settings.disable_cloud_on_login, state.settings.disable_news_on_login,
-        state.settings.remember_password_on_login, loader,
+        state.settings.remember_password_on_login, loader, lum_loader,
         state.settings.hwid.component_mask, use_token);
     if (result.status != sam::launch::LaunchStatus::Ok) {
         state.launch_error = result.message;
@@ -90,7 +95,7 @@ void do_launch(app::AppState& state, core::Account& a, bool use_token) {
     }
     if (a.login_method != core::LoginMethod::Normal && !result.first_login_deferred) {
         sam::launch::cs2_autostart::start_async(a.login_method, a.steam_id_64,
-                                                std::move(loader));
+                                                std::move(loader), std::move(lum_loader));
     }
 }
 
@@ -556,6 +561,37 @@ void draw_accounts(app::AppState& state) {
             } else {
                 state.launch_error = err.empty()
                     ? std::string("Could not install the gamesense loader.")
+                    : err;
+                ImGui::OpenPopup("Launch failed");
+            }
+        }
+    }
+
+    if (state.luminary_pick_request.has_value()) {
+        const std::string acc_id = *state.luminary_pick_request;
+        state.luminary_pick_request.reset();
+
+        platform::file_dialog::Options opts;
+        opts.parent = state.main_hwnd;
+        opts.title = L"Choose luminary loader";
+        opts.filters = {
+            {L"Executable (*.exe)", L"*.exe"},
+            {L"All files (*.*)", L"*.*"},
+        };
+        const auto picked = platform::file_dialog::open_file(opts);
+        if (picked.ok) {
+            std::string err;
+            if (app::install_luminary_loader(picked.path, &err)) {
+                if (!acc_id.empty()) {
+                    if (auto* acc = state.find_account(acc_id)) {
+                        acc->login_method = core::LoginMethod::LaunchCs2Luminary;
+                        state.vault_dirty = true;
+                        state.save_vault_if_dirty();
+                    }
+                }
+            } else {
+                state.launch_error = err.empty()
+                    ? std::string("Could not install the luminary loader.")
                     : err;
                 ImGui::OpenPopup("Launch failed");
             }

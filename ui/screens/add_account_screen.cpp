@@ -193,6 +193,8 @@ void draw_edit_account_modal(app::AppState& state) {
         ImGui::OpenPopup("Edit account");
     }
 
+    const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
     if (!begin_styled_modal("Edit account", 540.0F)) return;
 
     core::Account* acc = state.find_account(state.selected_account_id);
@@ -253,7 +255,8 @@ void draw_edit_account_modal(app::AppState& state) {
         if (action_button("Replace token")) {
             replace_error.clear();
             const add_account_detail::JwtImportResult r =
-                add_account_detail::import_jwt_token(state, replace_buf.data());
+                add_account_detail::import_jwt_token(
+                    state, replace_buf.data(), !core::store::is_cached_account(*acc));
             if (!r.ok) {
                 replace_error = r.error;
             } else {

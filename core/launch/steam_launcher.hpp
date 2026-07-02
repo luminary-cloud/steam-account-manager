@@ -57,6 +57,7 @@ LaunchResult launch_account(const core::Account& account,
                             bool disable_news_on_login = false,
                             bool remember_password = true,
                             std::filesystem::path gamesense_loader = {},
+                            std::filesystem::path luminary_loader = {},
                             std::uint32_t hwid_component_mask = 0x3FFu,
                             bool use_token = false);
 

@@ -417,6 +417,8 @@ void render_launch_steam(app::AppState& state) {
     settings_detail::draw_cs2_config_section(state);
     ImGui::Spacing();
     settings_detail::draw_gamesense_section(state);
+    ImGui::Spacing();
+    settings_detail::draw_luminary_section(state);
 }
 
 void render_network_data(app::AppState& state) {

@@ -39,7 +39,8 @@ struct JwtImportResult {
 
 // Parses + validates a "SteamID----JWT" (or bare JWT) line, then creates or updates
 // the matching NFA account in the vault in place. Caller persists the vault on ok.
-JwtImportResult import_jwt_token(app::AppState& state, const std::string& raw);
+JwtImportResult import_jwt_token(app::AppState& state, const std::string& raw,
+                                 bool assign_nfa_group = true);
 
 }  // namespace add_account_detail
 }  // namespace sam::ui::screens

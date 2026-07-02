@@ -260,7 +260,8 @@ LoginToken split_login_token(std::string raw) {
     return {std::move(login), trim(std::move(token))};
 }
 
-JwtImportResult import_jwt_token(app::AppState& state, const std::string& raw) {
+JwtImportResult import_jwt_token(app::AppState& state, const std::string& raw,
+                                 bool assign_nfa_group) {
     JwtImportResult r;
     LoginToken lt = split_login_token(raw);
     std::string login_hint = lt.login;
@@ -282,8 +283,6 @@ JwtImportResult import_jwt_token(app::AppState& state, const std::string& raw) {
     if (sid == 0 && !login_hint.empty()) sid = steam_local::lookup_steam_id(login_hint);
     r.steam_id = sid;
 
-    const std::string group_id = core::store::ensure_nfa_group(state.vault);
-
     auto apply = [&](core::Account& a, bool fresh) {
         a.refresh_token = rt;
         a.refresh_token_expires = exp;
@@ -296,7 +295,7 @@ JwtImportResult import_jwt_token(app::AppState& state, const std::string& raw) {
         // Importing a token onto a full-access account just stores it, type unchanged.
         const bool nfa = a.password.empty();
         a.is_nfa = nfa;
-        if (nfa) a.group_id = group_id;
+        if (nfa && assign_nfa_group) a.group_id = core::store::ensure_nfa_group(state.vault);
     };
 
     core::Account* existing = core::store::find_existing_account(state.vault, sid, login_hint);

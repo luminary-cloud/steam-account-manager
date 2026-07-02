@@ -70,6 +70,7 @@ bool shutdown_running_steam(const std::filesystem::path& exe_path, LaunchResult&
 LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_options,
                             bool disable_cloud_on_login, bool disable_news_on_login,
                             bool remember_password, std::filesystem::path gamesense_loader,
+                            std::filesystem::path luminary_loader,
                             std::uint32_t hwid_component_mask, bool use_token) {
     if (a.is_nfa) {
         return launch_account_with_token(a, cs2_launch_options, disable_cloud_on_login,
@@ -156,9 +157,10 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
         const auto hwid_profile = a.hwid;
         const auto hwid_mask = hwid_component_mask;
         const std::filesystem::path loader = std::move(gamesense_loader);
+        const std::filesystem::path lum_loader = std::move(luminary_loader);
         creds.on_login_confirmed =
             [exe, login_w, login_lower, sid, opts, method, hwid_profile, hwid_mask, loader,
-             defer_news, defer_cloud, defer_launch_options](
+             lum_loader, defer_news, defer_cloud, defer_launch_options](
                 const std::function<bool()>& still_current) {
                 // ActiveUser flips the moment Steam authenticates, long before it creates
                 // the account's userdata or writes its login state (loginusers/config.vdf),
@@ -265,7 +267,7 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
                 // restart left to race it.
                 if (method != core::LoginMethod::Normal) {
                     SAM_LOG_INFO("first-login reapply: starting CS2 autostart post-relaunch");
-                    cs2_autostart::start_async(method, sid, loader);
+                    cs2_autostart::start_async(method, sid, loader, lum_loader);
                 }
             };
     }
