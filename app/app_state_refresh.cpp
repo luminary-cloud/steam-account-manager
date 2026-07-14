@@ -18,12 +18,14 @@
 #include "core/steam_gcpd/gcpd_scraper.hpp"
 #include "core/steam_spend/spend_parser.hpp"
 #include "core/steam_spend/spend_scraper.hpp"
+#include "core/steam_local/connect_cache.hpp"
 #include "core/steam_local/loginusers.hpp"
 #include "core/steam_login/mobile_auth.hpp"
 #include "core/steam_login/session.hpp"
 #include "core/steam_login/web_session.hpp"
 #include "core/trade/trade_link_fetch.hpp"
 #include "platform/clipboard.hpp"
+#include "platform/registry.hpp"
 #include "platform/tray_icon.hpp"
 
 namespace sam::app {
@@ -958,6 +960,87 @@ void AppState::refresh_all_spend(bool only_missing) {
             if (!job_pump::interruptible_sleep(std::chrono::seconds(4))) break;
         }
         spend_bulk_running.store(false, std::memory_order_release);
+    });
+}
+
+namespace {
+// If Steam's ConnectCache holds a valid, unexpired, client-scoped token for this account
+// that differs from the stored one, copies it into a.refresh_token and returns true.
+// Writes to the account, so call it on the UI thread only.
+bool adopt_connect_cache_token(core::Account& a, const std::string& login_lower) {
+    auto fresh = steam_local::read_connect_cache_token(login_lower);
+    if (!fresh || fresh->empty()) return false;
+    const std::int64_t exp = steam_login::jwt_expiry(*fresh);
+    const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    if (exp != 0 && exp <= now) return false;
+    if (steam_login::jwt_steam_id(*fresh) != a.steam_id_64) return false;
+    if (steam_login::jwt_audience(*fresh).find("client") == std::string::npos) return false;
+    if (a.refresh_token == *fresh) return false;  // unchanged; Steam reused the token
+    a.refresh_token = std::move(*fresh);
+    a.refresh_token_expires = exp;
+    return true;
+}
+}  // namespace
+
+void AppState::capture_rotated_token_now(const std::string& account_id,
+                                         const std::string& login_lower) {
+    auto* a = find_account(account_id);
+    if (!a || a->steam_id_64 == 0 || login_lower.empty()) return;
+    if (adopt_connect_cache_token(*a, login_lower)) {
+        vault_dirty = true;
+        save_vault_if_dirty();
+    }
+}
+
+void AppState::capture_rotated_token_async(std::string account_id,
+                                           std::uint64_t steam_id_64,
+                                           std::string login_lower) {
+    if (account_id.empty() || steam_id_64 == 0 || login_lower.empty()) return;
+    // Steam sets ActiveUser to the account id (low 32 bits of the SteamID) once signed in.
+    const auto target = static_cast<std::uint32_t>(steam_id_64 & 0xFFFFFFFFull);
+
+    job_pump::submit([this, account_id = std::move(account_id), target,
+                      login_lower = std::move(login_lower)]() mutable {
+        using namespace std::chrono;
+        constexpr int kMaxPolls = 90;  // up to ~90s for Steam to complete the token sign-in
+
+        bool signed_in = false;
+        for (int i = 0; i < kMaxPolls; ++i) {
+            if (!job_pump::interruptible_sleep(seconds(1))) return;  // app closing
+            const auto au = platform::registry::read_active_user();
+            if (au && *au == target) { signed_in = true; break; }
+        }
+
+        if (!signed_in) {
+            // Steam never signed in: the token is likely stale/rotated. Tell the user.
+            post_ui_callback([this, account_id] {
+                if (!find_account(account_id)) return;  // account removed meanwhile
+                ui::widgets::ToastItem t;
+                t.id = "token-stale-" + account_id;
+                t.message = "Steam didn't sign in - the login token may be stale or "
+                            "rotated. Re-import a fresh token.";
+                t.account_id = account_id;
+                t.is_warning = true;
+                const auto now = duration_cast<seconds>(
+                    system_clock::now().time_since_epoch()).count();
+                t.expires_at_unix = now + settings.notifications.toast_duration_seconds;
+                toasts.push(std::move(t));
+            });
+            return;
+        }
+
+        // Signed in: let Steam flush the rotated token to local.vdf, then adopt it.
+        if (!job_pump::interruptible_sleep(seconds(3))) return;
+        post_ui_callback([this, account_id, login_lower] {
+            auto* a = find_account(account_id);
+            if (!a) return;
+            if (adopt_connect_cache_token(*a, login_lower)) {
+                vault_dirty = true;
+                save_vault_if_dirty();
+                SAM_LOG_INFO("token self-heal: updated refresh_token for '{}'", a->login);
+            }
+        });
     });
 }
 

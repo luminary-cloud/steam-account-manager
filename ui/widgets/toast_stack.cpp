@@ -56,7 +56,7 @@ void ToastStack::push_summary(std::string message) {
     push(std::move(t));
 }
 
-void ToastStack::render(const std::function<void(const std::string&)>& on_click) {
+void ToastStack::render(const std::function<void(const ToastItem&)>& on_click) {
     const auto now = now_unix();
     items_.erase(std::remove_if(items_.begin(), items_.end(),
         [now](const ToastItem& t) {
@@ -114,11 +114,13 @@ void ToastStack::render(const std::function<void(const std::string&)>& on_click)
             }
             ImGui::PopStyleColor();
 
-            if (!it->account_id.empty() && ImGui::IsWindowHovered() &&
+            const bool clickable = !it->account_id.empty() ||
+                                   it->on_click_action == ToastClickAction::Settings;
+            if (clickable && ImGui::IsWindowHovered() &&
                 ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                 const ImVec2 mouse = ImGui::GetMousePos();
                 if (mouse.x < x_pos.x - 4.0F) {
-                    if (on_click) on_click(it->account_id);
+                    if (on_click) on_click(*it);
                     it->expires_at_unix = now;
                 }
             }

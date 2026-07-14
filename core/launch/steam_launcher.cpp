@@ -1,11 +1,13 @@
 #include "core/launch/steam_launcher.hpp"
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "core/cs2_config/launch_options.hpp"
 #include "core/launch/cs2_autostart.hpp"
@@ -26,6 +28,19 @@ namespace {
 constexpr auto kSetupPollInterval = std::chrono::milliseconds(250);
 constexpr auto kMinSetupDwell     = std::chrono::seconds(5);
 constexpr auto kSetupTimeout      = std::chrono::seconds(60);
+
+// Steam writes local.vdf/config.vdf as both steam.exe and steamwebhelper.exe exit, so a
+// shutdown has to wait for both before we touch those files, or a late write from a
+// lingering helper overwrites ours. steamservice.exe is a long-running background service,
+// so it's left alone.
+std::vector<std::uint32_t> steam_processes_running() {
+    std::vector<std::uint32_t> pids;
+    for (const wchar_t* name : {L"steam.exe", L"steamwebhelper.exe"}) {
+        auto found = platform::process::find_by_image_name(name);
+        pids.insert(pids.end(), found.begin(), found.end());
+    }
+    return pids;
+}
 }  // namespace
 
 std::optional<std::filesystem::path> resolve_steam_exe(LaunchResult& out) {
@@ -49,21 +64,28 @@ std::optional<std::filesystem::path> resolve_steam_exe(LaunchResult& out) {
 }
 
 bool shutdown_running_steam(const std::filesystem::path& exe_path, LaunchResult& out) {
-    if (platform::process::find_by_image_name(L"steam.exe").empty()) return true;
+    if (steam_processes_running().empty()) return true;
 
     platform::process::launch(exe_path, L"-shutdown");
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(6);
+    // Wait for every client process to go, not just steam.exe. A helper still writing its
+    // config after we return would overwrite the token we inject next.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (std::chrono::steady_clock::now() < deadline) {
-        if (platform::process::find_by_image_name(L"steam.exe").empty()) break;
+        if (steam_processes_running().empty()) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
-    for (auto pid : platform::process::find_by_image_name(L"steam.exe")) {
-        if (!platform::process::terminate(pid)) {
-            out.status = LaunchStatus::KillFailed;
-            out.message = "could not terminate running steam.exe";
-            return false;
-        }
+    // Force-kill any stragglers (best-effort; a child may already be exiting), then verify.
+    for (auto pid : steam_processes_running())
+        platform::process::terminate(pid);
+    if (!steam_processes_running().empty()) {
+        out.status = LaunchStatus::KillFailed;
+        out.message = "could not terminate running Steam processes";
+        return false;
     }
+    // Give the OS a moment to finish flushing Steam's config to disk before callers edit
+    // local.vdf/config.vdf, so our writes land last. The first-login reapply path waits the
+    // same way for the same reason.
+    std::this_thread::sleep_for(std::chrono::milliseconds(800));
     return true;
 }
 

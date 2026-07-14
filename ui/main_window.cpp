@@ -107,9 +107,15 @@ bool draw(app::AppState& state) {
     ImGui::PopStyleColor();
     ImGui::PopStyleVar();
 
-    state.toasts.render([&state](const std::string& account_id) {
-        if (account_id.empty()) return;
-        state.selected_account_id = account_id;
+    state.toasts.render([&state](const widgets::ToastItem& t) {
+        if (t.on_click_action == widgets::ToastClickAction::Settings) {
+            state.current_screen = app::Screen::Settings;
+            state.pending_settings_category =
+                static_cast<int>(screens::SettingsCategory::NetworkData);
+            return;
+        }
+        if (t.account_id.empty()) return;
+        state.selected_account_id = t.account_id;
         state.current_screen = app::Screen::Accounts;
     });
 

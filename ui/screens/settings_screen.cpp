@@ -194,6 +194,10 @@ void draw_integration_section(app::AppState& state) {
                           ImGuiInputTextFlags_Password)) {
         state.settings.web_api_key = key_buf.data();
     }
+    ImGui::SameLine();
+    if (action_button("Get key")) {
+        open_url("https://steamcommunity.com/dev/apikey");
+    }
     hover_tooltip("Get a key at steamcommunity.com/dev/apikey. Used by the public-data refresh "
                   "(level, owned games, ban status). Stored encrypted with the vault.");
     ImGui::Checkbox("Refresh on launch", &state.settings.refresh_on_launch);
@@ -570,6 +574,10 @@ constexpr CategoryDef kCategories[] = {
     {"HWID Spoofer",       render_hwid},
 };
 
+// Keep SettingsCategory (header) in lockstep with kCategories order/count.
+static_assert(IM_ARRAYSIZE(kCategories) == 9);
+static_assert(static_cast<int>(SettingsCategory::NetworkData) == 6);
+
 }  // namespace
 
 // Gap above the pinned Save settings footer row.
@@ -593,6 +601,12 @@ void draw_settings(app::AppState& state) {
     // Selected category for the sub-rail. Transient view state, kept for the
     // session only (not persisted to settings).
     static int active_category = 0;
+    // A one-shot external request (e.g. the missing-key toast) can jump to a tab.
+    if (state.pending_settings_category >= 0 &&
+        state.pending_settings_category < IM_ARRAYSIZE(kCategories)) {
+        active_category = state.pending_settings_category;
+    }
+    state.pending_settings_category = -1;
     constexpr float kRailWidth = 184.0F;
 
     ImGui::BeginChild("##settings-cats", ImVec2(kRailWidth, 0), false,

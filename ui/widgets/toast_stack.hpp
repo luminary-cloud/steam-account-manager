@@ -7,11 +7,14 @@
 
 namespace sam::ui::widgets {
 
+enum class ToastClickAction { None, Account, Settings };
+
 struct ToastItem {
     std::string id;
     std::string message;
     std::string account_id;     // empty for non-account toasts
     bool is_warning = false;    // false = danger styling
+    ToastClickAction on_click_action = ToastClickAction::None;
     std::int64_t expires_at_unix = 0;
 };
 
@@ -23,9 +26,9 @@ public:
     // refresh batch producing many events doesn't flood the stack.
     void push_summary(std::string message);
 
-    // UI-thread only. Prunes expired toasts; on_click fires with the toast's
-    // account_id when its body is clicked.
-    void render(const std::function<void(const std::string&)>& on_click);
+    // UI-thread only. Prunes expired toasts; on_click fires with the toast when
+    // its body is clicked.
+    void render(const std::function<void(const ToastItem&)>& on_click);
 
     void clear();
 

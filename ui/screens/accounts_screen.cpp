@@ -20,6 +20,7 @@
 #include "core/launch/cs2_autostart.hpp"
 #include "core/launch/steam_launcher.hpp"
 #include "core/steam_login/session.hpp"
+#include "core/strings.hpp"
 #include "core/profile/edit.hpp"
 #include "core/sda/totp.hpp"
 #include "platform/clipboard.hpp"
@@ -60,6 +61,11 @@ void do_launch(app::AppState& state, core::Account& a, bool use_token) {
     if (a.login_method == core::LoginMethod::LaunchCs2Luminary) {
         if (auto p = app::luminary_loader_path()) lum_loader = *p;
     }
+    // Before re-injecting for an NFA account, adopt any rotated token Steam left from a
+    // prior sign-in, so we never launch with a token that's already been superseded.
+    if (a.is_nfa) {
+        state.capture_rotated_token_now(a.id, core::to_lower(a.login));
+    }
     auto result = sam::launch::launch_account(
         a, state.settings.cs2_video.launch_options,
         state.settings.disable_cloud_on_login, state.settings.disable_news_on_login,
@@ -90,6 +96,13 @@ void do_launch(app::AppState& state, core::Account& a, bool use_token) {
     a.last_login_unix = now_seconds();
     state.vault_dirty = true;
     state.save_vault_if_dirty();
+    // After sign-in Steam rotates the refresh token in its ConnectCache, so read it back to
+    // keep the stored token current (a stale one drops to the login form). NFA accounts
+    // only: their refresh_token is the login token, while use_token accounts sign in with a
+    // separate cm_refresh_token that this must not overwrite.
+    if (a.is_nfa) {
+        state.capture_rotated_token_async(a.id, a.steam_id_64, core::to_lower(a.login));
+    }
     if (state.settings.cs2_video.mode != app::CS2ConfigMode::None) {
         state.apply_cs2_video_config(a);
     }
@@ -349,6 +362,20 @@ void draw_accounts(app::AppState& state) {
     ImGui::TextUnformatted("Accounts");
     ImGui::SameLine();
     ImGui::TextDisabled("(%zu)", state.vault.accounts.size());
+
+    if (!state.warned_missing_api_key &&
+        !state.vault.accounts.empty() &&
+        state.settings.web_api_key.empty()) {
+        widgets::ToastItem t;
+        t.id = "missing-api-key";
+        t.message = "No Steam Web API key set, so account data won't be refreshed. "
+                    "Click here to add one in Settings.";
+        t.is_warning = true;
+        t.on_click_action = widgets::ToastClickAction::Settings;
+        t.expires_at_unix = 0;  // persist until the user dismisses it
+        state.toasts.push(std::move(t));
+        state.warned_missing_api_key = true;
+    }
 
     ImGui::Spacing();
 

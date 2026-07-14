@@ -100,6 +100,13 @@ struct AppState {
     Screen current_screen = Screen::Unlock;
     std::string selected_account_id;
     std::string search_query;
+    // Shown once per session by the Accounts screen when accounts exist but no
+    // Web API key is set; kept dismissible.
+    bool warned_missing_api_key = false;
+    // When >= 0, draw_settings selects this sub-rail tab on its next frame and
+    // resets it to -1. Set by the missing-key toast to jump to Network & Data.
+    // Index matches ui::screens::SettingsCategory.
+    int pending_settings_category = -1;
     // Requests the "Change username" modal; consumed by Accounts next frame.
     bool persona_change_requested = false;
     // Requests the "Edit notes" modal; consumed by Accounts next frame.
@@ -333,6 +340,21 @@ struct AppState {
     // UI thread. Requires a stored password.
     void acquire_cm_token(const std::string& account_id,
                           std::function<void(bool, std::string)> on_done);
+
+    // Waits on a worker for Steam to sign this account in, then reads the refresh token
+    // Steam rotated into its ConnectCache and writes it back to the account so the stored
+    // token stays current. Shows a warning toast if Steam never signs in. Vault writes run
+    // on the UI thread via post_ui_callback, and it does nothing if the account is gone.
+    void capture_rotated_token_async(std::string account_id,
+                                     std::uint64_t steam_id_64,
+                                     std::string login_lower);
+
+    // Synchronous version, run just before a launch: reads the token Steam left in its
+    // ConnectCache from an earlier sign-in and writes it back to the account, so a rotated
+    // token is still picked up when the app was closed before the async version could run.
+    // UI thread; does nothing if the account is gone or the stored token is already current.
+    void capture_rotated_token_now(const std::string& account_id,
+                                   const std::string& login_lower);
 
     // Caches a GC snapshot's medals (resolved name + icon), level/XP and a pull timestamp
     // into the account's CS2Status, then saves the vault. Shared by the manual CS2 screen
