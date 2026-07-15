@@ -457,6 +457,17 @@ void GcSession::on_gc_message(std::uint32_t gc_emsg, const std::string& body) {
                     r.medal_defidx.assign(a.medals().display_items_defidx().begin(),
                                           a.medals().display_items_defidx().end());
                 }
+                // Competitive standing. `rankings` carries one entry per mode keyed by
+                // rank_type_id (11 = Premier CS Rating, 7 = Wingman); verified live.
+                for (const auto& rk : a.rankings()) {
+                    if (rk.rank_type_id() == 11) {
+                        r.premier_rating = static_cast<int>(rk.rank_id());
+                        r.premier_wins = static_cast<int>(rk.wins());
+                    } else if (rk.rank_type_id() == 7) {
+                        r.wingman_rank = static_cast<int>(rk.rank_id());
+                        r.wingman_wins = static_cast<int>(rk.wins());
+                    }
+                }
                 // The session's own profile also feeds player_xp() -- launch()'s wait and the
                 // live screen read it -- and bumps so_seq_ to re-post a snapshot. Foreign
                 // profiles only queue, so a puller never churns snapshots for other accounts.

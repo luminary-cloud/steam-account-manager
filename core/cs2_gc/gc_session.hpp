@@ -51,6 +51,12 @@ struct ProfileResult {
     int bonus_flags = 0;
     std::vector<std::uint32_t> medal_defidx;
     std::uint32_t featured_medal_defidx = 0;
+    // Competitive standing from the profile's `rankings`. -1 = the GC didn't report
+    // that mode (never played), so the cache is left untouched rather than cleared.
+    int premier_rating = -1;
+    int premier_wins = -1;
+    int wingman_rank = -1;
+    int wingman_wins = -1;
 };
 
 // CS2 weekly recurring mission progress (from the GC SO cache). Per-account, keyed to a

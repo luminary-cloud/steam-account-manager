@@ -205,9 +205,10 @@ void draw_import_cached(app::AppState& state) {
             state.vault_dirty = true;
             state.save_vault_if_dirty();
             if (account_ids.size() == 1) {
-                state.refresh_single_account(account_ids.front());
+                state.pull_all_for_account(account_ids.front());
             } else {
                 state.refresh_accounts_staggered(std::move(account_ids));
+                state.start_gc_validate(/*force=*/false);  // cached = NFA: validate + pull GC
             }
         }
         has_summary = true;

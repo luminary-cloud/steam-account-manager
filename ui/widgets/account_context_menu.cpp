@@ -107,6 +107,11 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         state.notes_edit_requested = true;
     }
 
+    // NFA/cached: validate the token + pull its CS2 data over the GC on demand.
+    if (a.is_nfa && a.steam_id_64 != 0 && ImGui::MenuItem("Validate token / refresh GC")) {
+        state.queue_gc_validate(a.id);
+    }
+
     // NFA accounts can't scrape their cooldown from GCPD, so allow setting it by
     // hand from the known tiers.
     if (a.is_nfa) {

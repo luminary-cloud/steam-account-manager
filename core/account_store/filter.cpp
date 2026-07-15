@@ -147,6 +147,11 @@ std::vector<std::size_t> apply_filter(const std::vector<Account>& accounts,
         if (passes(accounts[i], filter, q_lower)) out.push_back(i);
     }
     std::stable_sort(out.begin(), out.end(), [&](std::size_t a, std::size_t b) {
+        // Auto-flag: accounts whose token was found revoked float to the top, above the
+        // chosen sort, so a dead NFA/cached token is impossible to miss.
+        const bool ra = accounts[a].nfa_status == NfaTokenStatus::Revoked;
+        const bool rb = accounts[b].nfa_status == NfaTokenStatus::Revoked;
+        if (ra != rb) return ra;
         return compare_for_sort(accounts[a], accounts[b], filter.sort, filter.now_unix) < 0;
     });
     return out;

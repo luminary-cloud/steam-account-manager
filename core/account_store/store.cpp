@@ -266,6 +266,8 @@ void to_json(json& j, const Account& a) {
     j["steam_login_secure"]   = secure_to_string(a.steam_login_secure);
     j["is_nfa"]               = a.is_nfa;
     j["refresh_token_expires"] = a.refresh_token_expires;
+    j["nfa_status"]           = static_cast<int>(a.nfa_status);
+    j["nfa_last_validated_unix"] = a.nfa_last_validated_unix;
     j["cm_refresh_token"]     = secure_to_string(a.cm_refresh_token);
     j["cm_refresh_token_expires"] = a.cm_refresh_token_expires;
     j["display_name"]         = ws_to_u8(a.display_name);
@@ -303,6 +305,9 @@ void from_json(const json& j, Account& a) {
     a.steam_login_secure   = string_to_secure(j.value("steam_login_secure", std::string{}));
     a.is_nfa               = j.value("is_nfa", false);
     a.refresh_token_expires = j.value("refresh_token_expires", static_cast<std::int64_t>(0));
+    a.nfa_status           = static_cast<NfaTokenStatus>(
+        j.value("nfa_status", static_cast<int>(NfaTokenStatus::Unknown)));
+    a.nfa_last_validated_unix = j.value("nfa_last_validated_unix", static_cast<std::int64_t>(0));
     a.cm_refresh_token     = string_to_secure(j.value("cm_refresh_token", std::string{}));
     a.cm_refresh_token_expires = j.value("cm_refresh_token_expires", static_cast<std::int64_t>(0));
     a.display_name         = u8_to_ws(j.value("display_name", std::string{}));

@@ -45,6 +45,9 @@ public:
     bool logged_on() const { return logged_on_; }
     // EResult from the last ClientLoggedOff (6 = LoggedInElsewhere), 0 if none.
     int last_logoff_eresult() const { return logoff_eresult_; }
+    // EResult from the ClientLogOnResponse (1 = OK), 0 if no response arrived
+    // (timeout / never reached a CM). Non-zero + not-OK = the token was rejected.
+    int logon_eresult() const { return logon_eresult_; }
     // True while Steam reports this account is playing a game on another session.
     bool playing_blocked() const { return playing_blocked_; }
     // True once the first ClientPlayingSessionState has arrived, so the GC launch can

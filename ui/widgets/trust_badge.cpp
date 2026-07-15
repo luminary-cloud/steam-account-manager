@@ -65,4 +65,8 @@ void draw_cached_pill(float right_x, float center_y) {
     draw_corner_pill(right_x, center_y, "Cached", 0x5F, 0xC9, 0xA3);
 }
 
+void draw_revoked_pill(float right_x, float center_y) {
+    draw_corner_pill(right_x, center_y, "Revoked", 0xE0, 0x4F, 0x4F);
+}
+
 }  // namespace sam::ui::widgets

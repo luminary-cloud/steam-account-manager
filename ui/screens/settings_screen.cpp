@@ -207,6 +207,22 @@ void draw_integration_section(app::AppState& state) {
     hover_tooltip("Populates Premier rating, Wingman rank, Prime status, and competitive "
                   "cooldown by scraping the Game Coordinator Personal Data page. Requires a "
                   "valid steamLoginSecure cookie (use the Full Login wizard in Add Account).");
+
+    ImGui::SetNextItemWidth(200);
+    ImGui::SliderInt("Steam data cache (hours)", &state.settings.steam_cache_hours, 1, 24);
+    hover_tooltip("Global 'refresh only if older than X' for the Steam Web API data (bans, "
+                  "level, games, summary) -- any batch/startup/auto refresh skips accounts "
+                  "newer than this, like the GC cache. A manual single-account Refresh forces.");
+
+    separator_text("Auto-refresh");
+    ImGui::Checkbox("Auto-refresh while open", &state.settings.auto_refresh_enabled);
+    hover_tooltip("Every X minutes, refresh each account whose Steam or GC cache has expired "
+                  "(medals, ranks, and NFA/cached token validation), skipping the rest. Never "
+                  "runs the balance or GCPD scrapes.");
+    ImGui::BeginDisabled(!state.settings.auto_refresh_enabled);
+    ImGui::SetNextItemWidth(200);
+    ImGui::SliderInt("Refresh interval (minutes)", &state.settings.auto_refresh_minutes, 10, 720);
+    ImGui::EndDisabled();
 }
 
 void draw_startup_section(app::AppState& state) {

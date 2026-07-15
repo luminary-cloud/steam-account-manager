@@ -174,6 +174,9 @@ void handle_card_action(app::AppState& state,
             break;
         case widgets::CardAction::Refresh:
             state.refresh_single_account(a.id);
+            // NFA/cached: the JWT can look alive while the token is actually revoked, so
+            // do a real CM-logon validation (also pulls the account's GC ranks/medals).
+            if (a.is_nfa) state.queue_gc_validate(a.id);
             break;
         case widgets::CardAction::Remove:
             state.selected_account_id = a.id;

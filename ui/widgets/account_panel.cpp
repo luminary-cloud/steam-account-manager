@@ -133,8 +133,8 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         const int rank = a.cs2.wingman_rank > 0 ? a.cs2.wingman_rank : 0;
         wingman_e = rank_image::wingman(rank);
     }
-    const bool draw_premier = !a.is_nfa && premier_e && premier_e->srv && premier_e->h > 0;
-    const bool draw_wingman = !a.is_nfa && wingman_e && wingman_e->srv && wingman_e->h > 0;
+    const bool draw_premier = premier_e && premier_e->srv && premier_e->h > 0;
+    const bool draw_wingman = wingman_e && wingman_e->srv && wingman_e->h > 0;
     const bool show_mode_label = draw_premier && draw_wingman;
     const float label_h      = text_h * kRankLabelScale;
     const float mode_block   = show_mode_label ? (label_h + kModeGap) : 0.0F;
@@ -155,7 +155,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     constexpr float kMedalGapNormal = 4.0F;
     constexpr float kMedalGapCompact = 2.0F;
     constexpr int   kMedalCompactThreshold = 10;
-    const bool show_medals = !a.is_nfa && !a.cs2.medals.empty();
+    const bool show_medals = !a.cs2.medals.empty();
     const int medal_count = static_cast<int>(a.cs2.medals.size());
     const float kMedalGap = medal_count > kMedalCompactThreshold ? kMedalGapCompact : kMedalGapNormal;
     const int medals_per_row =
@@ -202,16 +202,16 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
             }
             push_chip("Games", buf);
         }
-        if (!a.is_nfa && state.settings.info.show_prime) {
+        if (state.settings.info.show_prime && a.cs2.cs2_player_level >= 0) {
             const ImVec4 col = a.cs2.prime_status
                 ? theme::success() : theme::dim_text();
             push_chip("Prime", a.cs2.prime_status ? "yes" : "no", &col);
         }
-        if (!a.is_nfa && a.cs2.cs2_player_level >= 0) {
+        if (a.cs2.cs2_player_level >= 0) {
             std::snprintf(buf, sizeof(buf), "%d", a.cs2.cs2_player_level);
             push_chip("CS2 Lv", buf);
         }
-        if (!a.is_nfa && a.cs2.cs2_player_xp >= 0) {
+        if (a.cs2.cs2_player_xp >= 0) {
             const std::string xp = format_with_commas(a.cs2.cs2_player_xp);
             push_chip("XP", xp.c_str());
         }
@@ -253,6 +253,11 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
                              : remaining < 7 * 86400     ? theme::warning()
                                                          : theme::success();
             push_chip("NFA token", tbuf, &col);
+        }
+        if (a.is_nfa && a.nfa_status != core::NfaTokenStatus::Unknown) {
+            const bool revoked = a.nfa_status == core::NfaTokenStatus::Revoked;
+            const ImVec4 col = revoked ? theme::danger() : theme::success();
+            push_chip("Token", revoked ? "revoked" : "valid", &col);
         }
     }
 
@@ -443,8 +448,11 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         const ImVec2 after_header = ImGui::GetCursorScreenPos();
         const float trust_x = header_origin_screen.x + pane_inner_w - 16.0F;
         const float trust_y = header_origin_screen.y + 4.0F;
-        // Cached imports show a "Cached" pill in place of the NFA pill.
-        if (core::store::is_cached_account(a))
+        // A revoked token overrides the NFA/Cached pill; else Cached imports show a
+        // "Cached" pill in place of the NFA pill.
+        if (a.is_nfa && a.nfa_status == core::NfaTokenStatus::Revoked)
+            draw_revoked_pill(trust_x - 6.0F, trust_y + 7.0F);
+        else if (core::store::is_cached_account(a))
             draw_cached_pill(trust_x - 6.0F, trust_y + 7.0F);
         else if (a.is_nfa)
             draw_nfa_pill(trust_x - 6.0F, trust_y + 7.0F);

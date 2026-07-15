@@ -235,6 +235,11 @@ void Cs2GcClient::run() {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
+    // Report the CM logon outcome so callers can validate the account's token. cm_ptr is
+    // the last attempt's session; its logon_eresult is 1 (OK) when established, a rejection
+    // code when Steam refused, or 0 when no CM responded (transient).
+    if (cb_.on_logon && cm_ptr) cb_.on_logon(cm_ptr->logon_eresult());
+
     if (stop_.load()) return;
     if (!established) {
         if (cb_.on_error) cb_.on_error("CS2 unavailable: " + err);
@@ -396,6 +401,10 @@ void Cs2GcClient::run() {
                         pp.progress = make_progress(xp);
                         pp.featured_medal_defidx = r.featured_medal_defidx;
                         pp.medals = resolve_medals(*schema_, r.medal_defidx);
+                        pp.ranks.premier_rating = r.premier_rating;
+                        pp.ranks.premier_wins = r.premier_wins;
+                        pp.ranks.wingman_rank = r.wingman_rank;
+                        pp.ranks.wingman_wins = r.wingman_wins;
                         cb_.on_profile(std::move(pp));
                     }
                 };

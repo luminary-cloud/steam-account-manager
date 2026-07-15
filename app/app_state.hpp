@@ -84,6 +84,30 @@ struct GcAutoPull {
     std::chrono::steady_clock::time_point phase_started{};
 };
 
+// Per-account GC connect that validates an NFA/cached token (via the CM logon result) and
+// pulls that account's OWN CS2 profile (ranks/medals/level/cooldown/vac). Processes a queue
+// one account at a time -- staggered + TTL-gated so it never trips Steam's rate limiter.
+// tick_gc_validate() advances it each frame.
+struct GcValidate {
+    bool active = false;
+    std::string status;  // progress text for the UI
+    std::vector<std::string> queue;  // vault ids to process (NFA/cached with a client token)
+    std::size_t idx = 0;
+    int done = 0;  // finished (progress numerator)
+
+    std::string current_id;
+    std::uint32_t current_account_id = 0;  // 32-bit, matches on_profile
+    std::unique_ptr<cs2_gc::Cs2GcClient> client;
+    bool connected = false;      // puller posted on_status == "Ready"
+    bool pull_issued = false;    // own-profile pull_profiles sent
+    bool logon_seen = false;     // on_logon fired
+    int logon_eresult = 0;       // CM logon EResult (1 = OK)
+    bool profile_applied = false;
+    bool finished = false;       // on_profiles_done / on_error
+    std::chrono::steady_clock::time_point phase_started{};
+    std::chrono::steady_clock::time_point resume_at{};  // don't start the next account until here
+};
+
 // The account's client-audience refresh token (cm_refresh_token, or the NFA refresh_token
 // when it already carries the client audience), or empty when only a mobile/web token is
 // available (which the CM rejects). Defined in cs2_autopull.cpp.
@@ -145,6 +169,10 @@ struct AppState {
     // CS2 GC auto-pull orchestrator state + a one-shot guard for the run-on-startup option.
     GcAutoPull gc_autopull;
     bool gc_startup_pull_done = false;
+
+    // Per-account GC validate+pull sweep for NFA/cached accounts (own profile + token check).
+    GcValidate gc_validate;
+    bool gc_validate_startup_done = false;  // one-shot guard for the run-on-startup validation
 
     // Cross-launch index of ban/cooldown events; persisted to notifications.json
     // (non-sensitive, plain JSON).
@@ -276,7 +304,20 @@ struct AppState {
     void toggle_selected(const std::string& id);
     bool is_selected(const std::string& id) const;
     void refresh_account_data();
-    void refresh_single_account(const std::string& id, bool batch_refresh = false);
+    // `allow_gcpd` gates the (heavy) GCPD scrape independently of settings.gcpd_enabled;
+    // the auto-refresh timer passes false so it only pulls the Steam Web API data.
+    void refresh_single_account(const std::string& id, bool batch_refresh = false,
+                                bool allow_gcpd = true);
+
+    // Pulls EVERYTHING applicable to a newly added account's type: Steam Web API +
+    // (full-access) GCPD + spend + GC, or (NFA/cached) Steam + a GC validate/pull. Used by
+    // the add-account flows so a new account fills every field it possibly can.
+    void pull_all_for_account(const std::string& id);
+
+    // Auto-refresh sweep for the periodic timer: Steam Web API (no GCPD) for accounts whose
+    // data is older than the Steam TTL, plus a TTL-gated GC pull (full-access) and GC
+    // validate (NFA/cached). Never spend, never GCPD.
+    void auto_refresh_all();
 
     // Fetches "external funds used" (TotalSpend). Steam gates accountdata behind
     // a freshly-password-authed web:help session, so this does a full credentials
@@ -319,7 +360,8 @@ struct AppState {
     // so the worker pool doesn't burst-fan-out Web API requests on bulk imports.
     void refresh_accounts_staggered(
         std::vector<std::string> ids,
-        std::chrono::seconds stagger = std::chrono::seconds(2));
+        std::chrono::seconds stagger = std::chrono::seconds(2),
+        bool allow_gcpd = true);
 
     // Seconds until this account can refresh again; 0 = allowed now.
     std::int64_t refresh_cooldown_seconds(const std::string& id) const;
@@ -368,6 +410,15 @@ struct AppState {
     void start_gc_autopull();
     void tick_gc_autopull();
     void cancel_gc_autopull();
+
+    // Per-account GC validate sweep for NFA/cached accounts: each connects with its own
+    // client token to validate it (CM logon -> nfa_status) and pull its OWN CS2 profile.
+    // `force` ignores the GC cache TTL. `queue_gc_validate` adds one account (used on add).
+    // tick_gc_validate() advances the sweep each frame; cancel stops it.
+    void start_gc_validate(bool force);
+    void queue_gc_validate(const std::string& account_id);
+    void tick_gc_validate();
+    void cancel_gc_validate();
 
     // Seconds left on the 5-min auto-relogin cooldown; 0 = a fresh attempt allowed.
     std::int64_t relogin_cooldown_seconds(const std::string& account_id);

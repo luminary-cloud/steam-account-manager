@@ -186,7 +186,7 @@ void launch_poll_worker(LoginWizard* w, app::AppState& state) {
                     state.save_vault_if_dirty();
 
                     if (!id_for_refresh.empty()) {
-                        state.refresh_single_account(id_for_refresh);
+                        state.pull_all_for_account(id_for_refresh);
                     }
 
                     w->poll_running = false;

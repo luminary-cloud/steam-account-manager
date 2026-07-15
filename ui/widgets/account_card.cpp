@@ -166,8 +166,12 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         const float right_pad = 16.0F;
         const float badge_w = 14.0F;
         ImGui::SetCursorPosX(ImGui::GetWindowSize().x - badge_w - right_pad);
-        // Cached imports show a "Cached" pill in place of the NFA pill.
-        if (core::store::is_cached_account(a)) {
+        // A revoked token overrides the NFA/Cached pill; else Cached imports show a
+        // "Cached" pill in place of the NFA pill.
+        if (a.is_nfa && a.nfa_status == core::NfaTokenStatus::Revoked) {
+            const ImVec2 sp = ImGui::GetCursorScreenPos();
+            draw_revoked_pill(sp.x - 6.0F, sp.y + 7.0F);
+        } else if (core::store::is_cached_account(a)) {
             const ImVec2 sp = ImGui::GetCursorScreenPos();
             draw_cached_pill(sp.x - 6.0F, sp.y + 7.0F);
         } else if (a.is_nfa) {
@@ -221,7 +225,7 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
             std::snprintf(num, sizeof(num), "%d", a.web.owned_games_count);
             segs[n++] = StatSeg{.label = "Games", .value = num};
         }
-        if (!a.is_nfa && a.cs2.cs2_player_level >= 0) {
+        if (a.cs2.cs2_player_level >= 0) {
             std::snprintf(num, sizeof(num), "%d", a.cs2.cs2_player_level);
             segs[n++] = StatSeg{.label = "CS2 Rank", .value = num};
         }
@@ -230,7 +234,7 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
                           static_cast<long long>(a.web.total_playtime_minutes / 60));
             segs[n++] = StatSeg{.label = "Playtime", .value = num};
         }
-        if (!a.is_nfa && state.settings.info.show_prime && a.cs2.prime_status) {
+        if (state.settings.info.show_prime && a.cs2.prime_status) {
             segs[n++] = StatSeg{.label = "Prime", .prime = true};
         }
         if (state.settings.info.show_external_funds && a.funds.total_spend_usd_cents >= 0) {
@@ -351,8 +355,8 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
             wingman_e = rank_image::wingman(rank);
         }
 
-        const bool draw_premier = !a.is_nfa && premier_e && premier_e->srv && premier_e->h > 0;
-        const bool draw_wingman = !a.is_nfa && wingman_e && wingman_e->srv && wingman_e->h > 0;
+        const bool draw_premier = premier_e && premier_e->srv && premier_e->h > 0;
+        const bool draw_wingman = wingman_e && wingman_e->srv && wingman_e->h > 0;
 
         if (draw_premier || draw_wingman) {
             const float premier_w = draw_premier

@@ -26,6 +26,14 @@ enum class LoginMethod : std::uint8_t {
     LaunchCs2Luminary  = 3,  // launch CS2 then run the luminary loader (--auto --game=cs2)
 };
 
+// Live validity of an NFA/cached account's client token, set by a real CM logon
+// (not just JWT expiry). Unknown until first validated.
+enum class NfaTokenStatus : std::uint8_t {
+    Unknown = 0,
+    Valid = 1,
+    Revoked = 2,
+};
+
 // Mirror of a Steam Guard maFile. Everything here is sensitive.
 struct SteamGuardAccount {
     std::string shared_secret;     // base64
@@ -152,6 +160,11 @@ struct Account {
     // UI doesn't decode the token every frame.
     bool is_nfa = false;
     std::int64_t refresh_token_expires = 0;
+
+    // Live token validity from the last CM logon (NFA/cached accounts). Non-destructive
+    // to check; rate-limited, so gated behind the GC cache TTL.
+    NfaTokenStatus nfa_status = NfaTokenStatus::Unknown;
+    std::int64_t nfa_last_validated_unix = 0;
 
     // SteamClient-audience refresh token for the CS2 Game Coordinator. Password
     // accounts mint this on demand (their mobile-scoped token is rejected by the

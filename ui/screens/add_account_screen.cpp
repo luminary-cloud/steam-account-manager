@@ -263,7 +263,7 @@ void draw_edit_account_modal(app::AppState& state) {
                 state.vault_dirty = true;
                 state.save_vault_if_dirty();
                 state.nfa_dead_notified.erase(r.account_id);
-                state.refresh_single_account(r.account_id);
+                state.pull_all_for_account(r.account_id);
                 // import_jwt_token may have grown the vault vector, invalidating `acc`;
                 // reload the modal next frame against the (possibly relocated) account.
                 state.selected_account_id = r.account_id;
@@ -384,7 +384,7 @@ void draw_edit_account_modal(app::AppState& state) {
         }
         state.vault_dirty = true;
         state.save_vault_if_dirty();
-        if (!new_id_for_refresh.empty()) state.refresh_single_account(new_id_for_refresh);
+        if (!new_id_for_refresh.empty()) state.pull_all_for_account(new_id_for_refresh);
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndDisabled();

@@ -701,10 +701,29 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         // Advance the CS2 GC auto-pull sweep, and kick it once on startup if opted in
         // (after unlock so vault credentials are available; it self-skips fresh caches).
         state.tick_gc_autopull();
+        state.tick_gc_validate();
         if (state.unlocked && state.settings.cs2_gc.auto_pull_on_startup &&
             !state.gc_startup_pull_done) {
             state.gc_startup_pull_done = true;
             state.start_gc_autopull();
+        }
+        // Validate NFA/cached tokens once on startup (TTL-gated + staggered). Runs whenever
+        // the CS2 GC feature is on, so revoked tokens get flagged without any manual action.
+        if (state.unlocked && state.settings.cs2_gc.enabled &&
+            !state.gc_validate_startup_done) {
+            state.gc_validate_startup_done = true;
+            state.start_gc_validate(/*force=*/false);
+        }
+
+        // Periodic auto-refresh (Steam Web API + GC/validate) while the app is open.
+        if (state.unlocked && state.settings.auto_refresh_enabled) {
+            static auto last_auto_refresh = std::chrono::steady_clock::now();
+            const auto interval =
+                std::chrono::minutes(std::max(1, state.settings.auto_refresh_minutes));
+            if (std::chrono::steady_clock::now() - last_auto_refresh >= interval) {
+                last_auto_refresh = std::chrono::steady_clock::now();
+                state.auto_refresh_all();
+            }
         }
         {
             static unsigned long long cs2_toast_seq = 0;

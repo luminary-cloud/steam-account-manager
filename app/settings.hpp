@@ -53,6 +53,17 @@ struct Settings {
     bool hide_notes = false;
     bool refresh_on_launch = false;
     bool gcpd_enabled = true;
+
+    // Global staleness TTL for the Steam Web API data (bans/summaries/level/games): any
+    // batch/auto/startup refresh skips an account whose data is newer than this, exactly
+    // like the GC's cs2_gc.cache_hours. Independent of auto_refresh_enabled.
+    int  steam_cache_hours = 6;
+
+    // Periodic auto-refresh ("auto puller") while the app is open: every
+    // `auto_refresh_minutes` it refreshes each account whose Steam or GC cache has expired
+    // (per steam_cache_hours / cs2_gc.cache_hours), skipping the rest. Never spend, never GCPD.
+    bool auto_refresh_enabled = false;
+    int  auto_refresh_minutes = 10;   // heartbeat interval
     // Caches the master password via DPAPI (current Windows user). Disabling
     // deletes the cached blob.
     bool remember_master_password = false;

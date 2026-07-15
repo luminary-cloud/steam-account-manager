@@ -56,6 +56,15 @@ struct WeeklyMission {
     std::string name;
 };
 
+// Competitive standing pulled from a profile. -1 = the GC didn't report that mode, so
+// the cache is left untouched.
+struct ProfileRanks {
+    int premier_rating = -1;
+    int premier_wins = -1;
+    int wingman_rank = -1;
+    int wingman_wins = -1;
+};
+
 struct Snapshot {
     std::vector<DisplayItem> items;  // main inventory, movable into a unit
     std::vector<DisplayItem> units;  // storage units
@@ -64,6 +73,7 @@ struct Snapshot {
     WeeklyMission mission;
     std::vector<DisplayItem> medals;  // profile medals/coins, id = def_index
     std::uint32_t featured_medal_defidx = 0;  // pinned medal def_index, 0 = none
+    ProfileRanks ranks;  // competitive standing + cooldown (-1 = unknown)
 };
 
 // A resolved foreign-profile pull for one account: exactly the slice
@@ -73,6 +83,7 @@ struct ProfilePull {
     PlayerProgress progress;
     std::vector<DisplayItem> medals;
     std::uint32_t featured_medal_defidx = 0;
+    ProfileRanks ranks;
 };
 
 struct Cs2Credentials {
@@ -103,6 +114,10 @@ struct Cs2Callbacks {
     // on_profiles_done with the received/requested tallies once the batch finishes.
     std::function<void(ProfilePull)> on_profile;
     std::function<void(int received, int requested)> on_profiles_done;
+    // Fired once after the CM logon attempt with its EResult (1 = OK). Lets a caller
+    // validate the token: OK = valid, a non-OK rejection eresult = revoked, 0 = never
+    // reached a CM (transient). Fires before "Ready"/on_error.
+    std::function<void(int logon_eresult)> on_logon;
 };
 
 // Owns a warm CM + GC session for one account on a dedicated thread. Connects on

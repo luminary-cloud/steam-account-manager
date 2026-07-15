@@ -161,6 +161,21 @@ void AppState::apply_gc_snapshot_cache(const std::string& account_id,
     acc->cs2.medals.reserve(snap.medals.size());
     for (const auto& m : snap.medals)
         acc->cs2.medals.push_back({static_cast<std::uint32_t>(m.id), m.name, m.icon_url});
+
+    // Competitive standing from the GC. Only ever *set* -- a foreign pull omits modes
+    // the account never played (rank -1), so absence must not clear a value scraped
+    // elsewhere. (Cooldown/VAC from the GC are unreliable for CS2, so not applied.)
+    const auto& rk = snap.ranks;
+    if (rk.premier_rating >= 0) {
+        acc->cs2.premier_rating = rk.premier_rating;
+        acc->cs2.premier_wins = rk.premier_wins;
+    }
+    if (rk.wingman_rank >= 0) {
+        acc->cs2.wingman_rank = rk.wingman_rank;
+        acc->cs2.wingman_wins = rk.wingman_wins;
+    }
+    acc->cs2.last_refreshed_unix = now;
+
     vault_dirty = true;
     save_vault_if_dirty();
 }
@@ -224,6 +239,9 @@ void AppState::save_settings() {
     j["hide_notes"]              = settings.hide_notes;
     j["refresh_on_launch"]       = settings.refresh_on_launch;
     j["gcpd_enabled"]            = settings.gcpd_enabled;
+    j["auto_refresh_enabled"]    = settings.auto_refresh_enabled;
+    j["auto_refresh_minutes"]    = settings.auto_refresh_minutes;
+    j["steam_cache_hours"]       = settings.steam_cache_hours;
     j["remember_master_password"] = settings.remember_master_password;
     j["logon_action"]            = static_cast<int>(settings.logon_action);
     j["start_minimized"]         = settings.start_minimized;
@@ -389,6 +407,11 @@ void AppState::load_settings() {
     get("collapsed_groups",        settings.collapsed_groups);
     get("refresh_on_launch",       settings.refresh_on_launch);
     get("gcpd_enabled",            settings.gcpd_enabled);
+    get("auto_refresh_enabled",    settings.auto_refresh_enabled);
+    get("auto_refresh_minutes",    settings.auto_refresh_minutes);
+    settings.auto_refresh_minutes = std::clamp(settings.auto_refresh_minutes, 10, 720);
+    get("steam_cache_hours",       settings.steam_cache_hours);
+    settings.steam_cache_hours = std::clamp(settings.steam_cache_hours, 1, 24);
     get("remember_master_password", settings.remember_master_password);
     if (j.contains("logon_action")) {
         int v = j["logon_action"].get<int>();

@@ -437,9 +437,10 @@ void draw_import_mafile(app::AppState& state) {
             state.save_vault_if_dirty();
             // Stagger bulk refreshes so a big import doesn't burst the Web API.
             if (account_ids.size() == 1) {
-                state.refresh_single_account(account_ids.front());
+                state.pull_all_for_account(account_ids.front());
             } else if (!account_ids.empty()) {
                 state.refresh_accounts_staggered(std::move(account_ids));
+                state.start_gc_autopull();  // maFile imports are full-access: pull their GC data
             }
             has_summary = true;
 
@@ -611,9 +612,10 @@ void draw_import_info_dat(app::AppState& state) {
             state.save_vault_if_dirty();
             // info.dat files can carry many accounts each; stagger to avoid a Web API burst.
             if (all_ids.size() == 1) {
-                state.refresh_single_account(all_ids.front());
+                state.pull_all_for_account(all_ids.front());
             } else if (!all_ids.empty()) {
                 state.refresh_accounts_staggered(std::move(all_ids));
+                state.start_gc_autopull();  // info.dat imports are full-access: pull their GC data
             }
             has_summary = true;
 
@@ -696,7 +698,7 @@ void draw_import_jwt_token(app::AppState& state) {
             state.vault_dirty = true;
             state.save_vault_if_dirty();
             state.nfa_dead_notified.erase(result.account_id);
-            state.refresh_single_account(result.account_id);
+            state.pull_all_for_account(result.account_id);
             has_result = true;
             token_buf = {};
         }
