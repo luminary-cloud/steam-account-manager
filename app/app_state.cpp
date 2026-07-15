@@ -251,6 +251,7 @@ void AppState::save_settings() {
     j["streamproof"]             = settings.streamproof;
     j["disable_cloud_on_login"]  = settings.disable_cloud_on_login;
     j["disable_news_on_login"]   = settings.disable_news_on_login;
+    j["disable_workshop_on_login"] = settings.disable_workshop_on_login;
     j["remember_password_on_login"] = settings.remember_password_on_login;
     j["sign_in_method"]          = static_cast<int>(settings.sign_in_method);
     j["web_api_key"]             = settings.web_api_key;
@@ -426,6 +427,7 @@ void AppState::load_settings() {
     get("streamproof",             settings.streamproof);
     get("disable_cloud_on_login",  settings.disable_cloud_on_login);
     get("disable_news_on_login",   settings.disable_news_on_login);
+    get("disable_workshop_on_login", settings.disable_workshop_on_login);
     get("remember_password_on_login", settings.remember_password_on_login);
     if (j.contains("sign_in_method")) {
         int v = j["sign_in_method"].get<int>();

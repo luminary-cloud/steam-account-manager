@@ -69,6 +69,7 @@ void do_launch(app::AppState& state, core::Account& a, bool use_token) {
     auto result = sam::launch::launch_account(
         a, state.settings.cs2_video.launch_options,
         state.settings.disable_cloud_on_login, state.settings.disable_news_on_login,
+        state.settings.disable_workshop_on_login,
         state.settings.remember_password_on_login, loader, lum_loader,
         state.settings.hwid.component_mask, use_token);
     if (result.status != sam::launch::LaunchStatus::Ok) {

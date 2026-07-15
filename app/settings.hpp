@@ -85,6 +85,11 @@ struct Settings {
     // toggle is on; never re-enabled. See core/steam_local/login_prefs.
     bool disable_cloud_on_login = false;
     bool disable_news_on_login = false;
+    // When on, every launched account has its subscribed CS2 workshop maps blocked from
+    // downloading: the shared appworkshop_730.acf is stripped of that account's not-yet-
+    // installed items and locked read-only during the Steam-down window. Subscriptions are
+    // kept; turning it off unlocks the file on the next launch. See cs2_config/workshop_block.
+    bool disable_workshop_on_login = false;
     // Whether the password-login driver ticks Steam's "Remember me" box. Off makes Steam
     // forget the session after sign-in (no saved login). Token (NFA) logins ignore this;
     // they require a remembered session to auto-sign-in.

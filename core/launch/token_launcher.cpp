@@ -7,6 +7,7 @@
 #include <string>
 
 #include "core/cs2_config/launch_options.hpp"
+#include "core/cs2_config/workshop_block.hpp"
 #include "core/launch/hwid_inject.hpp"
 #include "core/launch/steam_launcher.hpp"
 #include "core/log.hpp"
@@ -45,6 +46,7 @@ LaunchResult launch_account_with_token(const core::Account& a,
                                        std::string_view cs2_launch_options,
                                        bool disable_cloud_on_login,
                                        bool disable_news_on_login,
+                                       bool disable_workshop_on_login,
                                        std::uint32_t hwid_component_mask) {
     if (a.refresh_token.empty() || a.steam_id_64 == 0)
         return fail("Token login needs a refresh token and a resolved Steam ID.");
@@ -75,6 +77,13 @@ LaunchResult launch_account_with_token(const core::Account& a,
     if (disable_cloud_on_login) {
         const auto r = steam_local::set_cloud_enabled_off(a.steam_id_64);
         if (!r.ok) SAM_LOG_WARN("token-launch: disable cloud: {}", r.message);
+    }
+    // Block/unlock CS2 workshop-map downloads for this account per the global toggle.
+    {
+        const auto r = disable_workshop_on_login
+                           ? cs2_config::apply_workshop_block(a.steam_id_64)
+                           : cs2_config::unlock_workshop_block();
+        if (!r.ok) SAM_LOG_WARN("token-launch: workshop block: {}", r.message);
     }
 
     const std::string login = core::to_lower(a.login);

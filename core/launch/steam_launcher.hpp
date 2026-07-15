@@ -40,6 +40,10 @@ struct LaunchResult {
 // `disable_cloud_on_login` / `disable_news_on_login`, when set, force Steam Cloud and
 // the new-release news notification off for the account in the same Steam-down window.
 //
+// `disable_workshop_on_login`, when set, blocks the account's subscribed CS2 workshop
+// maps from downloading (strips them from appworkshop_730.acf and locks it read-only) in
+// the same window; when unset the file is unlocked so Steam downloads workshop normally.
+//
 // `remember_password` controls the login window's "Remember me" checkbox for password
 // logins (off => Steam doesn't save the session). It has no effect on NFA accounts, whose
 // token sign-in requires a remembered session regardless.
@@ -55,6 +59,7 @@ LaunchResult launch_account(const core::Account& account,
                             std::string_view cs2_launch_options = {},
                             bool disable_cloud_on_login = false,
                             bool disable_news_on_login = false,
+                            bool disable_workshop_on_login = false,
                             bool remember_password = true,
                             std::filesystem::path gamesense_loader = {},
                             std::filesystem::path luminary_loader = {},

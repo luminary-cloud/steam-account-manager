@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "core/cs2_config/launch_options.hpp"
+#include "core/cs2_config/workshop_block.hpp"
 #include "core/launch/cs2_autostart.hpp"
 #include "core/launch/hwid_inject.hpp"
 #include "core/launch/login_driver.hpp"
@@ -91,18 +92,21 @@ bool shutdown_running_steam(const std::filesystem::path& exe_path, LaunchResult&
 
 LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_options,
                             bool disable_cloud_on_login, bool disable_news_on_login,
-                            bool remember_password, std::filesystem::path gamesense_loader,
+                            bool disable_workshop_on_login, bool remember_password,
+                            std::filesystem::path gamesense_loader,
                             std::filesystem::path luminary_loader,
                             std::uint32_t hwid_component_mask, bool use_token) {
     if (a.is_nfa) {
         return launch_account_with_token(a, cs2_launch_options, disable_cloud_on_login,
-                                         disable_news_on_login, hwid_component_mask);
+                                         disable_news_on_login, disable_workshop_on_login,
+                                         hwid_component_mask);
     }
     if (use_token) {
         core::Account token_view = a;
         token_view.refresh_token = a.cm_refresh_token;
         return launch_account_with_token(token_view, cs2_launch_options, disable_cloud_on_login,
-                                         disable_news_on_login, hwid_component_mask);
+                                         disable_news_on_login, disable_workshop_on_login,
+                                         hwid_component_mask);
     }
 
     LaunchResult out;
@@ -139,6 +143,15 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
     if (disable_cloud_on_login && !defer_cloud) {
         const auto r = steam_local::set_cloud_enabled_off(a.steam_id_64);
         if (!r.ok) SAM_LOG_WARN("launch: disable cloud: {}", r.message);
+    }
+    // Block/unblock CS2 workshop-map downloads per the global toggle. appworkshop_730.acf
+    // lives under steamapps/ (not per-user), so it isn't clobbered by a first login and
+    // needs no defer.
+    {
+        const auto r = disable_workshop_on_login
+                           ? cs2_config::apply_workshop_block(a.steam_id_64)
+                           : cs2_config::unlock_workshop_block();
+        if (!r.ok) SAM_LOG_WARN("launch: workshop block: {}", r.message);
     }
 
     // Force the login window: without this, a stale AutoLoginUser auto-logs in as

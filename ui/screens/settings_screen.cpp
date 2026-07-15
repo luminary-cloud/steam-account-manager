@@ -12,6 +12,7 @@
 #include <imgui.h>
 
 #include "app/app_paths.hpp"
+#include "core/cs2_config/workshop_block.hpp"
 #include "core/log.hpp"
 #include "platform/window_affinity.hpp"
 #include "ui/fonts.hpp"
@@ -114,6 +115,25 @@ void draw_steam_login_section(app::AppState& state) {
     hover_tooltip("When you launch an account, set NotifyAvailableGames=0 (Steam's \"Notify "
                   "me about additions or changes to my games, new releases\" off). Applies to "
                   "every account you launch; turning it off leaves Steam's setting as-is.");
+
+    if (ImGui::Checkbox("Disable CS2 workshop map downloads on login",
+                        &state.settings.disable_workshop_on_login)) {
+        state.save_settings();
+    }
+    hover_tooltip("When you launch an account, stop its subscribed CS2 workshop maps from "
+                  "downloading: the shared appworkshop_730.acf is stripped of that account's "
+                  "not-yet-installed items and locked read-only. Applies to every account you "
+                  "launch. Subscriptions are kept; turning it off unlocks the file on the next "
+                  "launch. Note: the acf is install-wide, so while on it also pauses workshop "
+                  "downloads for your other accounts.");
+
+    if (ImGui::Button("Re-enable Steam workshop downloads")) {
+        const auto r = cs2_config::unlock_workshop_block();
+        SAM_LOG_INFO("settings: unlock workshop downloads -> ok={} ({})", r.ok, r.message);
+    }
+    hover_tooltip("Manually clears the read-only lock the option above places on Steam's "
+                  "appworkshop_730.acf, so Steam downloads subscribed CS2 workshop maps "
+                  "normally again. Launching an account with the toggle off also clears it.");
 
     {
         const bool token_mode =

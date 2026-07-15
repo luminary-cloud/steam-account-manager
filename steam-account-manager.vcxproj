@@ -199,6 +199,7 @@
     <ClCompile Include="core\trade\trade_audit.cpp" />
     <ClCompile Include="core\cs2_config\video_config.cpp" />
     <ClCompile Include="core\cs2_config\launch_options.cpp" />
+    <ClCompile Include="core\cs2_config\workshop_block.cpp" />
     <ClCompile Include="core\cs2\friend_code.cpp" />
     <ClCompile Include="core\account_store\store.cpp" />
     <ClCompile Include="core\account_store\filter.cpp" />
@@ -352,6 +353,7 @@
     <ClInclude Include="core\trade\trade_audit.hpp" />
     <ClInclude Include="core\cs2_config\video_config.hpp" />
     <ClInclude Include="core\cs2_config\launch_options.hpp" />
+    <ClInclude Include="core\cs2_config\workshop_block.hpp" />
     <ClInclude Include="core\cs2\friend_code.hpp" />
     <ClInclude Include="core\account_store\account.hpp" />
     <ClInclude Include="core\account_store\account_meta.hpp" />
