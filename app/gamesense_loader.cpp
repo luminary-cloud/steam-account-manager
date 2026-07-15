@@ -9,7 +9,7 @@ namespace sam::app {
 namespace fs = std::filesystem;
 
 std::filesystem::path gamesense_dir() {
-    return platform::data_dir() / "gamesense";
+    return platform::tools_dir() / "gamesense";
 }
 
 std::optional<std::filesystem::path> gamesense_loader_path() {

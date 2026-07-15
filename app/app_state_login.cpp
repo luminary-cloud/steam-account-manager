@@ -258,6 +258,9 @@ void AppState::open_account_in_browser(const core::Account& a) {
             const std::string html =
                 steam_login::build_login_html(targets, sid64, profile_url);
             if (!html.empty()) {
+                std::error_code mkec;
+                std::filesystem::create_directories(
+                    browser_login_html_path().parent_path(), mkec);
                 std::ofstream f(browser_login_html_path(), std::ios::binary | std::ios::trunc);
                 if (f) {
                     f.write(html.data(), static_cast<std::streamsize>(html.size()));

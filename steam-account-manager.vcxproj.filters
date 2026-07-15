@@ -45,6 +45,7 @@
     <ClCompile Include="app\app_state_refresh.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\app_state_login.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\vault_saver.cpp"><Filter>app</Filter></ClCompile>
+    <ClCompile Include="app\vault_registry.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\app_paths.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\gamesense_loader.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\luminary_loader.cpp"><Filter>app</Filter></ClCompile>
@@ -176,6 +177,7 @@
     <ClCompile Include="ui\util.cpp"><Filter>ui</Filter></ClCompile>
 
     <ClCompile Include="ui\screens\unlock_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\vault_picker_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\accounts_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\accounts_list_view.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\sda_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
@@ -338,6 +340,7 @@
     <ClInclude Include="app\app_state_internal.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\settings.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\vault_saver.hpp"><Filter>app</Filter></ClInclude>
+    <ClInclude Include="app\vault_registry.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\app_paths.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\gamesense_loader.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\luminary_loader.hpp"><Filter>app</Filter></ClInclude>
@@ -484,6 +487,7 @@
     <ClInclude Include="ui\util.hpp"><Filter>ui</Filter></ClInclude>
 
     <ClInclude Include="ui\screens\unlock_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
+    <ClInclude Include="ui\screens\vault_picker_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\accounts_screen.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\accounts_list_view.hpp"><Filter>ui\screens</Filter></ClInclude>
     <ClInclude Include="ui\screens\sda_screen.hpp"><Filter>ui\screens</Filter></ClInclude>

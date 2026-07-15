@@ -17,6 +17,7 @@ enum class SettingsCategory {
     NetworkData,
     Cs2,
     HwidSpoofer,
+    Vaults,
 };
 
 void draw_settings(app::AppState& state);

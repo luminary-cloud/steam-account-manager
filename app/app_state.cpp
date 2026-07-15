@@ -19,6 +19,7 @@
 #include "core/steam_api/ban_check.hpp"
 #include "core/update_check.hpp"
 #include "core/version.hpp"
+#include "platform/paths.hpp"
 #include "platform/startup_task.hpp"
 #include "platform/tray_icon.hpp"
 #include "ui/screens/cs2_screen_state.hpp"
@@ -155,6 +156,11 @@ void AppState::apply_gc_snapshot_cache(const std::string& account_id,
     if (snap.progress.valid) {
         acc->cs2.cs2_player_level = snap.progress.level;
         acc->cs2.cs2_player_xp = snap.progress.xp_in_level;
+        // Prime inference matches the GCPD path: non-Prime CS2 accounts can't earn
+        // XP, so level > 1 (or level 1 with any XP) means Prime. The GC snapshot
+        // carries no explicit prime flag.
+        acc->cs2.prime_status =
+            snap.progress.level > 1 || snap.progress.xp_in_level > 0;
     }
     acc->cs2.featured_medal_defidx = snap.featured_medal_defidx;
     acc->cs2.medals.clear();
@@ -674,6 +680,27 @@ void AppState::lock_vault() {
 
 void AppState::scrub_vault_secrets() {
     for (auto& a : vault.accounts) detail::scrub_account_secrets(a);
+}
+
+void bind_vault_session(AppState& state) {
+    const auto now_s = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    state.notifications.set_path(notifications_path());
+    state.notifications.load();
+    state.notifications.prune_older_than(
+        state.settings.notifications.retention_days, now_s);
+    state.conf_audit.set_path(conf_audit_path());
+    state.conf_audit.load();
+    state.conf_audit.prune_older_than(
+        state.settings.confirmations.audit_retention_days, now_s);
+    state.trade_audit.set_path(trade_audit_path());
+    state.trade_audit.load();
+    state.trade_audit.prune_older_than(90, now_s);
+    // Stamp the "last opened" time for the picker's ordering/recency display.
+    if (auto* v = state.vault_registry.find(platform::active_vault_id())) {
+        v->last_opened_unix = now_s;
+        save_registry(state.vault_registry);
+    }
 }
 
 void AppState::remove_accounts(std::unordered_set<std::string> ids) {

@@ -10,6 +10,7 @@
 #include <imgui.h>
 
 #include "app/app_paths.hpp"
+#include "app/vault_registry.hpp"
 #include "core/account_store/store.hpp"
 #include "core/log.hpp"
 #include "platform/dpapi.hpp"
@@ -26,30 +27,39 @@ namespace {
 
 enum class Mode { Existing, Create };
 
+// Persist the DPAPI auto-unlock cache for the active vault now the password is known good.
+void write_active_cache(const std::string& pw) {
+    try {
+        std::span<const std::uint8_t> pw_bytes{
+            reinterpret_cast<const std::uint8_t*>(pw.data()), pw.size()};
+        auto wrapped = sam::platform::dpapi::protect(pw_bytes);
+        sam::platform::atomic_write_file(app::master_pw_cache_path(), wrapped);
+    } catch (const std::exception& ex) {
+        SAM_LOG_WARN("auto-unlock cache write failed: {}", ex.what());
+    }
+}
+
+// Post-unlock session entry shared by every open path (manual, create, cached).
+void enter_session(app::AppState& state) {
+    state.unlocked = true;
+    state.needs_vault_pick = false;
+    state.last_interaction = std::chrono::steady_clock::now();
+    state.current_screen = app::Screen::Accounts;
+    app::bind_vault_session(state);
+    if (state.settings.refresh_on_launch) state.refresh_account_data();
+    // Fill external funds for accounts without a figure yet; no-op once all are fetched.
+    if (state.settings.info.show_external_funds) {
+        state.refresh_all_spend(/*only_missing=*/true);
+    }
+}
+
 void try_unlock(app::AppState& state, const std::string& pw, std::string& error) {
     try {
         state.vault = sam::core::store::load_vault(app::vault_path(),
                                                     sam::crypto::make_secure(pw));
         state.master_password = sam::crypto::make_secure(pw);
-        state.unlocked = true;
-        state.last_interaction = std::chrono::steady_clock::now();
-        state.current_screen = app::Screen::Accounts;
-        // Refresh the DPAPI auto-unlock cache now that the password is known good.
-        if (state.settings.remember_master_password) {
-            try {
-                std::span<const std::uint8_t> pw_bytes{
-                    reinterpret_cast<const std::uint8_t*>(pw.data()), pw.size()};
-                auto wrapped = sam::platform::dpapi::protect(pw_bytes);
-                sam::platform::atomic_write_file(app::master_pw_cache_path(), wrapped);
-            } catch (const std::exception& ex) {
-                SAM_LOG_WARN("auto-unlock cache write failed: {}", ex.what());
-            }
-        }
-        if (state.settings.refresh_on_launch) state.refresh_account_data();
-        // Fill external funds for accounts without a figure yet; no-op once all are fetched.
-        if (state.settings.info.show_external_funds) {
-            state.refresh_all_spend(/*only_missing=*/true);
-        }
+        if (state.settings.remember_master_password) write_active_cache(pw);
+        enter_session(state);
         error.clear();
     } catch (const sam::core::store::WrongPassword&) {
         error = "Wrong master password.";
@@ -66,9 +76,14 @@ void create_vault(app::AppState& state, const std::string& pw, std::string& erro
                                            sam::crypto::make_secure(pw));
         state.vault = {};
         state.master_password = sam::crypto::make_secure(pw);
-        state.unlocked = true;
-        state.last_interaction = std::chrono::steady_clock::now();
-        state.current_screen = app::Screen::Accounts;
+        // Register the freshly created vault if it isn't in the registry yet (the
+        // very first vault, or one created via the picker's Create mode).
+        const auto id = sam::platform::active_vault_id();
+        if (!state.vault_registry.find(id)) {
+            app::add_vault_entry(state.vault_registry, id, "My Vault", 0x4F8EF7FFu);
+        }
+        if (state.settings.remember_master_password) write_active_cache(pw);
+        enter_session(state);
         error.clear();
     } catch (const std::exception& ex) {
         error = ex.what();
@@ -77,13 +92,70 @@ void create_vault(app::AppState& state, const std::string& pw, std::string& erro
 
 }  // namespace
 
+bool try_cached_unlock(app::AppState& state) {
+    if (!state.settings.remember_master_password) return false;
+    if (!sam::core::store::vault_exists(app::vault_path())) return false;
+    const auto cache_path = app::master_pw_cache_path();
+    std::error_code ec;
+    if (!std::filesystem::exists(cache_path, ec)) return false;
+    try {
+        auto wrapped = sam::platform::read_binary_file(cache_path);
+        auto plain = sam::platform::dpapi::unprotect(wrapped);
+        auto pw = sam::crypto::make_secure(std::string(plain.begin(), plain.end()));
+        if (!plain.empty()) sam::crypto::zero_buffer(plain.data(), plain.size());
+        state.vault = sam::core::store::load_vault(app::vault_path(), pw);
+        state.master_password = pw;
+        enter_session(state);
+        return true;
+    } catch (const std::exception& ex) {
+        SAM_LOG_WARN("cached unlock failed ({}); removing stale cache", ex.what());
+        std::filesystem::remove(cache_path, ec);
+        return false;
+    }
+}
+
+bool create_and_open_vault(app::AppState& state, const std::string& name,
+                           std::uint32_t color, const std::string& pw,
+                           std::string& err) {
+    try {
+        const auto id = app::new_vault_id();
+        std::error_code ec;
+        std::filesystem::create_directories(app::vault_dir_for(id), ec);
+        sam::platform::set_active_vault_id(id);
+        sam::core::store::create_new_vault(app::vault_path(),
+                                           sam::crypto::make_secure(pw));
+        state.vault = {};
+        state.master_password = sam::crypto::make_secure(pw);
+        app::add_vault_entry(state.vault_registry, id,
+                             name.empty() ? "New Vault" : name, color);
+        if (state.settings.remember_master_password) write_active_cache(pw);
+        enter_session(state);
+        err.clear();
+        return true;
+    } catch (const std::exception& ex) {
+        err = ex.what();
+        return false;
+    }
+}
+
 void draw_unlock(app::AppState& state) {
     static std::string password;
     static std::string password_confirm;
     static std::string error_message;
-    static Mode mode = sam::core::store::vault_exists(app::vault_path())
-        ? Mode::Existing
-        : Mode::Create;
+    static Mode mode = Mode::Existing;
+    // The active vault can change without leaving this screen (via the picker), so
+    // recompute Existing/Create whenever it does and clear stale field state.
+    static std::string shown_for_vault;
+    const std::string active = sam::platform::active_vault_id();
+    if (shown_for_vault != active) {
+        shown_for_vault = active;
+        mode = sam::core::store::vault_exists(app::vault_path())
+                   ? Mode::Existing
+                   : Mode::Create;
+        password.clear();
+        password_confirm.clear();
+        error_message.clear();
+    }
 
     const auto& vp = *ImGui::GetMainViewport();
     const ImVec2 panel_size{420.0F, 380.0F};
@@ -154,6 +226,15 @@ void draw_unlock(app::AppState& state) {
         ImGui::Spacing();
         if (action_button("I want to create a new vault instead")) {
             mode = Mode::Create;
+            error_message.clear();
+        }
+    }
+
+    // With several vaults, offer a way back to the picker to choose a different one.
+    if (state.vault_registry.vaults.size() > 1) {
+        ImGui::Spacing();
+        if (action_button("Choose a different vault")) {
+            state.needs_vault_pick = true;
             error_message.clear();
         }
     }

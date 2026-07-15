@@ -404,7 +404,7 @@ void draw_accounts(app::AppState& state) {
         const bool disabled = no_api_key || cooldown > 0;
         ImGui::BeginDisabled(disabled);
         if (action_button("Refresh all")) {
-            state.refresh_account_data();
+            state.refresh_account_data(/*force=*/true);
         }
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {

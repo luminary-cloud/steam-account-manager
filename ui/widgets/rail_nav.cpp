@@ -3,10 +3,14 @@
 #include <array>
 #include <cstdio>
 #include <string>
+#include <vector>
+
+#include <windows.h>
 
 #include <imgui.h>
 
 #include "core/version.hpp"
+#include "platform/paths.hpp"
 #include "ui/icons.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
@@ -130,6 +134,32 @@ void draw_rail_nav(app::AppState& state) {
     draw_section("Workspace", kWorkspaceItems);
     draw_section("Manage", kManageItems);
 
+    // "Switch vault" is an action (relaunch), not a screen, so it's drawn outside
+    // the NavEntry sections. Only meaningful when more than one vault exists.
+    if (state.vault_registry.vaults.size() > 1) {
+        ImGui::SetCursorPosX(kSidebarPaddingX);
+        if (sidebar_item("Switch vault", false,
+                         kSidebarWidth - kSidebarPaddingX * 2.0F, 0)) {
+            ImGui::OpenPopup("##switch_vault");
+        }
+        ImGui::Dummy(ImVec2(0, kNavItemSpacing));
+        if (begin_styled_popup("##switch_vault")) {
+            ImGui::TextColored(theme::dim_text(), "Switch to");
+            ImGui::Separator();
+            for (const auto& v : state.vault_registry.vaults) {
+                const bool is_active = v.id == sam::platform::active_vault_id();
+                ImGui::BeginDisabled(is_active);
+                std::string label = v.name + (is_active ? "  (current)" : "");
+                if (ImGui::Selectable(label.c_str())) {
+                    request_vault_switch(state, v.id);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndDisabled();
+            }
+            end_styled_popup();
+        }
+    }
+
     float remaining = ImGui::GetContentRegionAvail().y;
     if (remaining > kSidebarFooterH) {
         ImGui::Dummy(ImVec2(0, remaining - kSidebarFooterH));
@@ -179,6 +209,16 @@ void draw_rail_nav(app::AppState& state) {
     ImGui::Dummy(ImVec2(0, 12));
 
     ImGui::EndChild();
+}
+
+void request_vault_switch(app::AppState& state, const std::string& id) {
+    if (id.empty() || id == sam::platform::active_vault_id()) return;
+    // Record the target and ask win_main to relaunch on the way out. The actual
+    // relaunch happens after full teardown so the new instance doesn't race this
+    // one's (possibly slow) shutdown for the single-instance mutex.
+    sam::platform::write_pending_vault(id);
+    state.relaunch_switch = true;
+    if (state.main_hwnd) PostMessageW(state.main_hwnd, WM_CLOSE, 0, 0);
 }
 
 }  // namespace sam::ui::widgets

@@ -20,9 +20,13 @@ namespace sam::platform {
 namespace {
 
 // Location lives in the registry, not a file, so a migration leaves nothing on disk.
-constexpr const wchar_t* kRegSubkey     = L"Software\\steam-account-manager";
-constexpr const wchar_t* kRegDataDir    = L"DataDir";
-constexpr const wchar_t* kRegCleanupOld = L"CleanupOld";
+constexpr const wchar_t* kRegSubkey       = L"Software\\steam-account-manager";
+constexpr const wchar_t* kRegDataDir      = L"DataDir";
+constexpr const wchar_t* kRegCleanupOld   = L"CleanupOld";
+constexpr const wchar_t* kRegPendingVault = L"PendingVault";
+
+// The vault this process is bound to. Set once before unlock; empty until then.
+std::string g_active_vault_id;
 
 // Set during data_dir() resolution when the registry named an unusable target.
 std::optional<std::filesystem::path> g_unavailable_custom;
@@ -113,6 +117,43 @@ bool delete_registry_value(const wchar_t* value_name) {
     const LONG rc = RegDeleteValueW(key, value_name);
     RegCloseKey(key);
     return rc == ERROR_SUCCESS || rc == ERROR_FILE_NOT_FOUND;
+}
+
+// A plain REG_SZ string (unlike read_registry_path, no absolute-path filter);
+// used for the pending-vault id handoff.
+std::wstring read_registry_string(const wchar_t* value_name) {
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, kRegSubkey, 0, KEY_QUERY_VALUE, &key)
+            != ERROR_SUCCESS) {
+        return {};
+    }
+    DWORD type = 0, size = 0;
+    LONG rc = RegQueryValueExW(key, value_name, nullptr, &type, nullptr, &size);
+    if (rc != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) ||
+        size < sizeof(wchar_t)) {
+        RegCloseKey(key);
+        return {};
+    }
+    std::wstring buf(size / sizeof(wchar_t), L'\0');
+    rc = RegQueryValueExW(key, value_name, nullptr, &type,
+                          reinterpret_cast<LPBYTE>(buf.data()), &size);
+    RegCloseKey(key);
+    if (rc != ERROR_SUCCESS) return {};
+    while (!buf.empty() && buf.back() == L'\0') buf.pop_back();
+    return buf;
+}
+
+bool write_registry_string(const wchar_t* value_name, const std::wstring& val) {
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, kRegSubkey, 0, nullptr, 0,
+                        KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
+        return false;
+    }
+    const DWORD bytes = static_cast<DWORD>((val.size() + 1) * sizeof(wchar_t));
+    const LONG rc = RegSetValueExW(key, value_name, 0, REG_SZ,
+                                   reinterpret_cast<const BYTE*>(val.c_str()), bytes);
+    RegCloseKey(key);
+    return rc == ERROR_SUCCESS;
 }
 
 }  // namespace
@@ -228,6 +269,10 @@ bool relocate_data_dir(const std::filesystem::path& new_dir, std::string* err) {
         return fail(std::string("Target folder isn't writable: ") + e.what());
     }
 
+    // Don't drag a (potentially huge) browser profile to the new location; it's
+    // transient scratch that gets recreated on demand anyway.
+    sweep_browser_cache();
+
     // Live log file is opened share-all by spdlog, so it copies fine.
     ec.clear();
     std::filesystem::copy(current, new_dir,
@@ -258,7 +303,86 @@ void cleanup_relocated_old_dir() {
     delete_registry_value(kRegCleanupOld);
 }
 
-std::filesystem::path vault_path()    { return data_dir() / L"vault.bin"; }
+std::filesystem::path cache_dir()         { return data_dir() / L"cache"; }
+std::filesystem::path browser_cache_dir() { return cache_dir() / L"browser"; }
+std::filesystem::path resources_dir()     { return data_dir() / L"resources"; }
+std::filesystem::path tools_dir()         { return data_dir() / L"tools"; }
+
+namespace {
+
+// Move a file or directory from src to dst if src exists and dst doesn't (so the
+// migration is idempotent). Rename first (fast, same volume); fall back to a
+// recursive copy + remove_all when rename can't cross a boundary. Best-effort.
+void move_path_once(const std::filesystem::path& src, const std::filesystem::path& dst) {
+    std::error_code ec;
+    if (!std::filesystem::exists(src, ec)) return;
+    if (std::filesystem::exists(dst, ec)) return;  // already migrated
+    std::filesystem::create_directories(dst.parent_path(), ec);
+    ec.clear();
+    std::filesystem::rename(src, dst, ec);
+    if (!ec) return;
+    ec.clear();
+    std::filesystem::copy(src, dst,
+        std::filesystem::copy_options::recursive |
+        std::filesystem::copy_options::overwrite_existing |
+        std::filesystem::copy_options::copy_symlinks, ec);
+    if (!ec) std::filesystem::remove_all(src, ec);
+}
+
+}  // namespace
+
+void migrate_data_layout() {
+    const auto root = data_dir();
+    std::error_code ec;
+
+    // Scratch sign-in page holds fresh session cookies; drop it rather than carry
+    // it over — it's regenerated on the next web login.
+    std::filesystem::remove(root / L"browser-login.html", ec);
+
+    // Transient / regenerable -> cache/
+    move_path_once(root / L"browser-profile", browser_cache_dir() / L"profile");
+    move_path_once(root / L"cs2_schema",      cache_dir() / L"cs2_schema");
+    // User-provided templates -> resources/
+    move_path_once(root / L"cs2_video_template.txt", resources_dir() / L"cs2_video_template.txt");
+    move_path_once(root / L"cs2_730_template",       resources_dir() / L"cs2_730_template");
+    // Downloaded loaders -> tools/
+    move_path_once(root / L"gamesense", tools_dir() / L"gamesense");
+    move_path_once(root / L"luminary",  tools_dir() / L"luminary");
+    // Vault registry index -> inside the vaults/ subtree it describes.
+    move_path_once(root / L"vaults.json", vaults_root() / L"registry.json");
+}
+
+void sweep_browser_cache() {
+    std::error_code ec;
+    std::filesystem::remove_all(browser_cache_dir(), ec);  // locked -> retry next launch
+}
+
+void set_active_vault_id(const std::string& id) { g_active_vault_id = id; }
+std::string active_vault_id() { return g_active_vault_id; }
+
+std::filesystem::path vaults_root() { return data_dir() / L"vaults"; }
+
+std::filesystem::path active_vault_dir() {
+    // Vault ids are ASCII ULIDs, so a narrow->path conversion is lossless.
+    return vaults_root() / std::filesystem::path(g_active_vault_id);
+}
+
+bool write_pending_vault(const std::string& id) {
+    return write_registry_string(kRegPendingVault,
+                                 std::wstring(id.begin(), id.end()));
+}
+
+std::string read_pending_vault() {
+    const std::wstring w = read_registry_string(kRegPendingVault);
+    std::string out;
+    out.reserve(w.size());
+    for (const wchar_t c : w) out.push_back(static_cast<char>(c & 0x7F));  // ASCII ids
+    return out;
+}
+
+bool clear_pending_vault() { return delete_registry_value(kRegPendingVault); }
+
+std::filesystem::path vault_path()    { return active_vault_dir() / L"vault.bin"; }
 std::filesystem::path settings_path() { return data_dir() / L"settings.json"; }
 std::filesystem::path log_dir()       { return data_dir() / L"logs"; }
 

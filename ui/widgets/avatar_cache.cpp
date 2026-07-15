@@ -1,7 +1,11 @@
 #include "ui/widgets/avatar_cache.hpp"
 
 #include <atomic>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -109,6 +113,44 @@ ID3D11ShaderResourceView* texture_for(std::string_view url) {
         std::lock_guard lk(g_mtx);
         auto& entry = g_cache[key];
         if (resp.status == 200 && !body.empty()) {
+            entry.srv = create_srv(body);
+            entry.state = entry.srv ? State::Ready : State::Failed;
+        } else {
+            entry.state = State::Failed;
+        }
+    });
+
+    return nullptr;
+}
+
+ID3D11ShaderResourceView* texture_for_file(std::string_view abs_path) {
+    if (abs_path.empty()) return nullptr;
+    // Prefix keeps local paths from colliding with URL keys and hitting the HTTP path.
+    const std::string key = "file://" + std::string(abs_path);
+    const std::string path(abs_path);
+
+    {
+        std::lock_guard lk(g_mtx);
+        auto it = g_cache.find(key);
+        if (it != g_cache.end()) {
+            return it->second.state == State::Ready ? it->second.srv : nullptr;
+        }
+        g_cache[key].state = State::Pending;
+    }
+
+    app::job_pump::submit([key, path] {
+        std::vector<std::uint8_t> body;
+        {
+            std::ifstream in(std::filesystem::path(path), std::ios::binary);
+            if (in) {
+                body.assign(std::istreambuf_iterator<char>(in),
+                            std::istreambuf_iterator<char>());
+            }
+        }
+
+        std::lock_guard lk(g_mtx);
+        auto& entry = g_cache[key];
+        if (!body.empty()) {
             entry.srv = create_srv(body);
             entry.state = entry.srv ? State::Ready : State::Failed;
         } else {

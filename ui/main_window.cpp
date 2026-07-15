@@ -14,6 +14,7 @@
 #include "ui/screens/settings_screen.hpp"
 #include "ui/screens/trade_offers_screen.hpp"
 #include "ui/screens/unlock_screen.hpp"
+#include "ui/screens/vault_picker_screen.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
 #include "ui/widgets/rail_nav.hpp"
@@ -99,7 +100,11 @@ bool draw(app::AppState& state) {
         } else {
             ImGui::Dummy(ImVec2(0, 24));
             ImGui::Indent(24);
-            screens::draw_unlock(state);
+            if (state.needs_vault_pick) {
+                screens::draw_vault_picker(state);
+            } else {
+                screens::draw_unlock(state);
+            }
             ImGui::Unindent(24);
         }
     }

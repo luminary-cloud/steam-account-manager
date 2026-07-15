@@ -74,7 +74,7 @@ std::int64_t AppState::persona_change_cooldown_seconds(const std::string& id) co
     return detail::kPersonaChangeCooldownSeconds - elapsed;
 }
 
-void AppState::refresh_account_data() {
+void AppState::refresh_account_data(bool force) {
     if (settings.web_api_key.empty()) {
         SAM_LOG_WARN("refresh_all: no web API key");
         refresh_web_phase_done.store(true, std::memory_order_relaxed);
@@ -113,16 +113,20 @@ void AppState::refresh_account_data() {
         SAM_LOG_INFO("refresh_all: filled {} missing steam_ids from loginusers.vdf", filled);
     }
 
-    // Global Steam-data cache: skip accounts whose Web API data is still fresh, so a
-    // batch/startup refresh only touches expired accounts (same model as the GC cache).
+    // Global Steam-data cache: unless forced, skip accounts whose Web API data is still
+    // fresh, so a startup/auto refresh only touches expired accounts (like the GC cache).
+    // The manual "Refresh all" button forces, so it always refreshes and shows the counter.
     const auto batch_now = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     const std::int64_t steam_ttl = static_cast<std::int64_t>(settings.steam_cache_hours) * 3600;
+    auto steam_fresh = [&](const core::Account& a) {
+        return !force && a.web.last_refreshed_unix != 0 &&
+               batch_now - a.web.last_refreshed_unix < steam_ttl;
+    };
     std::vector<std::uint64_t> ids;
     for (const auto& a : vault.accounts) {
         if (a.steam_id_64 == 0) continue;
-        if (a.web.last_refreshed_unix != 0 && batch_now - a.web.last_refreshed_unix < steam_ttl)
-            continue;
+        if (steam_fresh(a)) continue;
         ids.push_back(a.steam_id_64);
     }
     if (ids.empty()) {
@@ -141,12 +145,12 @@ void AppState::refresh_account_data() {
     cfg.api_key = settings.web_api_key;
     const bool gcpd_enabled = settings.gcpd_enabled;
 
-    job_pump::submit([cfg, ids, gcpd_enabled, this] {
+    job_pump::submit([cfg, ids, gcpd_enabled, force, this] {
         auto bans = steam_api::fetch_bans(cfg, ids);
         auto summaries = steam_api::fetch_summaries(cfg, ids);
 
         std::lock_guard lk(job_mutex);
-        completed_jobs.push_back({"", [this, gcpd_enabled,
+        completed_jobs.push_back({"", [this, gcpd_enabled, force,
                                        bans = std::move(bans),
                                        summaries = std::move(summaries)] {
             const auto now = std::chrono::duration_cast<std::chrono::seconds>(
@@ -208,11 +212,17 @@ void AppState::refresh_account_data() {
             // Per-account GCPD scrape for any account with usable session creds,
             // staggered ~2s apart so 30+ accounts don't hammer Steam in a burst.
             if (!gcpd_enabled) { detail::flush_native_notification(*this); return; }
+            // Only stagger (and count) accounts that will actually refresh: those with a
+            // usable session whose Steam data is stale, unless the caller forced the refresh.
+            const std::int64_t gcpd_steam_ttl =
+                static_cast<std::int64_t>(settings.steam_cache_hours) * 3600;
             std::vector<std::string> gcpd_ids;
             for (const auto& a : vault.accounts) {
-                if (!a.session_id.empty() && !a.steam_login_secure.empty()) {
-                    gcpd_ids.push_back(a.id);
-                }
+                if (a.session_id.empty() || a.steam_login_secure.empty()) continue;
+                if (!force && a.web.last_refreshed_unix != 0 &&
+                    now - a.web.last_refreshed_unix < gcpd_steam_ttl)
+                    continue;
+                gcpd_ids.push_back(a.id);
             }
             if (gcpd_ids.empty()) { detail::flush_native_notification(*this); return; }
             refresh_all_total.store(static_cast<int>(gcpd_ids.size()),
@@ -277,19 +287,6 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh,
                              acc->login, now - it->second);
                 return;
             }
-        }
-    }
-
-    // Global Steam-data cache: any batch/auto/startup refresh skips an account whose Web API
-    // data is newer than steam_cache_hours (a new account has last_refreshed 0 so it runs),
-    // mirroring the GC's cache_hours. A manual single Refresh (batch_refresh == false) forces.
-    if (batch_refresh && acc->web.last_refreshed_unix != 0) {
-        const auto now = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        if (now - acc->web.last_refreshed_unix <
-            static_cast<std::int64_t>(settings.steam_cache_hours) * 3600) {
-            SAM_LOG_INFO("refresh: '{}' within Steam cache window, skipping", acc->login);
-            return;
         }
     }
 

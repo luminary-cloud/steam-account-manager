@@ -1,11 +1,13 @@
 #include "ui/screens/sda_screen.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include <imgui.h>
 
@@ -15,11 +17,11 @@
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
 #include "ui/widgets/avatar.hpp"
+#include "ui/widgets/avatar_cache.hpp"
 #include "ui/widgets/code_display.hpp"
 #include "ui/widgets/redacted_text.hpp"
 #include "ui/widgets/sda_backup_dialogs.hpp"
 #include "ui/widgets/sda_wizard_dialogs.hpp"
-#include "ui/widgets/search_bar.hpp"
 
 namespace sam::ui::screens {
 
@@ -38,35 +40,140 @@ std::string lowercase(std::string s) {
     return s;
 }
 
-void draw_account_picker(app::AppState& state) {
-    static std::string g_picker_filter;
-    widgets::draw_search_bar(g_picker_filter, 280.0F);
+// Header chip showing the selected account (avatar + name), matching the CS2 and
+// trade-offer pickers. Returns true when clicked.
+bool draw_account_chip(app::AppState& state, const core::Account* picked) {
+    constexpr float kH = 40.0F;
+    constexpr float kW = 320.0F;
+    const ImVec2 p0 = ImGui::GetCursorScreenPos();
+    const bool clicked = ImGui::InvisibleButton("##sda_acct_chip", ImVec2(kW, kH));
+    const bool hov = ImGui::IsItemHovered();
+    const ImVec2 p1(p0.x + kW, p0.y + kH);
+    auto* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(p0, p1,
+                      ImGui::ColorConvertFloat4ToU32(hov ? theme::panel_hover() : theme::panel()),
+                      6.0F);
+    dl->AddRect(p0, p1, ImGui::ColorConvertFloat4ToU32(theme::border()), 6.0F, 1.0F);
+    const float pad = 6.0F;
+    const float av = kH - 2.0F * pad;
+    const ImVec2 av0(p0.x + pad, p0.y + pad);
+    const ImVec2 av1(av0.x + av, av0.y + av);
+    const float av_round = av * (8.0F / 48.0F);
+    dl->AddRectFilled(av0, av1, IM_COL32(40, 50, 60, 180), av_round);
+    if (picked != nullptr)
+        if (auto* srv = widgets::avatar_for(picked->web.avatar_url_full))
+            dl->AddImageRounded(reinterpret_cast<ImTextureID>(srv), av0, av1, ImVec2(0, 0),
+                                ImVec2(1, 1), IM_COL32_WHITE, av_round);
+    const std::string label =
+        picked != nullptr ? account_label(state, *picked) : std::string("Select an account");
+    const ImVec2 ts = ImGui::CalcTextSize(label.c_str());
+    const float tx0 = av1.x + 8.0F;
+    dl->PushClipRect(ImVec2(tx0, p0.y), ImVec2(p1.x - pad, p1.y), true);
+    dl->AddText(ImVec2(tx0, p0.y + (kH - ts.y) * 0.5F),
+                ImGui::ColorConvertFloat4ToU32(picked != nullptr ? theme::text() : theme::dim_text()),
+                label.c_str());
+    dl->PopClipRect();
+    return clicked;
+}
 
-    auto* current = state.find_account(state.selected_account_id);
-    const std::string preview = current
-        ? account_label(state, *current)
-        : std::string{"Select an account"};
+// Single-select account grid for the picker popup: filterable chips with avatar +
+// name, matching the CS2 / trade-offer pickers. Lists every account (Steam Guard
+// state is annotated) so an account without SDA can still be picked to add one.
+void draw_account_grid(app::AppState& state, char (&search)[64]) {
+    ImGui::SetNextItemWidth(220.0F);
+    ImGui::InputTextWithHint("##sdaacctsearch", "filter", search, sizeof(search));
 
-    const std::string filter_lower = lowercase(g_picker_filter);
+    const std::string af = lowercase(search);
+    std::vector<core::Account*> accts;
+    for (auto& a : state.vault.accounts) {
+        if (!af.empty() && lowercase(account_label(state, a)).find(af) == std::string::npos)
+            continue;
+        accts.push_back(&a);
+    }
 
-    if (begin_styled_combo("##picker", preview.c_str())) {
-        for (auto& a : state.vault.accounts) {
-            if (!filter_lower.empty()) {
-                const std::string hay = lowercase(account_label(state, a));
-                if (hay.find(filter_lower) == std::string::npos) continue;
-            }
-            std::string label = account_label(state, a);
-            if (!a.sda.has_value()) {
-                label += "  (no SDA)";
-            } else if (!a.sda->fully_enrolled) {
-                label += "  (incomplete)";
-            }
-            label += "##" + a.id;
-            if (ImGui::Selectable(label.c_str(), a.id == state.selected_account_id)) {
-                state.selected_account_id = a.id;
+    constexpr float kChipH = 44.0F;
+    constexpr float kChipGap = 8.0F;
+    ImGui::BeginChild("##sdaacctgrid", ImVec2(440.0F, 300.0F), ImGuiChildFlags_Borders);
+    const float gw = ImGui::GetContentRegionAvail().x;
+    const int cols = std::max(1, static_cast<int>(gw / 220.0F + 0.5F));
+    const float chip_w = (gw - static_cast<float>(cols - 1) * kChipGap) / static_cast<float>(cols);
+    const float row_pitch = kChipH + ImGui::GetStyle().ItemSpacing.y;
+    const int total = static_cast<int>(accts.size());
+    const int rows = (total + cols - 1) / cols;
+    auto* dl = ImGui::GetWindowDrawList();
+    ImGuiListClipper clipper;
+    clipper.Begin(rows, row_pitch);
+    while (clipper.Step()) {
+        for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+            for (int c = 0; c < cols; ++c) {
+                const int idx = row * cols + c;
+                if (idx >= total) break;
+                core::Account& a = *accts[idx];
+                if (c > 0) ImGui::SameLine(0.0F, kChipGap);
+                ImGui::PushID(a.id.c_str());
+                const bool sel = state.selected_account_id == a.id;
+                const ImVec2 p0 = ImGui::GetCursorScreenPos();
+                const ImVec2 p1(p0.x + chip_w, p0.y + kChipH);
+                if (ImGui::InvisibleButton("##chip", ImVec2(chip_w, kChipH))) {
+                    state.selected_account_id = a.id;
+                    ImGui::CloseCurrentPopup();
+                }
+                const bool hov = ImGui::IsItemHovered();
+                ImU32 bg;
+                if (sel) {
+                    ImVec4 ac = theme::accent();
+                    ac.w = 0.20F;
+                    bg = ImGui::ColorConvertFloat4ToU32(ac);
+                } else {
+                    bg = ImGui::ColorConvertFloat4ToU32(hov ? theme::panel_hover() : theme::panel());
+                }
+                dl->AddRectFilled(p0, p1, bg, 6.0F);
+
+                const float pad = 6.0F;
+                const float av = kChipH - 2.0F * pad;
+                const ImVec2 av0(p0.x + pad, p0.y + pad);
+                const ImVec2 av1(av0.x + av, av0.y + av);
+                const float av_round = av * (8.0F / 48.0F);
+                dl->AddRectFilled(av0, av1, IM_COL32(40, 50, 60, 180), av_round);
+                if (auto* srv = widgets::avatar_for(a.web.avatar_url_full))
+                    dl->AddImageRounded(reinterpret_cast<ImTextureID>(srv), av0, av1, ImVec2(0, 0),
+                                        ImVec2(1, 1), IM_COL32_WHITE, av_round);
+
+                std::string label = account_label(state, a);
+                if (!a.sda.has_value()) label += "  (no SDA)";
+                else if (!a.sda->fully_enrolled) label += "  (incomplete)";
+
+                const float tx0 = av1.x + 8.0F;
+                const float tx1 = p1.x - pad;
+                const ImVec2 ts = ImGui::CalcTextSize(label.c_str());
+                const float region_w = tx1 - tx0;
+                const float text_y = p0.y + (kChipH - ts.y) * 0.5F;
+                dl->PushClipRect(ImVec2(tx0, p0.y), ImVec2(tx1, p1.y), true);
+                dl->AddText(ImVec2(tx0, text_y), ImGui::ColorConvertFloat4ToU32(theme::text()),
+                            label.c_str());
+                dl->PopClipRect();
+                if (sel)
+                    dl->AddRect(p0, p1, ImGui::ColorConvertFloat4ToU32(theme::accent()), 6.0F, 2.0F);
+                if (hov && ts.x > region_w) set_tooltip("%s", label.c_str());
+                ImGui::PopID();
             }
         }
-        end_styled_combo();
+    }
+    clipper.End();
+    ImGui::EndChild();
+}
+
+void draw_account_picker(app::AppState& state) {
+    static char picker_search[64] = "";
+
+    auto* current = state.find_account(state.selected_account_id);
+    if (draw_account_chip(state, current)) {
+        picker_search[0] = '\0';
+        ImGui::OpenPopup("##sda_account_picker");
+    }
+    if (begin_styled_popup("##sda_account_picker")) {
+        draw_account_grid(state, picker_search);
+        end_styled_popup();
     }
 }
 

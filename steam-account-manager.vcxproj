@@ -148,6 +148,7 @@
     <ClCompile Include="app\app_state_login.cpp" />
     <ClCompile Include="app\cs2_autopull.cpp" />
     <ClCompile Include="app\vault_saver.cpp" />
+    <ClCompile Include="app\vault_registry.cpp" />
     <ClCompile Include="app\app_paths.cpp" />
     <ClCompile Include="app\gamesense_loader.cpp" />
     <ClCompile Include="app\luminary_loader.cpp" />
@@ -246,6 +247,7 @@
     <ClCompile Include="ui\stb_impl.cpp" />
     <ClCompile Include="ui\util.cpp" />
     <ClCompile Include="ui\screens\unlock_screen.cpp" />
+    <ClCompile Include="ui\screens\vault_picker_screen.cpp" />
     <ClCompile Include="ui\screens\accounts_screen.cpp" />
     <ClCompile Include="ui\screens\accounts_list_view.cpp" />
     <ClCompile Include="ui\screens\sda_screen.cpp" />
@@ -297,6 +299,7 @@
     <ClInclude Include="app\app_state_internal.hpp" />
     <ClInclude Include="app\settings.hpp" />
     <ClInclude Include="app\vault_saver.hpp" />
+    <ClInclude Include="app\vault_registry.hpp" />
     <ClInclude Include="app\app_paths.hpp" />
     <ClInclude Include="app\gamesense_loader.hpp" />
     <ClInclude Include="app\luminary_loader.hpp" />
@@ -405,6 +408,7 @@
     <ClInclude Include="ui\icons.hpp" />
     <ClInclude Include="ui\util.hpp" />
     <ClInclude Include="ui\screens\unlock_screen.hpp" />
+    <ClInclude Include="ui\screens\vault_picker_screen.hpp" />
     <ClInclude Include="ui\screens\accounts_screen.hpp" />
     <ClInclude Include="ui\screens\accounts_list_view.hpp" />
     <ClInclude Include="ui\screens\sda_screen.hpp" />

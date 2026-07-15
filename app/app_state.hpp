@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "app/settings.hpp"
+#include "app/vault_registry.hpp"
 #include "app/vault_saver.hpp"
 #include "core/account_store/account.hpp"
 #include "core/crypto/secure_string.hpp"
@@ -122,6 +123,17 @@ struct AppState {
     HWND main_hwnd = nullptr;
 
     Screen current_screen = Screen::Unlock;
+
+    // Multiple vaults: the loaded registry (shared with the picker + settings) and
+    // a flag that routes the locked view to the vault picker instead of the unlock
+    // screen when several vaults exist and none is set to auto-open.
+    VaultRegistry vault_registry;
+    bool needs_vault_pick = false;
+    // Set by "Switch vault": win_main relaunches the app (--switch) as the very last
+    // step of shutdown, after every background thread is joined and the mutex is
+    // about to be released, so the replacement never races a slow teardown.
+    bool relaunch_switch = false;
+
     std::string selected_account_id;
     std::string search_query;
     // Shown once per session by the Accounts screen when accounts exist but no
@@ -303,7 +315,9 @@ struct AppState {
     void exit_selection_mode();
     void toggle_selected(const std::string& id);
     bool is_selected(const std::string& id) const;
-    void refresh_account_data();
+    // `force` refreshes every account regardless of the Steam cache; the manual "Refresh
+    // all" button passes true, while startup/auto pass false so they skip fresh accounts.
+    void refresh_account_data(bool force = false);
     // `allow_gcpd` gates the (heavy) GCPD scrape independently of settings.gcpd_enabled;
     // the auto-refresh timer passes false so it only pulls the Steam Web API data.
     void refresh_single_account(const std::string& id, bool batch_refresh = false,
@@ -437,5 +451,10 @@ struct AppState {
         std::string mint_error;
     } pending_token_launch;
 };
+
+// Binds the per-vault stores (notifications + confirmation/trade audits) to the
+// now-active vault's folder and loads/prunes them. Call once, right after a vault
+// is unlocked (auto-unlock, manual unlock/create, or the picker).
+void bind_vault_session(AppState& state);
 
 }  // namespace sam::app

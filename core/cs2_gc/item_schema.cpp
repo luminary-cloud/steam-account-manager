@@ -101,7 +101,7 @@ std::uint32_t parse_hex_rgb(const std::string& s) {
 }  // namespace
 
 bool ItemSchema::load(std::uint32_t version, const std::string& gc_items_game_url) {
-    const fs::path dir = platform::data_dir() / "cs2_schema";
+    const fs::path dir = platform::cache_dir() / "cs2_schema";
     std::error_code ec;
     fs::create_directories(dir, ec);
     const fs::path items_path = dir / "items_game.txt";

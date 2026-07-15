@@ -14,6 +14,7 @@
 #include "app/app_paths.hpp"
 #include "core/cs2_config/workshop_block.hpp"
 #include "core/log.hpp"
+#include "platform/paths.hpp"
 #include "platform/window_affinity.hpp"
 #include "ui/fonts.hpp"
 #include "ui/screens/settings_sections.hpp"
@@ -264,6 +265,10 @@ void draw_startup_section(app::AppState& state) {
             if (!state.settings.remember_master_password) {
                 SAM_LOG_ERROR("startup: background refresh needs the master-password cache");
                 state.settings.logon_action = prev;
+            } else if (state.vault_registry.vaults.size() > 1) {
+                // The headless run opens the auto-open vault; point it at the one
+                // whose cache we just wrote (the currently active vault).
+                app::set_auto_open(state.vault_registry, platform::active_vault_id());
             }
         }
         state.sync_logon_task();
@@ -598,6 +603,10 @@ struct CategoryDef {
     void (*render)(app::AppState&);
 };
 
+void render_vaults(app::AppState& state) {
+    settings_detail::draw_vaults_section(state);
+}
+
 constexpr CategoryDef kCategories[] = {
     {"General",            render_general},
     {"Security & Privacy", render_security},
@@ -608,11 +617,13 @@ constexpr CategoryDef kCategories[] = {
     {"Network & Data",     render_network_data},
     {"CS2",                render_cs2},
     {"HWID Spoofer",       render_hwid},
+    {"Vaults",             render_vaults},
 };
 
 // Keep SettingsCategory (header) in lockstep with kCategories order/count.
-static_assert(IM_ARRAYSIZE(kCategories) == 9);
+static_assert(IM_ARRAYSIZE(kCategories) == 10);
 static_assert(static_cast<int>(SettingsCategory::NetworkData) == 6);
+static_assert(static_cast<int>(SettingsCategory::Vaults) == 9);
 
 }  // namespace
 

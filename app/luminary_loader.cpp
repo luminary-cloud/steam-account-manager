@@ -9,7 +9,7 @@ namespace sam::app {
 namespace fs = std::filesystem;
 
 std::filesystem::path luminary_dir() {
-    return platform::data_dir() / "luminary";
+    return platform::tools_dir() / "luminary";
 }
 
 std::optional<std::filesystem::path> luminary_loader_path() {

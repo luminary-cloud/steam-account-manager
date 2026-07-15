@@ -151,6 +151,14 @@ vulnerability or read the full security model, see [SECURITY.md](SECURITY.md).
 
 Pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Disclaimer
+
+This project is for managing your own accounts and for educational and research
+purposes, and is not affiliated with Valve or Steam. The HWID spoofer component is
+provided for educational purposes only. You are responsible for how you use this
+software, and it must not be used to violate the Steam Subscriber Agreement, any
+game's terms, or applicable law. See [DISCLAIMER.md](DISCLAIMER.md).
+
 ## License
 
 [MIT](LICENSE).

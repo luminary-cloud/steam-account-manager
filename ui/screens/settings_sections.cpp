@@ -11,10 +11,16 @@
 
 #include <imgui.h>
 
+#include <algorithm>
+#include <cctype>
+#include <vector>
+
 #include "app/app_paths.hpp"
 #include "app/gamesense_loader.hpp"
 #include "app/luminary_loader.hpp"
 #include "app/job_pump.hpp"
+#include "app/vault_registry.hpp"
+#include "core/account_store/store.hpp"
 #include "core/cs2_config/video_config.hpp"
 #include "core/crypto/secure_string.hpp"
 #include "core/http/client.hpp"
@@ -23,9 +29,12 @@
 #include "platform/file_dialog.hpp"
 #include "platform/fs.hpp"
 #include "platform/paths.hpp"
+#include "ui/screens/unlock_screen.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
+#include "ui/widgets/avatar_cache.hpp"
 #include "ui/widgets/master_pw_field.hpp"
+#include "ui/widgets/rail_nav.hpp"
 
 namespace sam::ui::screens {
 namespace settings_detail {
@@ -652,6 +661,203 @@ void draw_storage_section(app::AppState& state) {
             end_styled_modal();
         }
     }
+}
+
+namespace {
+
+std::uint32_t vaults_pack_rgba(const float c[4]) {
+    auto to_byte = [](float f) {
+        f = std::clamp(f, 0.0F, 1.0F);
+        return static_cast<std::uint32_t>(f * 255.0F + 0.5F);
+    };
+    return (to_byte(c[0]) << 24) | (to_byte(c[1]) << 16) |
+           (to_byte(c[2]) << 8) | to_byte(c[3]);
+}
+
+void vaults_unpack_rgba(std::uint32_t rgba, float out[4]) {
+    out[0] = ((rgba >> 24) & 0xFF) / 255.0F;
+    out[1] = ((rgba >> 16) & 0xFF) / 255.0F;
+    out[2] = ((rgba >> 8) & 0xFF) / 255.0F;
+    out[3] = (rgba & 0xFF) / 255.0F;
+}
+
+}  // namespace
+
+void draw_vaults_section(app::AppState& state) {
+    separator_text("Vaults");
+    ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
+    ImGui::TextWrapped("Each vault holds its own accounts. Settings (this whole screen) "
+                       "are shared across every vault. Switching vaults reopens the app.");
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+
+    auto& reg = state.vault_registry;
+    const std::string active = platform::active_vault_id();
+
+    // Deferred actions so we don't mutate the vault list mid-iteration.
+    std::string switch_to, delete_id;
+
+    std::vector<app::VaultInfo*> items;
+    items.reserve(reg.vaults.size());
+    for (auto& v : reg.vaults) items.push_back(&v);
+    std::sort(items.begin(), items.end(), [](auto* a, auto* b) {
+        if (a->order != b->order) return a->order < b->order;
+        return a->name < b->name;
+    });
+
+    for (auto* vp : items) {
+        app::VaultInfo& v = *vp;
+        const bool is_active = v.id == active;
+        ImGui::PushID(v.id.c_str());
+
+        // Colour swatch (commit on release so we don't rewrite the registry per frame).
+        float col[4];
+        vaults_unpack_rgba(v.color_rgba, col);
+        if (ImGui::ColorEdit4("##color", col,
+                              ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel)) {
+            v.color_rgba = vaults_pack_rgba(col);
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit()) app::save_registry(reg);
+        ImGui::SameLine();
+
+        // Name (commit on deactivate).
+        char name_buf[128];
+        std::snprintf(name_buf, sizeof(name_buf), "%s", v.name.c_str());
+        ImGui::SetNextItemWidth(200.0F);
+        if (ImGui::InputText("##name", name_buf, sizeof(name_buf))) v.name = name_buf;
+        if (ImGui::IsItemDeactivatedAfterEdit()) app::rename_vault(reg, v.id, v.name);
+
+        ImGui::SameLine();
+        if (is_active) {
+            ImGui::TextColored(theme::success(), "current");
+        } else if (action_button("Switch to")) {
+            switch_to = v.id;
+        }
+
+        // Auto-open toggle (mutually exclusive across vaults).
+        bool auto_open = reg.auto_open_id == v.id;
+        if (ImGui::Checkbox("Auto-open at startup", &auto_open)) {
+            app::set_auto_open(reg, auto_open ? v.id : std::string{});
+        }
+        hover_tooltip("Open this vault automatically on launch (skipping the picker) "
+                      "when it can unlock silently. Only one vault can auto-open.");
+
+        ImGui::SameLine();
+        if (action_button("Set icon...")) {
+            platform::file_dialog::Options opts;
+            opts.parent = state.main_hwnd;
+            opts.title = L"Choose a vault icon image";
+            opts.filters = {{L"Images", L"*.png;*.jpg;*.jpeg;*.bmp;*.gif"}};
+            const auto res = platform::file_dialog::open_file(opts);
+            if (res.ok) {
+                std::string err;
+                if (!app::set_vault_icon(reg, v.id, res.path, &err))
+                    SAM_LOG_WARN("vault icon set failed: {}", err);
+            }
+        }
+        if (!v.icon_file.empty()) {
+            ImGui::SameLine();
+            if (action_button("Remove icon")) app::clear_vault_icon(reg, v.id);
+        }
+
+        ImGui::SameLine();
+        const bool can_delete = reg.vaults.size() > 1 && !is_active;
+        ImGui::BeginDisabled(!can_delete);
+        if (action_button("Delete")) delete_id = v.id;
+        ImGui::EndDisabled();
+        if (!can_delete) {
+            hover_tooltip(is_active ? "Switch to another vault before deleting this one."
+                                    : "You must keep at least one vault.");
+        }
+
+        ImGui::Spacing();
+        ImGui::PopID();
+    }
+
+    ImGui::Spacing();
+    if (action_button("Create vault...")) ImGui::OpenPopup("Create vault");
+
+    // ---- Create vault modal (creates the file + entry; does not switch to it) ----
+    static std::string c_name, c_pw, c_pw_confirm, c_err;
+    if (begin_styled_modal("Create vault")) {
+        ImGui::TextUnformatted("Name");
+        ImGui::SetNextItemWidth(320.0F);
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "%s", c_name.c_str());
+        if (ImGui::InputText("##c_name", buf, sizeof(buf))) c_name = buf;
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted("Master password");
+        widgets::draw_password_field("##c_pw", c_pw, true, 320.0F);
+        ImGui::TextUnformatted("Confirm");
+        widgets::draw_password_field("##c_pw_confirm", c_pw_confirm, false, 320.0F);
+
+        if (!c_err.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
+            ImGui::TextWrapped("%s", c_err.c_str());
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::Spacing();
+        const bool ok = !c_name.empty() && !c_pw.empty() && c_pw == c_pw_confirm;
+        ImGui::BeginDisabled(!ok);
+        if (action_button("Create", ImVec2(120, 0))) {
+            try {
+                const auto id = app::new_vault_id();
+                std::error_code ec;
+                std::filesystem::create_directories(app::vault_dir_for(id), ec);
+                sam::core::store::create_new_vault(
+                    app::vault_dir_for(id) / L"vault.bin",
+                    sam::crypto::make_secure(c_pw));
+                app::add_vault_entry(reg, id, c_name, 0x4F8EF7FFu);
+                c_name.clear();
+                c_pw.clear();
+                c_pw_confirm.clear();
+                c_err.clear();
+                ImGui::CloseCurrentPopup();
+            } catch (const std::exception& ex) {
+                c_err = ex.what();
+            }
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (action_button("Cancel", ImVec2(90, 0))) {
+            c_pw.clear();
+            c_pw_confirm.clear();
+            c_err.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        end_styled_modal();
+    }
+
+    // ---- Delete confirmation ----
+    static std::string s_delete_pending;
+    if (!delete_id.empty()) {
+        s_delete_pending = delete_id;
+        ImGui::OpenPopup("Delete vault");
+    }
+    if (begin_styled_modal("Delete vault")) {
+        const auto* v = reg.find(s_delete_pending);
+        ImGui::TextWrapped("Permanently delete vault \"%s\" and all its accounts? "
+                           "This cannot be undone.",
+                           v ? v->name.c_str() : "");
+        ImGui::Spacing();
+        if (action_button("Delete", ImVec2(120, 0))) {
+            std::string err;
+            if (!app::remove_vault(reg, s_delete_pending, &err))
+                SAM_LOG_WARN("vault delete failed: {}", err);
+            s_delete_pending.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (action_button("Cancel", ImVec2(90, 0))) {
+            s_delete_pending.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        end_styled_modal();
+    }
+
+    if (!switch_to.empty()) widgets::request_vault_switch(state, switch_to);
 }
 
 }  // namespace settings_detail
