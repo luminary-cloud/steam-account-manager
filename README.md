@@ -7,7 +7,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
 
-A native Windows manager for your Steam accounts: one encrypted vault, Steam Guard
+A native Windows manager for your Steam accounts: encrypted vaults, Steam Guard
 codes, mobile confirmations, trade offers, CS2 tools, and one-click login.
 
 <details>
@@ -16,12 +16,18 @@ codes, mobile confirmations, trade offers, CS2 tools, and one-click login.
 <img src="assets/screenshot.png" alt="Steam Account Manager" width="820">
 </details>
 
-Keep every account in one local vault encrypted with your master password. No
-installer, no telemetry, nothing leaves your machine.
+Keep your accounts in one or more local vaults encrypted with your master password.
+No installer, no telemetry, nothing leaves your machine.
 
 </div>
 
 ## Features
+
+### Vaults
+- Keep separate sets of accounts in independent encrypted vaults (personal, trading, clients).
+- Give each vault a name, a color, and a custom image icon.
+- A picker on startup lets you choose a vault, or set one to open automatically.
+- Switch vaults from the sidebar. Settings are shared across every vault; only the accounts differ.
 
 ### Accounts
 - Card grid, or a two-pane list view with collapsible, color-coded groups.
@@ -30,8 +36,8 @@ installer, no telemetry, nothing leaves your machine.
 - Per-account password, notes, color tags, and trust labels (green / yellow / red).
 - Search, sort, multi-select, and bulk actions.
 - Privacy mode hides every login until you click to reveal one.
-- NFA (token-only) accounts: import a JWT refresh token, track when it expires, edit or
-  replace it later, and sign in without a password.
+- NFA (token-only) accounts: import a JWT refresh token, track when it expires, get
+  flagged when it goes stale, edit or replace it later, and sign in without a password.
 
 ### Authenticator
 - Steam Guard codes for any imported authenticator, with a next-code preview.
@@ -82,6 +88,8 @@ installer, no telemetry, nothing leaves your machine.
   config on login (applied while Steam restarts so Steam will not overwrite them).
 - Optionally disable Steam Cloud or new-release news notifications per account on login,
   written while Steam restarts so Steam keeps them off (existing files are backed up first).
+- Optionally block a launched account's subscribed CS2 workshop maps from downloading, so
+  it goes straight into the game instead of pulling maps first. Subscriptions are kept.
 - Per-account launch method: stop after login, launch CS2, or launch CS2 with a
   user-supplied external loader.
 - Open any account signed-in in your browser from the right-click menu.
@@ -100,6 +108,8 @@ installer, no telemetry, nothing leaves your machine.
 ### Background refresh
 - Refresh every account on launch, or schedule a logon task that refreshes in the
   background and notifies on new bans or cooldown changes.
+- Optional periodic auto-refresh while the app is open, on an interval you set, updating
+  only accounts whose cached data has expired.
 - The logon task can instead just open the app, optionally minimized.
 
 ### Import and export
