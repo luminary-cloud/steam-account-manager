@@ -26,8 +26,10 @@ enum class LoginMethod : std::uint8_t {
     LaunchCs2Luminary  = 3,  // launch CS2 then run the luminary loader (--auto --game=cs2)
 };
 
-// Live validity of an NFA/cached account's client token, set by a real CM logon
-// (not just JWT expiry). Unknown until first validated.
+// Live validity of a client token, established by a real sign-in rather than JWT expiry
+// (a revoked token stays unexpired for months). Unknown until first validated. Used for
+// both an NFA account's refresh_token (via the CM logon result) and a full-access
+// account's cm_refresh_token (via whether Steam signed in after injection).
 enum class NfaTokenStatus : std::uint8_t {
     Unknown = 0,
     Valid = 1,
@@ -171,6 +173,12 @@ struct Account {
     // CM); NFA accounts reuse refresh_token. Empty until set up.
     crypto::SecureString cm_refresh_token;
     std::int64_t cm_refresh_token_expires = 0;
+
+    // Live validity of cm_refresh_token, the full-access counterpart to nfa_status. A
+    // revoked token keeps a valid `exp` for months, so JWT math alone can't spot one: this
+    // is set from whether Steam actually signed in after a token-injection launch.
+    NfaTokenStatus cm_status = NfaTokenStatus::Unknown;
+    std::int64_t cm_last_validated_unix = 0;
 
     std::wstring display_name;
     std::wstring notes;

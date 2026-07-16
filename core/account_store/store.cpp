@@ -270,6 +270,8 @@ void to_json(json& j, const Account& a) {
     j["nfa_last_validated_unix"] = a.nfa_last_validated_unix;
     j["cm_refresh_token"]     = secure_to_string(a.cm_refresh_token);
     j["cm_refresh_token_expires"] = a.cm_refresh_token_expires;
+    j["cm_status"]            = static_cast<int>(a.cm_status);
+    j["cm_last_validated_unix"] = a.cm_last_validated_unix;
     j["display_name"]         = ws_to_u8(a.display_name);
     j["notes"]                = ws_to_u8(a.notes);
     j["tag_ids"]              = a.tag_ids;
@@ -310,6 +312,9 @@ void from_json(const json& j, Account& a) {
     a.nfa_last_validated_unix = j.value("nfa_last_validated_unix", static_cast<std::int64_t>(0));
     a.cm_refresh_token     = string_to_secure(j.value("cm_refresh_token", std::string{}));
     a.cm_refresh_token_expires = j.value("cm_refresh_token_expires", static_cast<std::int64_t>(0));
+    a.cm_status            = static_cast<NfaTokenStatus>(
+        j.value("cm_status", static_cast<int>(NfaTokenStatus::Unknown)));
+    a.cm_last_validated_unix = j.value("cm_last_validated_unix", static_cast<std::int64_t>(0));
     a.display_name         = u8_to_ws(j.value("display_name", std::string{}));
     a.notes                = u8_to_ws(j.value("notes", std::string{}));
     if (j.contains("tag_ids") && j["tag_ids"].is_array()) {

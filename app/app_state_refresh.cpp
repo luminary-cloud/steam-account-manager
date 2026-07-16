@@ -115,7 +115,8 @@ void AppState::refresh_account_data(bool force) {
 
     // Global Steam-data cache: unless forced, skip accounts whose Web API data is still
     // fresh, so a startup/auto refresh only touches expired accounts (like the GC cache).
-    // The manual "Refresh all" button forces, so it always refreshes and shows the counter.
+    // The manual "Refresh all" button forces, so it always refreshes; an auto refresh with
+    // everything still cached bails below without arming the counter.
     const auto batch_now = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     const std::int64_t steam_ttl = static_cast<std::int64_t>(settings.steam_cache_hours) * 3600;
@@ -138,6 +139,13 @@ void AppState::refresh_account_data(bool force) {
     SAM_LOG_INFO("refresh_all: fetching data for {} accounts", ids.size());
 
     refresh_web_phase_done.store(false, std::memory_order_relaxed);
+    // Arm the progress counter for the Web API phase. fetch_bans/fetch_summaries are two
+    // bulk calls with no per-account granularity, so this sits at 0/N until the phase ends
+    // (same as "Pulling GC 0/N"); the GCPD phase below re-arms it with its own denominator.
+    // Every path that ends the batch must reset total to 0, or startup_refresh_complete()
+    // never sees done >= total and the headless --startup run hangs.
+    refresh_all_total.store(static_cast<int>(ids.size()), std::memory_order_relaxed);
+    refresh_all_done.store(0, std::memory_order_relaxed);
     session_event_count = 0;
     session_event_message.clear();
 
@@ -211,7 +219,11 @@ void AppState::refresh_account_data(bool force) {
 
             // Per-account GCPD scrape for any account with usable session creds,
             // staggered ~2s apart so 30+ accounts don't hammer Steam in a burst.
-            if (!gcpd_enabled) { detail::flush_native_notification(*this); return; }
+            if (!gcpd_enabled) {
+                refresh_all_total.store(0, std::memory_order_relaxed);
+                detail::flush_native_notification(*this);
+                return;
+            }
             // Only stagger (and count) accounts that will actually refresh: those with a
             // usable session whose Steam data is stale, unless the caller forced the refresh.
             const std::int64_t gcpd_steam_ttl =
@@ -224,7 +236,11 @@ void AppState::refresh_account_data(bool force) {
                     continue;
                 gcpd_ids.push_back(a.id);
             }
-            if (gcpd_ids.empty()) { detail::flush_native_notification(*this); return; }
+            if (gcpd_ids.empty()) {
+                refresh_all_total.store(0, std::memory_order_relaxed);
+                detail::flush_native_notification(*this);
+                return;
+            }
             refresh_all_total.store(static_cast<int>(gcpd_ids.size()),
                                     std::memory_order_relaxed);
             refresh_all_done.store(0, std::memory_order_relaxed);
@@ -646,6 +662,10 @@ void AppState::refresh_single_account(const std::string& id, bool batch_refresh,
             if (batch_refresh) {
                 const int done = refresh_all_done.fetch_add(1, std::memory_order_relaxed) + 1;
                 if (done >= refresh_all_total.load(std::memory_order_relaxed)) {
+                    // Batch over: clear the denominator so the counter hides and the headless
+                    // --startup gate reads "complete" rather than 0-of-a-stale-total.
+                    refresh_all_total.store(0, std::memory_order_relaxed);
+                    refresh_all_done.store(0, std::memory_order_relaxed);
                     detail::flush_native_notification(*this);
                 }
             }
@@ -1028,9 +1048,13 @@ void AppState::refresh_all_spend(bool only_missing) {
 
 namespace {
 // If Steam's ConnectCache holds a valid, unexpired, client-scoped token for this account
-// that differs from the stored one, copies it into a.refresh_token and returns true.
+// that differs from the stored one, copies it into `dest`/`dest_expires` and returns true.
+// `dest` is the account's refresh_token (NFA) or cm_refresh_token (full-access token
+// injection) -- the validity rules are identical, only the destination differs.
 // Writes to the account, so call it on the UI thread only.
-bool adopt_connect_cache_token(core::Account& a, const std::string& login_lower) {
+bool adopt_connect_cache_token_into(core::Account& a, const std::string& login_lower,
+                                    crypto::SecureString& dest,
+                                    std::int64_t& dest_expires) {
     auto fresh = steam_local::read_connect_cache_token(login_lower);
     if (!fresh || fresh->empty()) return false;
     const std::int64_t exp = steam_login::jwt_expiry(*fresh);
@@ -1039,10 +1063,34 @@ bool adopt_connect_cache_token(core::Account& a, const std::string& login_lower)
     if (exp != 0 && exp <= now) return false;
     if (steam_login::jwt_steam_id(*fresh) != a.steam_id_64) return false;
     if (steam_login::jwt_audience(*fresh).find("client") == std::string::npos) return false;
-    if (a.refresh_token == *fresh) return false;  // unchanged; Steam reused the token
-    a.refresh_token = std::move(*fresh);
-    a.refresh_token_expires = exp;
+    if (dest == *fresh) return false;  // unchanged; Steam reused the token
+    dest = std::move(*fresh);
+    dest_expires = exp;
     return true;
+}
+
+bool adopt_connect_cache_token(core::Account& a, const std::string& login_lower) {
+    return adopt_connect_cache_token_into(a, login_lower, a.refresh_token,
+                                          a.refresh_token_expires);
+}
+
+std::int64_t now_unix() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
+
+// Waits for Steam to report this account as signed in. Job-pump thread only.
+enum class SignInPoll { SignedIn, NeverSignedIn, Aborted };
+SignInPoll poll_for_signin(std::uint32_t target) {
+    using namespace std::chrono;
+    constexpr int kMaxPolls = 90;  // up to ~90s for Steam to complete the token sign-in
+    for (int i = 0; i < kMaxPolls; ++i) {
+        if (!job_pump::interruptible_sleep(seconds(1))) return SignInPoll::Aborted;
+        const auto au = platform::registry::read_active_user();
+        if (au && *au == target) return SignInPoll::SignedIn;
+    }
+    return SignInPoll::NeverSignedIn;
 }
 }  // namespace
 
@@ -1066,16 +1114,10 @@ void AppState::capture_rotated_token_async(std::string account_id,
     job_pump::submit([this, account_id = std::move(account_id), target,
                       login_lower = std::move(login_lower)]() mutable {
         using namespace std::chrono;
-        constexpr int kMaxPolls = 90;  // up to ~90s for Steam to complete the token sign-in
+        const auto poll = poll_for_signin(target);
+        if (poll == SignInPoll::Aborted) return;  // app closing
 
-        bool signed_in = false;
-        for (int i = 0; i < kMaxPolls; ++i) {
-            if (!job_pump::interruptible_sleep(seconds(1))) return;  // app closing
-            const auto au = platform::registry::read_active_user();
-            if (au && *au == target) { signed_in = true; break; }
-        }
-
-        if (!signed_in) {
+        if (poll == SignInPoll::NeverSignedIn) {
             // Steam never signed in: the token is likely stale/rotated. Tell the user.
             post_ui_callback([this, account_id] {
                 if (!find_account(account_id)) return;  // account removed meanwhile
@@ -1104,6 +1146,96 @@ void AppState::capture_rotated_token_async(std::string account_id,
                 SAM_LOG_INFO("token self-heal: updated refresh_token for '{}'", a->login);
             }
         });
+    });
+}
+
+void AppState::verify_cm_token_signin_async(std::string account_id,
+                                            std::uint64_t steam_id_64,
+                                            std::string login_lower) {
+    if (account_id.empty() || steam_id_64 == 0 || login_lower.empty()) return;
+    const auto target = static_cast<std::uint32_t>(steam_id_64 & 0xFFFFFFFFull);
+
+    job_pump::submit([this, account_id = std::move(account_id), target,
+                      login_lower = std::move(login_lower)]() mutable {
+        using namespace std::chrono;
+        const auto poll = poll_for_signin(target);
+        if (poll == SignInPoll::Aborted) return;  // app closing
+
+        if (poll == SignInPoll::NeverSignedIn) {
+            // A revoked token is accepted by every JWT check and then silently rejected by
+            // Steam, so "never signed in" is the only signal we get. Mark it and re-mint.
+            post_ui_callback([this, account_id] {
+                auto* a = find_account(account_id);
+                if (a == nullptr) return;  // account removed meanwhile
+                a->cm_status = core::NfaTokenStatus::Revoked;
+                a->cm_last_validated_unix = now_unix();
+                vault_dirty = true;
+                save_vault_if_dirty();
+                SAM_LOG_WARN("cm-token: Steam never signed in for '{}' - marking revoked",
+                             a->login);
+                remint_cm_token_after_revoke(account_id);
+            });
+            return;
+        }
+
+        // Signed in: let Steam flush the rotated token to local.vdf, then adopt it. Steam
+        // rotates the token it was handed, so without this the stored cm_refresh_token
+        // drifts from what Steam holds and eventually stops working.
+        if (!job_pump::interruptible_sleep(seconds(3))) return;
+        post_ui_callback([this, account_id, login_lower] {
+            auto* a = find_account(account_id);
+            if (a == nullptr) return;
+            a->cm_status = core::NfaTokenStatus::Valid;
+            a->cm_last_validated_unix = now_unix();
+            cm_relaunch_attempted.erase(account_id);
+            const bool rotated = adopt_connect_cache_token_into(
+                *a, login_lower, a->cm_refresh_token, a->cm_refresh_token_expires);
+            if (rotated) {
+                SAM_LOG_INFO("cm-token self-heal: updated cm_refresh_token for '{}'", a->login);
+            }
+            vault_dirty = true;
+            save_vault_if_dirty();
+        });
+    });
+}
+
+void AppState::remint_cm_token_after_revoke(const std::string& account_id) {
+    auto* a = find_account(account_id);
+    if (a == nullptr) return;
+
+    const auto warn = [&](std::string msg) {
+        ui::widgets::ToastItem t;
+        t.id = "cm-token-dead-" + account_id;
+        t.message = std::move(msg);
+        t.account_id = account_id;
+        t.is_warning = true;
+        t.expires_at_unix = now_unix() + settings.notifications.toast_duration_seconds;
+        toasts.push(std::move(t));
+    };
+    const std::string who = a->web.persona_name.empty() ? a->login : a->web.persona_name;
+
+    if (pending_token_launch.minting) return;  // a mint is already in flight; don't burn the try
+
+    // Once per user-initiated launch: a re-mint that still can't sign in means something we
+    // can't fix from here (password changed, Guard removed), so stop rather than loop.
+    if (!cm_relaunch_attempted.insert(account_id).second) {
+        warn("Steam rejected the login token for " + who +
+             " again - check the account's password and Steam Guard.");
+        return;
+    }
+    if (a->password.empty()) {
+        warn("Login token for " + who +
+             " was rejected and there's no stored password to mint a new one.");
+        return;
+    }
+
+    warn("Login token for " + who + " was rejected - minting a new one and retrying...");
+    pending_token_launch = {account_id, true, false, false, {}};
+    acquire_cm_token(account_id, [this](bool ok, std::string err) {
+        pending_token_launch.minting = false;
+        pending_token_launch.mint_done = true;
+        pending_token_launch.mint_ok = ok;
+        pending_token_launch.mint_error = std::move(err);
     });
 }
 

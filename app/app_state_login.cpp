@@ -136,6 +136,10 @@ void AppState::acquire_cm_token(const std::string& account_id,
             if (auto* acc = find_account(aid)) {
                 acc->cm_refresh_token = std::move(rt);
                 acc->cm_refresh_token_expires = exp;
+                // Freshly minted: any Revoked verdict belonged to the token we just
+                // replaced, and this one is unproven until a sign-in says otherwise.
+                acc->cm_status = core::NfaTokenStatus::Unknown;
+                acc->cm_last_validated_unix = 0;
                 vault_dirty = true;
                 save_vault_if_dirty();
             }

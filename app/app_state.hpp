@@ -223,8 +223,10 @@ struct AppState {
     // message-loop tick.
     bool needs_hotkey_reregister = true;
 
-    // "Refresh All" progress. Set by refresh_account_data() at batch start;
-    // refresh_single_account increments done in its UI callback.
+    // "Refresh All" progress. refresh_account_data() arms total at batch start (Web API
+    // phase), re-arms it for the GCPD phase, and clears it to 0 once the batch ends;
+    // refresh_single_account increments done in its UI callback. total == 0 means idle --
+    // startup_refresh_complete() depends on that, so never leave a stale denominator.
     std::atomic<int> refresh_all_total{0};
     std::atomic<int> refresh_all_done{0};
     // Headless --startup run: refresh_web_phase_done flips when the Web API batch
@@ -412,6 +414,22 @@ struct AppState {
     void capture_rotated_token_now(const std::string& account_id,
                                    const std::string& login_lower);
 
+    // The cm_refresh_token counterpart of capture_rotated_token_async, for a full-access
+    // token-injection launch. Waits for Steam to sign in, then either adopts the rotated
+    // ConnectCache token into cm_refresh_token (cm_status = Valid), or -- if Steam never
+    // signs in, which is how a revoked-but-unexpired token presents -- marks cm_status
+    // Revoked and re-mints + relaunches once via pending_token_launch.
+    void verify_cm_token_signin_async(std::string account_id,
+                                      std::uint64_t steam_id_64,
+                                      std::string login_lower);
+
+    // Mints a replacement cm_refresh_token and relaunches, after a launch proved the stored
+    // one revoked. At most once per user-initiated launch (see cm_relaunch_attempted); warns
+    // and stops instead when there's no stored password or the retry already failed. The
+    // relaunch itself is driven by the pending_token_launch pump in the accounts screen.
+    // UI thread.
+    void remint_cm_token_after_revoke(const std::string& account_id);
+
     // Caches a GC snapshot's medals (resolved name + icon), level/XP and a pull timestamp
     // into the account's CS2Status, then saves the vault. Shared by the manual CS2 screen
     // and the auto-pull orchestrator.
@@ -450,6 +468,11 @@ struct AppState {
         bool mint_ok = false;
         std::string mint_error;
     } pending_token_launch;
+
+    // Accounts already re-minted + relaunched once after their cm_refresh_token turned out
+    // to be revoked. Stops a permanently broken account (wrong password, Guard removed)
+    // from relaunching Steam in a loop; a user-initiated Launch clears the entry.
+    std::unordered_set<std::string> cm_relaunch_attempted;
 };
 
 // Binds the per-vault stores (notifications + confirmation/trade audits) to the

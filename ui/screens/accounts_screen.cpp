@@ -41,13 +41,22 @@ constexpr float kCardMinWidth = 360.0F;
 constexpr float kGap = 14.0F;
 constexpr float kGridInset = 10.0F;
 
+// Seconds of headroom on the token's expiry. A launch shuts Steam down and restarts it, so a
+// token that only just validates here is dead by the time Steam presents it. Matches the
+// autopull's kTokenExpiryMargin.
+constexpr std::int64_t kCmTokenExpiryMargin = 300;
+
 bool cm_token_valid(const core::Account& a) {
     if (a.cm_refresh_token.empty()) return false;
+    // A revoked token keeps a valid `exp` for months, so only a real sign-in attempt can
+    // tell us it's dead; verify_cm_token_signin_async records that verdict here.
+    if (a.cm_status == core::NfaTokenStatus::Revoked) return false;
     const std::int64_t exp = a.cm_refresh_token_expires != 0
         ? a.cm_refresh_token_expires
         : steam_login::jwt_expiry(a.cm_refresh_token);
-    if (exp != 0 && exp <= std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count())
+    if (exp != 0 && exp - kCmTokenExpiryMargin <=
+            std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count())
         return false;
     return steam_login::jwt_audience(a.cm_refresh_token).find("client") != std::string::npos;
 }
@@ -98,11 +107,14 @@ void do_launch(app::AppState& state, core::Account& a, bool use_token) {
     state.vault_dirty = true;
     state.save_vault_if_dirty();
     // After sign-in Steam rotates the refresh token in its ConnectCache, so read it back to
-    // keep the stored token current (a stale one drops to the login form). NFA accounts
-    // only: their refresh_token is the login token, while use_token accounts sign in with a
-    // separate cm_refresh_token that this must not overwrite.
+    // keep the stored token current (a stale one drops to the login form). The two token
+    // kinds live in different fields, so each has its own watcher: an NFA account's login
+    // token is refresh_token, while a use_token account signs in with cm_refresh_token.
+    // Both also treat "Steam never signed in" as the token being dead.
     if (a.is_nfa) {
         state.capture_rotated_token_async(a.id, a.steam_id_64, core::to_lower(a.login));
+    } else if (use_token) {
+        state.verify_cm_token_signin_async(a.id, a.steam_id_64, core::to_lower(a.login));
     }
     if (state.settings.cs2_video.mode != app::CS2ConfigMode::None) {
         state.apply_cs2_video_config(a);
@@ -127,6 +139,10 @@ void handle_card_action(app::AppState& state,
             const bool use_token =
                 !a.is_nfa &&
                 state.settings.sign_in_method == app::SignInMethod::TokenInject;
+
+            // Fresh user intent: allow the self-heal retry again, even if a previous launch
+            // of this account already burned its one attempt.
+            state.cm_relaunch_attempted.erase(a.id);
 
             if (use_token && !cm_token_valid(a)) {
                 if (a.password.empty()) {
@@ -422,8 +438,12 @@ void draw_accounts(app::AppState& state) {
         const int total = state.refresh_all_total.load(std::memory_order_relaxed);
         const int done  = state.refresh_all_done.load(std::memory_order_relaxed);
         if (total > 0 && done < total) {
+            // The two phases count different sets (all stale accounts, then only those with
+            // session creds), so name the phase or the denominator change reads as a glitch.
+            const bool web_phase = !state.refresh_web_phase_done.load(std::memory_order_relaxed);
             ImGui::SameLine();
-            ImGui::TextDisabled("Refreshing %d/%d", done, total);
+            ImGui::TextDisabled(web_phase ? "Refreshing %d/%d" : "Scraping GCPD %d/%d",
+                                done, total);
         }
     }
     ImGui::SameLine();
