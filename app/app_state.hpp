@@ -288,8 +288,19 @@ struct AppState {
     core::Account* find_account(const std::string& id);
     void save_vault_if_dirty();
     void flush_pending_save();
-    void save_settings();
-    void load_settings();
+    // Settings are per-vault, but split across two files rather than two structs:
+    // the handful of keys that must be readable before a vault is known live in
+    // settings_path(), the rest in vault_settings_path(). Callers see one struct.
+    void save_settings();   // both halves
+    void load_settings();   // global half only; startup, before init_vaults()
+    // The per-vault half. Called by bind_vault_session() once a vault is open,
+    // seeding from the global file the first time each vault is opened.
+    void load_vault_settings();
+    // Halves of save_settings(); prefer save_settings() unless you know why not.
+    void save_global_settings();
+    void save_vault_settings();
+    // Re-pushes the vault settings that are applied once, not read per-frame.
+    void apply_vault_settings_side_effects();
 
     // Pushes proxy_mode + single_proxy into the http layer's global policy. Call
     // after load_settings and whenever either changes.

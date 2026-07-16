@@ -73,7 +73,7 @@ void draw_vault_picker(app::AppState& state) {
     }
     ImGui::PopStyleColor();
     ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
-    ImGui::TextUnformatted("Each vault keeps its own accounts. Settings are shared.");
+    ImGui::TextUnformatted("Each vault keeps its own accounts and its own settings.");
     ImGui::PopStyleColor();
     ImGui::Dummy(ImVec2(0, 12));
 

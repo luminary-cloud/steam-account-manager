@@ -619,14 +619,10 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         sam::platform::set_capture_excluded(hwnd, true);
     }
     state.start_update_check();
-    // Notifications + audit logs are per-vault; they're bound to the active vault's
-    // folder by bind_vault_session() once a vault is actually unlocked (below, or
-    // from the unlock/create/picker flows).
-    if (state.settings.sda.global_hotkey_mods == 0 &&
-        state.settings.sda.global_hotkey_vk   == 0) {
-        state.settings.sda.global_hotkey_mods = MOD_CONTROL | MOD_SHIFT;
-        state.settings.sda.global_hotkey_vk   = 'G';
-    }
+    // Settings (bar the few globals loaded above), notifications and audit logs are
+    // per-vault; they're bound to the active vault's folder by bind_vault_session()
+    // once a vault is actually unlocked (below, or from the unlock/create/picker
+    // flows). Until then the rest of `settings` holds struct defaults.
     state.main_hwnd = hwnd;
     g_state = &state;
     state.real_hardware = sam::core::hwid::read_real_hardware();

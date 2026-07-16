@@ -27,7 +27,7 @@ No installer, no telemetry, nothing leaves your machine.
 - Keep separate sets of accounts in independent encrypted vaults (personal, trading, clients).
 - Give each vault a name, a color, and a custom image icon.
 - A picker on startup lets you choose a vault, or set one to open automatically.
-- Switch vaults from the sidebar. Settings are shared across every vault; only the accounts differ.
+- Switch vaults from the sidebar. Each vault has its own accounts and its own settings; a few options (marked "global" in Settings) apply everywhere.
 
 ### Accounts
 - Card grid, or a two-pane list view with collapsible, color-coded groups.

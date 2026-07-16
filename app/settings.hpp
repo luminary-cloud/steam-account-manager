@@ -45,6 +45,10 @@ struct SavedTradeLink {
     std::string name;
 };
 
+// One struct, but two files behind it: fields marked GLOBAL are shared by every
+// vault and live in data_dir()/settings.json, because they have to be readable
+// before a vault is known. Everything else is per-vault, in the vault's own
+// settings.json. See AppState::save_settings / load_vault_settings.
 struct Settings {
     int clipboard_clear_seconds = 12;
     int auto_lock_minutes = 15;
@@ -64,22 +68,28 @@ struct Settings {
     // (per steam_cache_hours / cs2_gc.cache_hours), skipping the rest. Never spend, never GCPD.
     bool auto_refresh_enabled = false;
     int  auto_refresh_minutes = 10;   // heartbeat interval
-    // Caches the master password via DPAPI (current Windows user). Disabling
-    // deletes the cached blob.
+    // GLOBAL: read by init_vaults() to decide whether to auto-open, before any
+    // vault exists to read it from. Caches the master password via DPAPI (current
+    // Windows user). Disabling deletes the cached blob -- but only the active
+    // vault's, while the flag itself stops every vault auto-opening.
     bool remember_master_password = false;
+    // GLOBAL: only one logon task ever exists, so it can't differ per vault.
     // Task Scheduler logon task (highest privileges, since requireAdministrator).
     // BackgroundRefresh relaunches with --startup to refresh and exit (implies
     // remember_master_password + refresh_on_launch for the headless auto-unlock);
     // OpenApp launches the full GUI. None removes the task.
     LogonAction logon_action = LogonAction::None;
-    // Only meaningful for OpenApp: the logon task passes --minimized so the window
-    // opens minimized to the taskbar. Manual launches always open normally.
+    // GLOBAL (part of the logon task). Only meaningful for OpenApp: the task passes
+    // --minimized so the window opens minimized to the taskbar. Manual launches
+    // always open normally.
     bool start_minimized = false;
     // Renders logins as "<hidden>". Per-account reveals live in
     // AppState::revealed_logins, cleared on lock via clear_session_secrets().
     bool privacy_mode = false;
     // Excludes the window from screen-capture software via SetWindowDisplayAffinity
-    // (WDA_EXCLUDEFROMCAPTURE). Still visible on the physical monitor.
+    // (WDA_EXCLUDEFROMCAPTURE). Still visible on the physical monitor. Per-vault,
+    // but mirrored into the global file as a hint so the vault picker (which shows
+    // vault names) is covered before any vault is open.
     bool streamproof = false;
     // Forced to "0" on the launched account during the Steam-down window, only while the
     // toggle is on; never re-enabled. See core/steam_local/login_prefs.
@@ -98,9 +108,12 @@ struct Settings {
     std::string web_api_key;
 
     // single_proxy used only in Single mode; per-account proxies live in the vault.
+    // Per-vault, but mirrored into the global file as a hint: the launch update
+    // check runs before a vault is open and must not bypass the user's proxy.
     ProxyMode   proxy_mode = ProxyMode::None;
     std::string single_proxy;   // scheme://[user:pass@]host:port
 
+    // GLOBAL: the check runs on the picker/unlock screen, before a vault is open.
     // version_check_skip_until holds the tag the user chose to skip.
     bool check_updates_on_launch = true;
     std::string version_check_skip_until;
@@ -154,8 +167,8 @@ struct Settings {
         bool show_next_code = true;
         bool hide_current_code = false;
         bool global_hotkey_enabled = false;
-        // Raw Win32 MOD_*/VK constants. Defaults filled from win_main on first
-        // launch (the macros live in <windows.h>).
+        // Raw Win32 MOD_*/VK constants. Defaults filled by load_vault_settings() on
+        // a vault's first open (as literals -- the macros live in <windows.h>).
         std::uint32_t global_hotkey_mods = 0;
         std::uint32_t global_hotkey_vk   = 0;
     } sda;

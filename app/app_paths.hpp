@@ -7,7 +7,11 @@ namespace sam::app {
 void ensure_data_dirs();
 
 std::filesystem::path vault_path();
+// The global half of the settings: only the keys that must be readable before a
+// vault is known. Also the seed template for new vaults -- see vault_settings_path.
 std::filesystem::path settings_path();
+// The per-vault half, holding everything else.
+std::filesystem::path vault_settings_path();
 std::filesystem::path master_pw_cache_path();
 std::filesystem::path notifications_path();
 std::filesystem::path conf_audit_path();

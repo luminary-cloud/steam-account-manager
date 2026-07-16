@@ -19,9 +19,11 @@
 #include "core/steam_api/ban_check.hpp"
 #include "core/update_check.hpp"
 #include "core/version.hpp"
+#include "platform/fs.hpp"
 #include "platform/paths.hpp"
 #include "platform/startup_task.hpp"
 #include "platform/tray_icon.hpp"
+#include "platform/window_affinity.hpp"
 #include "ui/screens/cs2_screen_state.hpp"
 
 namespace sam::app {
@@ -236,7 +238,84 @@ void AppState::sync_proxy_policy() {
     http::set_proxy_policy(mode, settings.single_proxy);
 }
 
+namespace {
+
+// settings.json holds no vault secrets, so the DACL stays inherited
+// (restrict_acl=false), exactly as the old plain-ofstream write left it.
+void write_json_atomic(const std::filesystem::path& path, const nlohmann::json& j) {
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    const std::string s = j.dump(4);
+    try {
+        platform::atomic_write_file(
+            path,
+            std::span<const std::uint8_t>(
+                reinterpret_cast<const std::uint8_t*>(s.data()), s.size()),
+            /*restrict_acl=*/false);
+    } catch (const std::exception& ex) {
+        SAM_LOG_ERROR("settings: writing {} failed: {}", path.string(), ex.what());
+    }
+}
+
+// Null json when the file is absent or unparseable. Unparseable is logged loudly:
+// the caller falls back to defaults and the next save overwrites, so a silent
+// return here would quietly discard the user's whole configuration.
+nlohmann::json read_json_file(const std::filesystem::path& path) {
+    std::ifstream in(path);
+    if (!in) return nullptr;
+    nlohmann::json j;
+    try {
+        in >> j;
+    } catch (const std::exception& ex) {
+        SAM_LOG_ERROR("settings: {} is corrupt ({}); ignoring it", path.string(),
+                      ex.what());
+        return nullptr;
+    }
+    return j;
+}
+
+}  // namespace
+
 void AppState::save_settings() {
+    save_global_settings();
+    save_vault_settings();
+}
+
+void AppState::save_global_settings() {
+    // Read-modify-write, not truncate: the global file *is* the pre-split
+    // settings.json, and its now-stale per-vault keys are the seed template that
+    // load_vault_settings() copies into each vault on first open. Dropping them
+    // would break seeding for every vault created from here on -- so however dead
+    // they look, leave them alone.
+    nlohmann::json j = read_json_file(settings_path());
+    if (!j.is_object()) j = nlohmann::json::object();
+
+    j["remember_master_password"] = settings.remember_master_password;
+    j["logon_action"]            = static_cast<int>(settings.logon_action);
+    j["start_minimized"]         = settings.start_minimized;
+    // Downgrade-safe: older builds key off this bool for the headless logon refresh.
+    j["start_with_windows"]      = (settings.logon_action == LogonAction::BackgroundRefresh);
+    j["check_updates_on_launch"]  = settings.check_updates_on_launch;
+    j["version_check_skip_until"] = settings.version_check_skip_until;
+
+    // Startup hints, not the source of truth. Both settings are per-vault, but both
+    // have to take effect before a vault is picked: streamproof keeps the picker
+    // (which shows vault names) out of screen captures, and the proxy keeps
+    // start_update_check()'s GitHub call off the user's real IP. Written by
+    // whichever vault saved last; bind_vault_session() re-applies the real values.
+    j["streamproof_hint"]  = settings.streamproof;
+    j["proxy_mode_hint"]   = static_cast<int>(settings.proxy_mode);
+    j["single_proxy_hint"] = settings.single_proxy;
+
+    write_json_atomic(settings_path(), j);
+}
+
+void AppState::save_vault_settings() {
+    // No vault bound yet (picker on screen). Every save_settings() call site sits
+    // behind `if (state.unlocked)`, so this is belt-and-braces; the global half
+    // above still lands.
+    if (platform::active_vault_id().empty()) return;
+
     nlohmann::json j;
     j["clipboard_clear_seconds"] = settings.clipboard_clear_seconds;
     j["auto_lock_minutes"]       = settings.auto_lock_minutes;
@@ -248,11 +327,6 @@ void AppState::save_settings() {
     j["auto_refresh_enabled"]    = settings.auto_refresh_enabled;
     j["auto_refresh_minutes"]    = settings.auto_refresh_minutes;
     j["steam_cache_hours"]       = settings.steam_cache_hours;
-    j["remember_master_password"] = settings.remember_master_password;
-    j["logon_action"]            = static_cast<int>(settings.logon_action);
-    j["start_minimized"]         = settings.start_minimized;
-    // Downgrade-safe: older builds key off this bool for the headless logon refresh.
-    j["start_with_windows"]      = (settings.logon_action == LogonAction::BackgroundRefresh);
     j["privacy_mode"]            = settings.privacy_mode;
     j["streamproof"]             = settings.streamproof;
     j["disable_cloud_on_login"]  = settings.disable_cloud_on_login;
@@ -263,8 +337,6 @@ void AppState::save_settings() {
     j["web_api_key"]             = settings.web_api_key;
     j["proxy_mode"]              = static_cast<int>(settings.proxy_mode);
     j["single_proxy"]            = settings.single_proxy;
-    j["check_updates_on_launch"]  = settings.check_updates_on_launch;
-    j["version_check_skip_until"] = settings.version_check_skip_until;
 
     auto& info = j["info"];
     info["show_vac"]           = settings.info.show_vac;
@@ -372,28 +444,67 @@ void AppState::save_settings() {
     hj["always_spoof"]   = settings.hwid.always_spoof;
     hj["component_mask"] = settings.hwid.component_mask;
 
-    auto path = settings_path();
-    std::filesystem::create_directories(path.parent_path());
-    std::ofstream out(path);
-    if (out) {
-        out << j.dump(4);
-    }
+    write_json_atomic(vault_settings_path(), j);
 }
 
 void AppState::load_settings() {
     // A reload is lock-equivalent: privacy_mode reveals must not survive it.
     clear_session_secrets();
 
-    auto path = settings_path();
-    std::ifstream in(path);
-    if (!in) return;
+    nlohmann::json j = read_json_file(settings_path());
+    if (!j.is_object()) return;
 
-    nlohmann::json j;
-    try {
-        in >> j;
-    } catch (...) {
-        return;
+    auto get = [&](const char* key, auto& dst) {
+        if (j.contains(key)) {
+            dst = j[key].get<std::remove_reference_t<decltype(dst)>>();
+        }
+    };
+
+    get("remember_master_password", settings.remember_master_password);
+    if (j.contains("logon_action")) {
+        int v = j["logon_action"].get<int>();
+        if (v < 0 || v > 2) v = 0;
+        settings.logon_action = static_cast<LogonAction>(v);
+    } else if (j.contains("start_with_windows") && j["start_with_windows"].get<bool>()) {
+        // Migrate the legacy on/off bool (only ever meant the headless refresh).
+        settings.logon_action = LogonAction::BackgroundRefresh;
     }
+    get("start_minimized",          settings.start_minimized);
+    get("check_updates_on_launch",  settings.check_updates_on_launch);
+    get("version_check_skip_until", settings.version_check_skip_until);
+
+    // The pre-vault hints (see save_global_settings). Fall back to the pre-split
+    // key so the first launch after upgrading still applies the user's value.
+    get("streamproof",      settings.streamproof);
+    get("streamproof_hint", settings.streamproof);
+    get("single_proxy",      settings.single_proxy);
+    get("single_proxy_hint", settings.single_proxy);
+    if (j.contains("proxy_mode_hint")) {
+        settings.proxy_mode = static_cast<ProxyMode>(j["proxy_mode_hint"].get<int>());
+    } else if (j.contains("proxy_mode")) {
+        settings.proxy_mode = static_cast<ProxyMode>(j["proxy_mode"].get<int>());
+    }
+    sync_proxy_policy();
+}
+
+void AppState::load_vault_settings() {
+    if (platform::active_vault_id().empty()) return;
+
+    // First open of this vault: seed from the pre-split settings.json, which still
+    // carries every per-vault key (save_global_settings only ever merges into it).
+    // Reading it through this same parser means the legacy migrations below apply
+    // to the seed for free -- including for a vault created years from now.
+    std::error_code ec;
+    const bool seeding = !std::filesystem::exists(vault_settings_path(), ec);
+    nlohmann::json j = read_json_file(seeding ? settings_path() : vault_settings_path());
+    // A corrupt vault file would otherwise fall through to struct defaults, and the
+    // next save would overwrite it with them. Fall back to the seed template, so a
+    // bad file costs the user their divergence from it rather than everything.
+    if (!j.is_object() && !seeding) j = read_json_file(settings_path());
+    // Fresh install: nothing to read on either side. Carry on with an empty object
+    // rather than returning -- the struct defaults stand, but the hotkey fill and
+    // the side effects below still have to run.
+    if (!j.is_object()) j = nlohmann::json::object();
 
     auto get = [&](const char* key, auto& dst) {
         if (j.contains(key)) {
@@ -419,16 +530,6 @@ void AppState::load_settings() {
     settings.auto_refresh_minutes = std::clamp(settings.auto_refresh_minutes, 10, 720);
     get("steam_cache_hours",       settings.steam_cache_hours);
     settings.steam_cache_hours = std::clamp(settings.steam_cache_hours, 1, 24);
-    get("remember_master_password", settings.remember_master_password);
-    if (j.contains("logon_action")) {
-        int v = j["logon_action"].get<int>();
-        if (v < 0 || v > 2) v = 0;
-        settings.logon_action = static_cast<LogonAction>(v);
-    } else if (j.contains("start_with_windows") && j["start_with_windows"].get<bool>()) {
-        // Migrate the legacy on/off bool (only ever meant the headless refresh).
-        settings.logon_action = LogonAction::BackgroundRefresh;
-    }
-    get("start_minimized",         settings.start_minimized);
     get("privacy_mode",            settings.privacy_mode);
     get("streamproof",             settings.streamproof);
     get("disable_cloud_on_login",  settings.disable_cloud_on_login);
@@ -445,9 +546,6 @@ void AppState::load_settings() {
     if (j.contains("proxy_mode")) {
         settings.proxy_mode = static_cast<ProxyMode>(j["proxy_mode"].get<int>());
     }
-    sync_proxy_policy();
-    get("check_updates_on_launch",  settings.check_updates_on_launch);
-    get("version_check_skip_until", settings.version_check_skip_until);
 
     if (j.contains("info")) {
         auto& ij = j["info"];
@@ -641,6 +739,27 @@ void AppState::load_settings() {
         get_h("always_spoof",   settings.hwid.always_spoof);
         get_h("component_mask", settings.hwid.component_mask);
     }
+
+    // First launch for this vault: pick a default chord. Raw Win32 constants, since
+    // this file can't include <windows.h> (MOD_CONTROL|MOD_SHIFT, 'G').
+    if (settings.sda.global_hotkey_mods == 0 && settings.sda.global_hotkey_vk == 0) {
+        settings.sda.global_hotkey_mods = 0x0002u | 0x0004u;
+        settings.sda.global_hotkey_vk   = 0x47u;
+    }
+
+    apply_vault_settings_side_effects();
+    // Materialize the seed now, so a vault the user never edits still gets a file
+    // and stops re-reading the (frozen) template on every open.
+    if (seeding) save_vault_settings();
+}
+
+// The settings that are applied once rather than read per-frame, and so have to be
+// re-pushed when a vault's values replace the defaults the picker ran with.
+void AppState::apply_vault_settings_side_effects() {
+    sync_proxy_policy();
+    // win_main's message loop re-registers the chord on the next tick.
+    needs_hotkey_reregister = true;
+    if (main_hwnd) platform::set_capture_excluded(main_hwnd, settings.streamproof);
 }
 
 void AppState::sync_logon_task() const {
@@ -683,6 +802,10 @@ void AppState::scrub_vault_secrets() {
 }
 
 void bind_vault_session(AppState& state) {
+    // First: the prunes below read retention windows out of settings, so they'd use
+    // struct defaults if this ran after them.
+    state.load_vault_settings();
+
     const auto now_s = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     state.notifications.set_path(notifications_path());

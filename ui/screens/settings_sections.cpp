@@ -686,8 +686,9 @@ void vaults_unpack_rgba(std::uint32_t rgba, float out[4]) {
 void draw_vaults_section(app::AppState& state) {
     separator_text("Vaults");
     ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
-    ImGui::TextWrapped("Each vault holds its own accounts. Settings (this whole screen) "
-                       "are shared across every vault. Switching vaults reopens the app.");
+    ImGui::TextWrapped("Each vault holds its own accounts and its own settings. A few "
+                       "options, marked \"(global)\", apply to every vault. Switching "
+                       "vaults reopens the app.");
     ImGui::PopStyleColor();
     ImGui::Spacing();
 

@@ -20,8 +20,12 @@ void ensure_data_dirs() {
 
 std::filesystem::path vault_path()    { return platform::vault_path(); }
 std::filesystem::path settings_path() { return platform::settings_path(); }
-// The auto-unlock cache, notifications and audit logs are per-vault: they live
-// inside the active vault's folder, alongside vault.bin.
+// Settings, the auto-unlock cache, notifications and audit logs are per-vault:
+// they live inside the active vault's folder, alongside vault.bin. Settings are
+// the exception that also keeps a global file -- see AppState::save_settings.
+std::filesystem::path vault_settings_path() {
+    return platform::active_vault_dir() / "settings.json";
+}
 std::filesystem::path master_pw_cache_path() {
     return platform::active_vault_dir() / "master_pw.bin";
 }

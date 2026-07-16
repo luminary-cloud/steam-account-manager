@@ -25,6 +25,15 @@ namespace sam::ui::screens {
 
 namespace {
 
+// Settings are per-vault, bar the handful that can't be (see app/settings.hpp).
+// Tag those, or changing one in this vault and finding it already changed in the
+// next reads as a bug.
+void global_badge() {
+    ImGui::SameLine();
+    ImGui::TextDisabled("(global)");
+    hover_tooltip("Applies to every vault, not just this one.");
+}
+
 void draw_clipboard_lock_section(app::AppState& state) {
     separator_text("Clipboard & auto-lock");
     ImGui::SetNextItemWidth(200);
@@ -42,6 +51,7 @@ void draw_updates_section(app::AppState& state) {
     ImGui::Checkbox("Check for updates on launch", &state.settings.check_updates_on_launch);
     hover_tooltip("On launch, checks GitHub for a newer release and shows an \"Update available\" "
                   "prompt if one exists. No account data is sent.");
+    global_badge();
 }
 
 void draw_appearance_section(app::AppState& state) {
@@ -279,6 +289,7 @@ void draw_startup_section(app::AppState& state) {
                   "notification for any new ban or cooldown, then exits. Open the app: launches "
                   "the full window at logon. The app is requireAdministrator, so this uses a "
                   "Scheduled Task (the Run key can't auto-start elevated apps).");
+    global_badge();
 
     if (state.settings.logon_action == app::LogonAction::OpenApp) {
         if (ImGui::Checkbox("Start minimized", &state.settings.start_minimized)) {
@@ -287,6 +298,7 @@ void draw_startup_section(app::AppState& state) {
         }
         hover_tooltip("Opens minimized to the taskbar at logon. Manual launches always open "
                       "normally.");
+        global_badge();
     }
 
     if (state.settings.logon_action == app::LogonAction::BackgroundRefresh) {
@@ -388,8 +400,10 @@ void draw_vault_section(app::AppState& state) {
     }
     hover_tooltip("Caches your master password under your Windows account via DPAPI so the "
                   "vault opens automatically next launch. Anyone signed in as you on this "
-                  "machine can open the vault without typing the password. Disabling this "
-                  "option deletes the cached password.");
+                  "machine can open the vault without typing the password. Turning it off "
+                  "deletes this vault's cached password, and stops every vault opening "
+                  "automatically.");
+    global_badge();
 }
 
 // Category button for the settings sub-rail, styled like the main rail nav's
