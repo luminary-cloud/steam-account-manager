@@ -318,6 +318,15 @@ void advance_validate(AppState& st) {
     v.pull_issued = false;
     ++v.done;
     ++v.idx;
+    // When this sweep is the NFA half of a "Refresh all", each finished account advances the
+    // shared toolbar counter; the last account across the whole batch (GCPD + NFA) clears it.
+    if (v.feed_refresh_all) {
+        const int done = st.refresh_all_done.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (done >= st.refresh_all_total.load(std::memory_order_relaxed)) {
+            st.refresh_all_total.store(0, std::memory_order_relaxed);
+            st.refresh_all_done.store(0, std::memory_order_relaxed);
+        }
+    }
     if (v.idx >= v.queue.size()) {
         end_validate(st, "NFA validate: done");
         return;
@@ -463,12 +472,7 @@ void AppState::cancel_gc_autopull() {
     SAM_LOG_INFO("gc-autopull: cancelled");
 }
 
-void AppState::start_gc_validate(bool force) {
-    if (gc_validate.active) return;
-    if (gc_validate.client) cs2_gc::retire(std::move(gc_validate.client));
-    gc_validate = GcValidate{};
-    if (!settings.cs2_gc.enabled) return;
-
+std::vector<std::string> AppState::collect_nfa_validate_ids(bool force) {
     const std::int64_t now = now_unix();
     const int hours = std::clamp(settings.cs2_gc.cache_hours, 1, 24);
     const std::int64_t ttl = static_cast<std::int64_t>(hours) * 3600;
@@ -487,6 +491,16 @@ void AppState::start_gc_validate(bool force) {
             continue;  // validated recently
         queue.push_back(a.id);
     }
+    return queue;
+}
+
+void AppState::start_gc_validate(bool force) {
+    if (gc_validate.active) return;
+    if (gc_validate.client) cs2_gc::retire(std::move(gc_validate.client));
+    gc_validate = GcValidate{};
+    if (!settings.cs2_gc.enabled) return;
+
+    std::vector<std::string> queue = collect_nfa_validate_ids(force);
     if (queue.empty()) {
         gc_validate.status = "NFA validate: nothing to do";
         return;
@@ -498,10 +512,29 @@ void AppState::start_gc_validate(bool force) {
     begin_validate(*this);
 }
 
+void AppState::start_gc_validate_feed(std::vector<std::string> ids) {
+    if (ids.empty()) return;
+    // Owns the shared refresh_all counter for its accounts, so replace any in-flight sweep
+    // (e.g. a startup validate) rather than bailing -- otherwise those accounts would never
+    // feed the counter and the denominator would stick.
+    if (gc_validate.client) cs2_gc::retire(std::move(gc_validate.client));
+    gc_validate = GcValidate{};
+    gc_validate.active = true;
+    gc_validate.feed_refresh_all = true;
+    gc_validate.queue = std::move(ids);
+    gc_validate.status = "Refreshing NFA cooldowns";
+    SAM_LOG_INFO("gc-validate: {} account(s) queued (refresh-all)", gc_validate.queue.size());
+    begin_validate(*this);
+}
+
 void AppState::queue_gc_validate(const std::string& account_id) {
     core::Account* a = find_account(account_id);
-    if (a == nullptr || !a->is_nfa || a->steam_id_64 == 0) return;
+    if (a == nullptr || a->steam_id_64 == 0) return;
+    // Works for NFA/cached (refresh_token) and full-access (cm_refresh_token) alike -- an
+    // own-session GC pull for one account (cooldown + ranks/medals). Needs a client-audience
+    // token, and never fights a live/manual session.
     if (cs2_client_token(*a).empty()) return;
+    if (is_active_steam_user(*a) || is_manually_connected(*this, account_id)) return;
     if (gc_validate.active) {
         for (const auto& id : gc_validate.queue)
             if (id == account_id) return;  // already queued
@@ -535,8 +568,10 @@ void AppState::tick_gc_validate() {
     const bool timed_out = now - v.phase_started > kValidateTimeout;
     if (!v.finished && !timed_out) return;
 
-    // Record the token-validity result for the current account.
-    if (auto* a = find_account(v.current_id)) {
+    // Record the token-validity result for the current account. Only NFA/cached accounts carry
+    // an nfa_status -- a full-access account pulled here (per-account refresh) just gets its GC
+    // profile via on_profile, no token bookkeeping.
+    if (auto* a = find_account(v.current_id); a != nullptr && a->is_nfa) {
         const core::NfaTokenStatus prev = a->nfa_status;
         if (v.logon_seen && v.logon_eresult == 1) {
             a->nfa_status = core::NfaTokenStatus::Valid;
@@ -585,6 +620,24 @@ void AppState::cancel_gc_validate() {
     gc_validate.active = false;
     gc_validate.status = "NFA validate stopped";
     SAM_LOG_INFO("gc-validate: cancelled");
+}
+
+void AppState::refresh_gc_all(bool announce) {
+    if (!settings.cs2_gc.enabled) return;
+    // Full-access accounts: one puller batch-pulls every stale foreign profile.
+    // NFA/cached accounts: each does its own-session login (also captures cooldown).
+    start_gc_autopull();
+    start_gc_validate(/*force=*/false);
+    // Neither machine armed -> everything was within the cache window. Let the user know a
+    // click did something rather than appearing to no-op (manual click only).
+    if (announce && !gc_autopull.active && !gc_validate.active) {
+        ui::widgets::ToastItem t;
+        t.id = "refresh-gc-uptodate";
+        t.message = "GC data is up to date for all accounts";
+        t.is_warning = true;
+        t.expires_at_unix = now_unix() + settings.notifications.toast_duration_seconds;
+        toasts.push(std::move(t));
+    }
 }
 
 }  // namespace sam::app

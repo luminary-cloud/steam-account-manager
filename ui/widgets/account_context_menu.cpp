@@ -112,42 +112,6 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         state.queue_gc_validate(a.id);
     }
 
-    // NFA accounts can't scrape their cooldown from GCPD, so allow setting it by
-    // hand from the known tiers.
-    if (a.is_nfa) {
-        ImGui::Separator();
-        if (ImGui::BeginMenu("Competitive cooldown")) {
-            struct CooldownOption { const char* label; long long seconds; };
-            static constexpr CooldownOption kOptions[] = {
-                {"20 hours", 20LL * 3600},
-                {"7 days",   7LL * 86400},
-                {"31 days",  31LL * 86400},
-                {"181 days", 181LL * 86400},
-            };
-            auto set_cooldown = [&](long long expires) {
-                if (auto* acc = state.find_account(a.id)) {
-                    acc->cs2.cooldown_expires_unix = expires;
-                    acc->cs2.cooldown_reason = expires > 0 ? "Competitive cooldown" : "";
-                    // Mirror the snapshot so the next refresh diff doesn't fire a
-                    // notification for a value we set ourselves.
-                    acc->prev_snapshot.cooldown_expires_unix = expires;
-                    state.vault_dirty = true;
-                    state.save_vault_if_dirty();
-                }
-            };
-            const long long now = std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
-            for (const auto& o : kOptions) {
-                if (ImGui::MenuItem(o.label)) set_cooldown(now + o.seconds);
-            }
-            if (ImGui::MenuItem("Permanent")) set_cooldown(sam::core::kCooldownNever);
-            if (a.cs2.cooldown_expires_unix > 0) {
-                ImGui::Separator();
-                if (ImGui::MenuItem("Clear")) set_cooldown(0);
-            }
-            ImGui::EndMenu();
-        }
-    }
 
     // No scrape source, so this is hand-set for every account. Marking claimed
     // stores the next weekly reset; the marker auto-clears once it passes.

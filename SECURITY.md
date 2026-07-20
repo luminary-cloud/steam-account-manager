@@ -5,7 +5,7 @@
 Please report security issues privately. **Do not open a public issue for a
 vulnerability.**
 
-Email **cloud@luminary.pw** with:
+Email **cloud@luminary.pub** with:
 
 - a description of the issue and its impact,
 - steps to reproduce (or a proof of concept),

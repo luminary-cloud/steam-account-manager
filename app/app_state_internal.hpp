@@ -20,7 +20,6 @@ namespace detail {
 
 // GCPD scrape is rate-limited independently so the cheap Web API can run more often.
 inline constexpr std::int64_t kMinAccountRefreshSeconds = 30;
-inline constexpr std::int64_t kMinBatchRefreshSeconds = 120;
 inline constexpr std::int64_t kMinGcpdRefreshSeconds = 90;
 
 // Steam can flag accounts for rapid persona renames, so lock the action out this long.

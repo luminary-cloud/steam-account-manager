@@ -172,7 +172,7 @@ void AppState::apply_gc_snapshot_cache(const std::string& account_id,
 
     // Competitive standing from the GC. Only ever *set* -- a foreign pull omits modes
     // the account never played (rank -1), so absence must not clear a value scraped
-    // elsewhere. (Cooldown/VAC from the GC are unreliable for CS2, so not applied.)
+    // elsewhere.
     const auto& rk = snap.ranks;
     if (rk.premier_rating >= 0) {
         acc->cs2.premier_rating = rk.premier_rating;
@@ -181,6 +181,14 @@ void AppState::apply_gc_snapshot_cache(const std::string& account_id,
     if (rk.wingman_rank >= 0) {
         acc->cs2.wingman_rank = rk.wingman_rank;
         acc->cs2.wingman_wins = rk.wingman_wins;
+    }
+    // Competitive cooldown from the account's OWN GC hello (an own-session pull only). -1 =
+    // unknown (foreign batch pulls never carry it), so leave whatever was scraped elsewhere;
+    // 0 authoritatively clears an expired cooldown. This replaces the old hand-set value for
+    // NFA/cached accounts, which have no GCPD scrape to read it from.
+    if (rk.cooldown_expires_unix >= 0) {
+        acc->cs2.cooldown_expires_unix = rk.cooldown_expires_unix;
+        acc->cs2.cooldown_reason = rk.cooldown_expires_unix > 0 ? rk.cooldown_reason : "";
     }
     acc->cs2.last_refreshed_unix = now;
 

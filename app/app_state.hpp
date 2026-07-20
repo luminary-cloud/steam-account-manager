@@ -105,6 +105,10 @@ struct GcValidate {
     int logon_eresult = 0;       // CM logon EResult (1 = OK)
     bool profile_applied = false;
     bool finished = false;       // on_profiles_done / on_error
+    // When set, this sweep is the NFA half of a "Refresh all": each finished account bumps
+    // refresh_all_done (and resets the shared counter on the last one) so the toolbar shows a
+    // single N/Total across the GCPD scrape and the NFA GC logins.
+    bool feed_refresh_all = false;
     std::chrono::steady_clock::time_point phase_started{};
     std::chrono::steady_clock::time_point resume_at{};  // don't start the next account until here
 };
@@ -229,6 +233,12 @@ struct AppState {
     // startup_refresh_complete() depends on that, so never leave a stale denominator.
     std::atomic<int> refresh_all_total{0};
     std::atomic<int> refresh_all_done{0};
+    // "Refresh spent" progress. Armed by refresh_all_spend, incremented per finished account.
+    std::atomic<int> spend_total{0};
+    std::atomic<int> spend_done{0};
+    // True during the headless --startup logon run (no ImGui, no per-frame GC ticks). Refresh
+    // all skips the NFA GC-cooldown phase here since nothing would advance it.
+    bool headless = false;
     // Headless --startup run: refresh_web_phase_done flips when the Web API batch
     // finishes so the loop starts watching refresh_all_*; balloon_shown lets it
     // linger long enough for a fired notification to stay on screen before exit.
@@ -259,7 +269,6 @@ struct AppState {
     // these to grey out the Refresh button mid-cooldown.
     std::unordered_map<std::string, std::int64_t> last_refresh_unix;
     std::unordered_map<std::string, std::int64_t> last_gcpd_refresh_unix;
-    std::int64_t last_batch_refresh_unix = 0;
 
     // Display-name change cooldowns (unix seconds); modal greys out Apply until elapsed.
     std::unordered_map<std::string, std::int64_t> last_persona_change_unix;
@@ -328,9 +337,10 @@ struct AppState {
     void exit_selection_mode();
     void toggle_selected(const std::string& id);
     bool is_selected(const std::string& id) const;
-    // `force` refreshes every account regardless of the Steam cache; the manual "Refresh
-    // all" button passes true, while startup/auto pass false so they skip fresh accounts.
-    void refresh_account_data(bool force = false);
+    // `force` refreshes every account regardless of the cache TTLs. `announce` shows an "all
+    // up to date" toast when nothing was stale -- the manual button passes true; startup/auto/
+    // headless pass false so a no-op heartbeat stays silent.
+    void refresh_account_data(bool force = false, bool announce = false);
     // `allow_gcpd` gates the (heavy) GCPD scrape independently of settings.gcpd_enabled;
     // the auto-refresh timer passes false so it only pulls the Steam Web API data.
     void refresh_single_account(const std::string& id, bool batch_refresh = false,
@@ -341,10 +351,20 @@ struct AppState {
     // the add-account flows so a new account fills every field it possibly can.
     void pull_all_for_account(const std::string& id);
 
-    // Auto-refresh sweep for the periodic timer: Steam Web API (no GCPD) for accounts whose
-    // data is older than the Steam TTL, plus a TTL-gated GC pull (full-access) and GC
-    // validate (NFA/cached). Never spend, never GCPD.
+    // Periodic/startup auto-refresh: mirrors the manual buttons but cache-gated. Runs the
+    // "Refresh all" sweep (Steam + GCPD + NFA GC cooldown) and "Refresh GC" (batch full-access
+    // + NFA own-session). No spend.
     void auto_refresh_all();
+
+    // "Refresh GC": pull CS2 GC profile data (level/XP, medals, ranks, cooldown) for every
+    // account -- one puller batch-pulls full-access foreign profiles, NFA/cached each get their
+    // own-session login. Both TTL-gated. `announce` shows an "up to date" toast when nothing is
+    // stale (manual button); startup/auto pass false.
+    void refresh_gc_all(bool announce = false);
+
+    // Posts the staggered per-account GCPD scrape (full-access) for `ids`, ~2s apart. Each
+    // account's refresh_single_account(batch_refresh=true) feeds the shared refresh_all counter.
+    void post_gcpd_sweep(std::vector<std::string> ids);
 
     // Fetches "external funds used" (TotalSpend). Steam gates accountdata behind
     // a freshly-password-authed web:help session, so this does a full credentials
@@ -367,6 +387,10 @@ struct AppState {
 
     // True while a bulk refresh_all_spend runs, for toolbar disable/progress.
     std::atomic<bool> spend_bulk_running{false};
+
+    // Advances the "Fetching funds N/Total" counter as each account's spend fetch finishes;
+    // clears the pair on the last one. No-op when no bulk spend is armed. UI thread only.
+    void tally_spend_progress();
 
     // Registers/updates/removes the single logon Scheduled Task to match
     // settings.logon_action (+ start_minimized for OpenApp). Idempotent.
@@ -462,6 +486,14 @@ struct AppState {
     void queue_gc_validate(const std::string& account_id);
     void tick_gc_validate();
     void cancel_gc_validate();
+
+    // The stale NFA/cached accounts a validate sweep would process (client token present, not
+    // the live/manual account, past the GC cache TTL unless `force`). Shared by start_gc_validate
+    // and the "Refresh all" NFA phase.
+    std::vector<std::string> collect_nfa_validate_ids(bool force);
+    // Starts a validate sweep over an explicit id list in "feed the Refresh-all counter" mode.
+    // Replaces any in-flight sweep. Used by refresh_account_data's NFA phase.
+    void start_gc_validate_feed(std::vector<std::string> ids);
 
     // Seconds left on the 5-min auto-relogin cooldown; 0 = a fresh attempt allowed.
     std::int64_t relogin_cooldown_seconds(const std::string& account_id);

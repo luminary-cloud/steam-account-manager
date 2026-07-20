@@ -405,6 +405,8 @@ void Cs2GcClient::run() {
                         pp.ranks.premier_wins = r.premier_wins;
                         pp.ranks.wingman_rank = r.wingman_rank;
                         pp.ranks.wingman_wins = r.wingman_wins;
+                        pp.ranks.cooldown_expires_unix = r.cooldown_expires_unix;
+                        pp.ranks.cooldown_reason = r.cooldown_reason;
                         cb_.on_profile(std::move(pp));
                     }
                 };

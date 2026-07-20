@@ -177,7 +177,11 @@ bool GcSession::launch(std::string& error) {
     // too so the GC sends the schema and any fresh mission state.
     request_players_profile();
     request_mission_schedule();
-    wait_until([this] { return player_xp_.valid; }, 3000);
+    // Nudge the GC to (re)send MatchmakingGC2ClientHello so we capture the live competitive
+    // cooldown. It usually arrives unsolicited at connect; this makes it reliable.
+    CMsgGCCStrike15_v2_MatchmakingClient2GCHello mm_hello;
+    send_gc(GcMsg::MatchmakingClient2GCHello, mm_hello);
+    wait_until([this] { return player_xp_.valid && own_penalty_.seen; }, 3000);
     return true;
 }
 
@@ -440,6 +444,20 @@ void GcSession::on_gc_message(std::uint32_t gc_emsg, const std::string& body) {
             item_schema_version_ = s.item_schema_version();
             return;
         }
+        case GcMsg::MatchmakingGC2ClientHello: {
+            // The GC pushes this unsolicited at connect (and in reply to our
+            // MatchmakingClient2GCHello). For the OWN account it authoritatively carries the
+            // live competitive cooldown -- the one thing an NFA account can't scrape from GCPD.
+            CMsgGCCStrike15_v2_MatchmakingGC2ClientHello h;
+            if (!h.ParseFromString(body)) return;
+            const auto own = static_cast<std::uint32_t>(cm_.steam_id() & 0xffffffffULL);
+            if (h.account_id() != own) return;  // only ever trust our own hello
+            const auto now = static_cast<std::int64_t>(std::time(nullptr));
+            own_penalty_.seen = true;
+            own_penalty_.expires =
+                h.penalty_seconds() > 0 ? now + static_cast<std::int64_t>(h.penalty_seconds()) : 0;
+            return;
+        }
         case GcMsg::PlayersProfile: {
             CMsgGCCStrike15_v2_PlayersProfile p;
             if (!p.ParseFromString(body)) return;
@@ -478,6 +496,14 @@ void GcSession::on_gc_message(std::uint32_t gc_emsg, const std::string& body) {
                     player_xp_.featured_medal_defidx = r.featured_medal_defidx;
                     player_xp_.medal_defidx = r.medal_defidx;
                     player_xp_.valid = true;
+                    // Attach the cooldown captured from our own GC hello so it rides the same
+                    // snapshot the client applies. Only set when the hello arrived, so a foreign
+                    // pull (which never sees a penalty) leaves the value at -1 = untouched.
+                    if (own_penalty_.seen) {
+                        r.cooldown_expires_unix = own_penalty_.expires;
+                        r.cooldown_reason =
+                            own_penalty_.expires > 0 ? "Competitive cooldown" : "";
+                    }
                     ++so_seq_;
                 }
                 profile_results_.push_back(std::move(r));

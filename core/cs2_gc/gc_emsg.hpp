@@ -28,6 +28,8 @@ enum GcMsg : std::uint32_t {
     CasketItemExtract             = 1093,
     CasketItemLoadContents        = 1094,
 
+    MatchmakingClient2GCHello     = 9109,
+    MatchmakingGC2ClientHello     = 9110,
     RequestPlayersProfile         = 9127,
     PlayersProfile                = 9128,
     ClientRedeemFreeReward        = 9219,

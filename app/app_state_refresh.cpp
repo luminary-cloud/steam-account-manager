@@ -74,26 +74,20 @@ std::int64_t AppState::persona_change_cooldown_seconds(const std::string& id) co
     return detail::kPersonaChangeCooldownSeconds - elapsed;
 }
 
-void AppState::refresh_account_data(bool force) {
+void AppState::refresh_account_data(bool force, bool announce) {
     if (settings.web_api_key.empty()) {
         SAM_LOG_WARN("refresh_all: no web API key");
         refresh_web_phase_done.store(true, std::memory_order_relaxed);
         return;
     }
 
-    // Batch rate limit: stops rapid re-locks hammering Steam at startup. The
-    // per-account GCPD scrape has its own cooldown in refresh_single_account.
-    {
-        const auto now = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        if (last_batch_refresh_unix != 0 &&
-            now - last_batch_refresh_unix < detail::kMinBatchRefreshSeconds) {
-            SAM_LOG_INFO("refresh_all: rate-limited ({}s since last batch)",
-                         now - last_batch_refresh_unix);
-            refresh_web_phase_done.store(true, std::memory_order_relaxed);
-            return;
-        }
-        last_batch_refresh_unix = now;
+    // Don't overlap an in-flight sweep: the per-account phase (GCPD scrape + NFA GC logins) keeps
+    // refresh_all_total > 0 while it runs, so a second trigger is ignored until it finishes.
+    // Otherwise rapid triggers are harmless -- cache-gating makes a repeat a no-op and
+    // refresh_single_account keeps its own per-account cooldowns.
+    if (refresh_all_total.load(std::memory_order_relaxed) > 0) {
+        SAM_LOG_INFO("refresh_all: a refresh is already in progress");
+        return;
     }
 
     // Resolve missing steam_ids from loginusers.vdf so manually/maFile-added
@@ -113,58 +107,95 @@ void AppState::refresh_account_data(bool force) {
         SAM_LOG_INFO("refresh_all: filled {} missing steam_ids from loginusers.vdf", filled);
     }
 
-    // Global Steam-data cache: unless forced, skip accounts whose Web API data is still
-    // fresh, so a startup/auto refresh only touches expired accounts (like the GC cache).
-    // The manual "Refresh all" button forces, so it always refreshes; an auto refresh with
-    // everything still cached bails below without arming the counter.
+    // Decide the work up front (before the bulk call updates any timestamps), so each data
+    // source is gated on its OWN freshness: Steam Web API on web.last_refreshed_unix, the GCPD
+    // scrape on cs2.last_refreshed_unix, the NFA GC pull on nfa_last_validated_unix.
     const auto batch_now = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     const std::int64_t steam_ttl = static_cast<std::int64_t>(settings.steam_cache_hours) * 3600;
-    auto steam_fresh = [&](const core::Account& a) {
-        return !force && a.web.last_refreshed_unix != 0 &&
-               batch_now - a.web.last_refreshed_unix < steam_ttl;
-    };
+
+    // Phase 1: bulk Steam Web API for accounts whose public data is stale.
     std::vector<std::uint64_t> ids;
     for (const auto& a : vault.accounts) {
         if (a.steam_id_64 == 0) continue;
-        if (steam_fresh(a)) continue;
+        if (!force && a.web.last_refreshed_unix != 0 &&
+            batch_now - a.web.last_refreshed_unix < steam_ttl)
+            continue;
         ids.push_back(a.steam_id_64);
     }
-    if (ids.empty()) {
-        SAM_LOG_INFO("refresh_all: all accounts within the Steam cache window");
+
+    // Phase 2a: per-account GCPD scrape for full-access accounts with a usable web session
+    // whose GCPD data is stale. (NFA/cached can't scrape GCPD -- they use the GC below.) Gate
+    // on the GCPD-specific timestamp, not cs2.last_refreshed_unix, since a GC pull also stamps
+    // the latter and would otherwise suppress the cooldown scrape.
+    std::vector<std::string> gcpd_ids;
+    if (settings.gcpd_enabled) {
+        for (const auto& a : vault.accounts) {
+            if (a.is_nfa) continue;
+            if (a.steam_id_64 == 0) continue;
+            if (a.session_id.empty() || a.steam_login_secure.empty()) continue;
+            if (!force) {
+                auto it = last_gcpd_refresh_unix.find(a.id);
+                if (it != last_gcpd_refresh_unix.end() && batch_now - it->second < steam_ttl)
+                    continue;
+            }
+            gcpd_ids.push_back(a.id);
+        }
+    }
+
+    // Phase 2b: NFA/cached own-session GC login (competitive cooldown + ranks). Skipped in the
+    // headless --startup run, which never ticks the per-frame GC machine that would advance it.
+    std::vector<std::string> nfa_ids;
+    if (settings.cs2_gc.enabled && !headless) {
+        nfa_ids = collect_nfa_validate_ids(force);
+    }
+
+    if (ids.empty() && gcpd_ids.empty() && nfa_ids.empty()) {
+        SAM_LOG_INFO("refresh_all: everything within the cache window");
+        if (announce) toasts.push_summary("All accounts are up to date");
         refresh_web_phase_done.store(true, std::memory_order_relaxed);
+        refresh_all_total.store(0, std::memory_order_relaxed);
         return;
     }
 
-    SAM_LOG_INFO("refresh_all: fetching data for {} accounts", ids.size());
+    SAM_LOG_INFO("refresh_all: steam={} gcpd={} nfa={} accounts", ids.size(), gcpd_ids.size(),
+                 nfa_ids.size());
 
-    refresh_web_phase_done.store(false, std::memory_order_relaxed);
-    // Arm the progress counter for the Web API phase. fetch_bans/fetch_summaries are two
-    // bulk calls with no per-account granularity, so this sits at 0/N until the phase ends
-    // (same as "Pulling GC 0/N"); the GCPD phase below re-arms it with its own denominator.
-    // Every path that ends the batch must reset total to 0, or startup_refresh_complete()
-    // never sees done >= total and the headless --startup run hangs.
-    refresh_all_total.store(static_cast<int>(ids.size()), std::memory_order_relaxed);
+    // Arm the single per-account counter spanning the GCPD scrape and the NFA GC logins. The
+    // bulk Steam call has no per-account granularity, so it isn't counted. Every path that ends
+    // the batch must land total back at 0 (startup_refresh_complete() depends on it).
+    refresh_all_total.store(static_cast<int>(gcpd_ids.size() + nfa_ids.size()),
+                            std::memory_order_relaxed);
     refresh_all_done.store(0, std::memory_order_relaxed);
     session_event_count = 0;
     session_event_message.clear();
 
+    // Kick the NFA/cached GC sweep now -- it's independent of the Steam Web API and feeds the
+    // shared counter as each account finishes.
+    if (!nfa_ids.empty()) start_gc_validate_feed(std::move(nfa_ids));
+
+    if (ids.empty()) {
+        // No stale Steam data; go straight to the GCPD scrape (NFA already running).
+        refresh_web_phase_done.store(true, std::memory_order_relaxed);
+        post_gcpd_sweep(std::move(gcpd_ids));
+        return;
+    }
+
+    refresh_web_phase_done.store(false, std::memory_order_relaxed);
     steam_api::WebApiConfig cfg;
     cfg.api_key = settings.web_api_key;
-    const bool gcpd_enabled = settings.gcpd_enabled;
 
-    job_pump::submit([cfg, ids, gcpd_enabled, force, this] {
+    job_pump::submit([cfg, ids, gcpd_ids, this] {
         auto bans = steam_api::fetch_bans(cfg, ids);
         auto summaries = steam_api::fetch_summaries(cfg, ids);
 
         std::lock_guard lk(job_mutex);
-        completed_jobs.push_back({"", [this, gcpd_enabled, force,
+        completed_jobs.push_back({"", [this, gcpd_ids,
                                        bans = std::move(bans),
                                        summaries = std::move(summaries)] {
             const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
             int accounts_with_events = 0;
-            int total_events = 0;
             std::vector<std::pair<std::string, std::vector<core::BanEvent>>> per_account_events;
             for (auto& a : vault.accounts) {
                 if (a.steam_id_64 == 0) continue;
@@ -185,7 +216,6 @@ void AppState::refresh_account_data(bool force) {
                     auto evs = apply_diff_and_snapshot(*this, a, a.bans, a.cs2, now);
                     if (!evs.empty()) {
                         ++accounts_with_events;
-                        total_events += static_cast<int>(evs.size());
                         per_account_events.emplace_back(a.id, std::move(evs));
                     }
                 }
@@ -210,54 +240,37 @@ void AppState::refresh_account_data(bool force) {
                 }
             }
 
-            // Accumulate web events for one balloon; flushed below if no GCPD pass
-            // runs, else after the last GCPD account so it covers cooldown changes.
+            // Accumulate web events for one balloon; flushed after the last GCPD account so it
+            // covers cooldown changes (or immediately if no GCPD pass runs).
             for (const auto& [acc_id, evs] : per_account_events) {
                 if (auto* a = find_account(acc_id)) detail::note_session_event(*this, *a, evs);
             }
             refresh_web_phase_done.store(true, std::memory_order_relaxed);
 
-            // Per-account GCPD scrape for any account with usable session creds,
-            // staggered ~2s apart so 30+ accounts don't hammer Steam in a burst.
-            if (!gcpd_enabled) {
-                refresh_all_total.store(0, std::memory_order_relaxed);
-                detail::flush_native_notification(*this);
-                return;
-            }
-            // Only stagger (and count) accounts that will actually refresh: those with a
-            // usable session whose Steam data is stale, unless the caller forced the refresh.
-            const std::int64_t gcpd_steam_ttl =
-                static_cast<std::int64_t>(settings.steam_cache_hours) * 3600;
-            std::vector<std::string> gcpd_ids;
-            for (const auto& a : vault.accounts) {
-                if (a.session_id.empty() || a.steam_login_secure.empty()) continue;
-                if (!force && a.web.last_refreshed_unix != 0 &&
-                    now - a.web.last_refreshed_unix < gcpd_steam_ttl)
-                    continue;
-                gcpd_ids.push_back(a.id);
-            }
             if (gcpd_ids.empty()) {
-                refresh_all_total.store(0, std::memory_order_relaxed);
-                detail::flush_native_notification(*this);
+                // No GCPD phase. If the NFA sweep isn't carrying the counter either, close it out.
+                if (refresh_all_total.load(std::memory_order_relaxed) == 0)
+                    detail::flush_native_notification(*this);
                 return;
             }
-            refresh_all_total.store(static_cast<int>(gcpd_ids.size()),
-                                    std::memory_order_relaxed);
-            refresh_all_done.store(0, std::memory_order_relaxed);
-            SAM_LOG_INFO("refresh_all: staggering GCPD scrape for {} accounts",
-                         gcpd_ids.size());
-            job_pump::submit([this, gcpd_ids = std::move(gcpd_ids)] {
-                for (const auto& aid : gcpd_ids) {
-                    {
-                        std::lock_guard inner_lk(job_mutex);
-                        completed_jobs.push_back({"", [this, aid] {
-                            refresh_single_account(aid, /*batch_refresh=*/true);
-                        }});
-                    }
-                    if (!job_pump::interruptible_sleep(std::chrono::seconds(2))) break;
-                }
-            });
+            post_gcpd_sweep(gcpd_ids);
         }});
+    });
+}
+
+void AppState::post_gcpd_sweep(std::vector<std::string> ids) {
+    if (ids.empty()) return;
+    SAM_LOG_INFO("refresh_all: staggering GCPD scrape for {} accounts", ids.size());
+    job_pump::submit([this, ids = std::move(ids)] {
+        for (const auto& aid : ids) {
+            {
+                std::lock_guard inner_lk(job_mutex);
+                completed_jobs.push_back({"", [this, aid] {
+                    refresh_single_account(aid, /*batch_refresh=*/true);
+                }});
+            }
+            if (!job_pump::interruptible_sleep(std::chrono::seconds(2))) break;
+        }
     });
 }
 
@@ -720,28 +733,11 @@ void AppState::pull_all_for_account(const std::string& id) {
 
 void AppState::auto_refresh_all() {
     if (!unlocked) return;
-    const std::int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-    const std::int64_t steam_ttl = static_cast<std::int64_t>(settings.steam_cache_hours) * 3600;
-
-    // Steam Web API only (no GCPD) for accounts whose data is older than the Steam TTL,
-    // staggered so a large vault doesn't burst the Web API.
-    std::vector<std::string> stale;
-    for (const auto& a : vault.accounts) {
-        if (a.steam_id_64 == 0) continue;
-        if (a.web.last_refreshed_unix != 0 && now - a.web.last_refreshed_unix < steam_ttl)
-            continue;
-        stale.push_back(a.id);
-    }
-    if (!stale.empty()) {
-        SAM_LOG_INFO("auto-refresh: {} account(s) past the Steam TTL", stale.size());
-        refresh_accounts_staggered(std::move(stale), std::chrono::seconds(2), /*allow_gcpd=*/false);
-    }
-
-    // GC: full-access via the batch autopull, NFA/cached via the validate sweep. Both are
-    // internally TTL-gated by cs2_gc.cache_hours, so they self-skip fresh accounts.
-    start_gc_autopull();
-    start_gc_validate(/*force=*/false);
+    // Mirror the manual buttons, cache-gated and silent (no "up to date" toast on a heartbeat
+    // where nothing is stale): Refresh all (Steam + GCPD + NFA GC cooldown) and Refresh GC
+    // (batch full-access + NFA own-session). Each self-skips fresh accounts via its own TTL.
+    refresh_account_data(/*force=*/false, /*announce=*/false);
+    refresh_gc_all(/*announce=*/false);
 }
 
 void AppState::refresh_spend(const std::string& id, bool quiet) {
@@ -802,6 +798,7 @@ void AppState::refresh_spend(const std::string& id, bool quiet) {
             SAM_LOG_WARN("spend: sign-in failed for '{}': {}", login_name, err);
             post_ui_callback([this, aid, err, toast]() {
                 spend_fetching_ids.erase(aid);
+                tally_spend_progress();
                 toast(aid, "Spend: sign-in failed (" +
                           (err.empty() ? std::string("unknown") : err) + ")", true);
             });
@@ -832,6 +829,7 @@ void AppState::refresh_spend(const std::string& id, bool quiet) {
                           rt = std::move(rt), at = std::move(at), ls = std::move(ls),
                           sid = std::move(sid), exp]() mutable {
             spend_fetching_ids.erase(aid);
+            tally_spend_progress();
             auto* a = find_account(aid);
             if (!a) return;
             if (!rt.empty()) a->refresh_token = std::move(rt);
@@ -987,6 +985,15 @@ void AppState::copy_trade_link(const std::string& id) {
     });
 }
 
+void AppState::tally_spend_progress() {
+    if (spend_total.load(std::memory_order_relaxed) <= 0) return;  // no bulk armed
+    const int done = spend_done.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (done >= spend_total.load(std::memory_order_relaxed)) {
+        spend_total.store(0, std::memory_order_relaxed);
+        spend_done.store(0, std::memory_order_relaxed);
+    }
+}
+
 void AppState::refresh_all_spend(bool only_missing) {
     if (spend_bulk_running.load(std::memory_order_acquire)) {
         SAM_LOG_INFO("spend: bulk refresh already running, ignoring");
@@ -994,22 +1001,28 @@ void AppState::refresh_all_spend(bool only_missing) {
     }
 
     // Eligible = full-access account with stored credentials and a SteamID.
-    // only_missing skips accounts that already have a figure (the launch fill).
+    // only_missing skips accounts that already have a figure (the launch fill); otherwise the
+    // toolbar button is cache-gated -- skip accounts whose funds were fetched within the Steam
+    // cache window so a click only signs in to the ones that are actually stale.
+    const auto spend_now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    const std::int64_t spend_ttl = static_cast<std::int64_t>(settings.steam_cache_hours) * 3600;
     std::vector<std::string> ids;
     for (const auto& a : vault.accounts) {
         if (a.is_nfa || a.password.empty() || a.steam_id_64 == 0) continue;
         if (only_missing && a.funds.total_spend_usd_cents >= 0) continue;
+        if (!only_missing && a.funds.last_refreshed_unix != 0 &&
+            spend_now - a.funds.last_refreshed_unix < spend_ttl)
+            continue;  // funds still fresh
         ids.push_back(a.id);
     }
     if (ids.empty()) {
         if (!only_missing) {
             ui::widgets::ToastItem t;
             t.id = "spend-bulk";
-            t.message = "No accounts with stored credentials to fetch funds for.";
+            t.message = "Spend is up to date for all accounts";
             t.is_warning = true;
-            const auto now = std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
-            t.expires_at_unix = now + settings.notifications.toast_duration_seconds;
+            t.expires_at_unix = spend_now + settings.notifications.toast_duration_seconds;
             toasts.push(std::move(t));
         }
         return;
@@ -1029,6 +1042,10 @@ void AppState::refresh_all_spend(bool only_missing) {
     SAM_LOG_INFO("spend: bulk refresh queuing {} accounts (only_missing={})",
                  ids.size(), only_missing);
     spend_bulk_running.store(true, std::memory_order_release);
+    // Arm the per-account progress counter (Fetching funds N/Total). refresh_spend bumps
+    // spend_done as each account finishes and clears the pair on the last one.
+    spend_total.store(static_cast<int>(ids.size()), std::memory_order_relaxed);
+    spend_done.store(0, std::memory_order_relaxed);
 
     // One outer worker paces per-account fetches seconds apart so we never fire
     // many sign-ins at once. Each refresh_spend runs quiet (no per-account toasts).

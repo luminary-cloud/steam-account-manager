@@ -190,10 +190,12 @@ void handle_card_action(app::AppState& state,
             state.account_edit_requested = true;
             break;
         case widgets::CardAction::Refresh:
+            // Per-account "refresh everything", not cache-gated: Steam Web API + (full-access)
+            // GCPD, external funds, and an own-session GC pull (cooldown + ranks/medals). The GC
+            // pull also serves as the NFA/cached token validation.
             state.refresh_single_account(a.id);
-            // NFA/cached: the JWT can look alive while the token is actually revoked, so
-            // do a real CM-logon validation (also pulls the account's GC ranks/medals).
-            if (a.is_nfa) state.queue_gc_validate(a.id);
+            if (!a.is_nfa) state.refresh_spend(a.id, /*quiet=*/true);
+            state.queue_gc_validate(a.id);
             break;
         case widgets::CardAction::Remove:
             state.selected_account_id = a.id;
@@ -410,77 +412,84 @@ void draw_accounts(app::AppState& state) {
     }
     ImGui::SameLine();
     {
-        const auto now = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        const std::int64_t cooldown =
-            (state.last_batch_refresh_unix != 0 &&
-             now - state.last_batch_refresh_unix < 120)
-                ? (120 - (now - state.last_batch_refresh_unix)) : 0;
+        // No time cooldown: the refresh is cache-gated, so a repeat click just re-checks and
+        // no-ops ("up to date"). Only a missing API key disables it.
         const bool no_api_key = state.settings.web_api_key.empty();
-        const bool disabled = no_api_key || cooldown > 0;
-        ImGui::BeginDisabled(disabled);
+        ImGui::BeginDisabled(no_api_key);
         if (action_button("Refresh all")) {
-            state.refresh_account_data(/*force=*/true);
+            state.refresh_account_data(/*force=*/false, /*announce=*/true);
         }
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             if (no_api_key) {
                 set_tooltip("Add a Steam Web API key in Settings to enable batch refresh.");
-            } else if (cooldown > 0) {
-                set_tooltip("Wait %llds before refreshing again.",
-                                  static_cast<long long>(cooldown));
             } else {
-                set_tooltip("Refresh every account's public Steam data "
-                                  "and (if enabled) GCPD page.");
+                set_tooltip("Refresh Steam data + GCPD (full-access) and the CS2 competitive "
+                                  "cooldown (NFA/cached, over the GC). Skips accounts still "
+                                  "within the cache window.");
             }
         }
 
         const int total = state.refresh_all_total.load(std::memory_order_relaxed);
         const int done  = state.refresh_all_done.load(std::memory_order_relaxed);
         if (total > 0 && done < total) {
-            // The two phases count different sets (all stale accounts, then only those with
-            // session creds), so name the phase or the denominator change reads as a glitch.
-            const bool web_phase = !state.refresh_web_phase_done.load(std::memory_order_relaxed);
             ImGui::SameLine();
-            ImGui::TextDisabled(web_phase ? "Refreshing %d/%d" : "Scraping GCPD %d/%d",
-                                done, total);
+            ImGui::TextDisabled("Refreshing %d/%d", done, total);
         }
     }
     ImGui::SameLine();
-    if (state.gc_autopull.active) {
-        if (action_button("Stop GC pull")) state.cancel_gc_autopull();
-        ImGui::SameLine();
-        ImGui::TextDisabled("Pulling GC %d/%d", state.gc_autopull.received,
-                            state.gc_autopull.total);
-    } else {
-        ImGui::BeginDisabled(!state.settings.cs2_gc.enabled);
-        if (action_button("Refresh GC")) state.start_gc_autopull();
-        ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-            if (!state.settings.cs2_gc.enabled)
-                set_tooltip("Enable the CS2 Game Coordinator in Settings to use auto-pull.");
-            else
-                set_tooltip("Pull CS2 medals and profile level for every account: signs in one "
-                            "account and queries the rest by Steam ID. Skips accounts still "
-                            "within the cache window.");
+    {
+        // "Refresh GC": batch-pull full-access profiles + per-account NFA own-session logins.
+        // The batch (gc_autopull) is stoppable; the validate sweep runs to completion.
+        const bool validate_busy =
+            state.gc_validate.active && !state.gc_validate.feed_refresh_all;
+        if (state.gc_autopull.active) {
+            if (action_button("Stop GC pull")) state.cancel_gc_autopull();
+        } else {
+            ImGui::BeginDisabled(!state.settings.cs2_gc.enabled);
+            if (action_button("Refresh GC")) state.refresh_gc_all(/*announce=*/true);
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                if (!state.settings.cs2_gc.enabled)
+                    set_tooltip("Enable the CS2 Game Coordinator in Settings to use this.");
+                else
+                    set_tooltip("Pull CS2 GC data (level, medals, ranks, cooldown) for every "
+                                "account: one puller queries full-access accounts by Steam ID, "
+                                "NFA/cached each sign in. Skips accounts within the cache window.");
+            }
+        }
+        // Combined progress across the batch pull and any standalone NFA validate sweep. A
+        // feed sweep's progress shows under "Refresh all" instead, so it's excluded here.
+        const int gc_done = state.gc_autopull.received +
+                            (validate_busy ? state.gc_validate.done : 0);
+        const int gc_total = state.gc_autopull.total +
+                            (validate_busy ? static_cast<int>(state.gc_validate.queue.size()) : 0);
+        if (gc_total > 0 && gc_done < gc_total) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("GC %d/%d", gc_done, gc_total);
         }
     }
     if (state.settings.info.show_external_funds) {
         ImGui::SameLine();
         const bool busy = state.spend_bulk_running.load(std::memory_order_acquire);
         ImGui::BeginDisabled(busy);
-        if (action_button("Refresh funds")) {
+        if (action_button("Refresh spent")) {
             state.refresh_all_spend(/*only_missing=*/false);
         }
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-            set_tooltip("Sign in to each account and read total external funds (TotalSpend) "
-                        "from Steam Support. One sign-in per account, so it is slower than "
-                        "Refresh all.");
+            set_tooltip("Sign in to each full-access account and read total external funds "
+                        "(TotalSpend) from Steam Support. One sign-in per account. Skips "
+                        "accounts within the cache window.");
         }
-        if (busy) {
+        const int sp_total = state.spend_total.load(std::memory_order_relaxed);
+        const int sp_done  = state.spend_done.load(std::memory_order_relaxed);
+        if (busy || (sp_total > 0 && sp_done < sp_total)) {
             ImGui::SameLine();
-            ImGui::TextDisabled("Fetching funds...");
+            if (sp_total > 0)
+                ImGui::TextDisabled("Fetching funds %d/%d", sp_done, sp_total);
+            else
+                ImGui::TextDisabled("Fetching funds...");
         }
     }
     if (state.settings.accounts_view == app::AccountsViewMode::List) {

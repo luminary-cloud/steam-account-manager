@@ -178,12 +178,13 @@ void draw_cs2_gc_section(app::AppState& state) {
     hover_tooltip("When connected, keep the account-list weekly-drop marker in step with the "
                   "GC: light it once this week's drop is gone, and clear it when a new week "
                   "resets. Off leaves the marker to the manual \"Mark claimed\" action only.");
-    ImGui::Checkbox("Auto-pull GC data on startup",
+    ImGui::Checkbox("Auto-refresh on startup",
                     &state.settings.cs2_gc.auto_pull_on_startup);
-    hover_tooltip("On launch, automatically pull CS2 GC data (medals, level, weekly drop) for "
-                  "every eligible account, signing in where needed. Skips the account signed in "
-                  "to Steam on this PC and any whose cache is still fresh, so a restart within "
-                  "the cache window does nothing.");
+    hover_tooltip("On launch, run the Refresh all + Refresh GC sweeps automatically: Steam data, "
+                  "GCPD (full-access), CS2 GC data and the NFA/cached competitive cooldown. "
+                  "Signs in where needed, skips the account signed in to Steam on this PC and "
+                  "anything still within its cache window (so a quick restart does nothing). "
+                  "External funds are not fetched automatically.");
     ImGui::SetNextItemWidth(200);
     ImGui::SliderInt("GC cache duration (hours)", &state.settings.cs2_gc.cache_hours, 1, 24);
     hover_tooltip("How long a pulled account stays cached before auto-pull will refresh it. "

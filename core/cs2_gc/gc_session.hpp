@@ -57,6 +57,10 @@ struct ProfileResult {
     int premier_wins = -1;
     int wingman_rank = -1;
     int wingman_wins = -1;
+    // Competitive cooldown from the account's OWN GC hello (MatchmakingGC2ClientHello).
+    // -1 = unknown (foreign profiles / not yet seen), 0 = no cooldown, >0 = unix expiry.
+    std::int64_t cooldown_expires_unix = -1;
+    std::string cooldown_reason;
 };
 
 // CS2 weekly recurring mission progress (from the GC SO cache). Per-account, keyed to a
@@ -142,6 +146,13 @@ private:
     std::deque<GcNotification> notifications_;
     PersonalStore personal_store_;
     PlayerXp player_xp_;
+    // The own account's competitive cooldown, captured from the unsolicited
+    // MatchmakingGC2ClientHello the GC sends at connect. `seen` gates whether we have an
+    // authoritative value; `expires` is 0 (no cooldown) or a unix expiry.
+    struct OwnPenalty {
+        bool seen = false;
+        std::int64_t expires = 0;
+    } own_penalty_;
     std::deque<ProfileResult> profile_results_;  // ClientRequestPlayersProfile replies, FIFO
     RecurringMission recurring_mission_;
     std::string current_period_templates_;     // raw template blob for the active period

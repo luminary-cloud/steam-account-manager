@@ -407,6 +407,7 @@ int run_startup_refresh(HINSTANCE inst, HWND hwnd) {
     sam::app::job_pump::start_workers(4);
 
     sam::app::AppState state;
+    state.headless = true;  // no ImGui and no per-frame GC ticks in this path
     state.load_settings();
     // Resolve the vault to refresh (the auto-open vault, or the single vault). If
     // there are several with none designated, there's nothing to auto-open.
@@ -735,21 +736,19 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
 
         sam::app::job_pump::drain(state);
 
-        // Advance the CS2 GC auto-pull sweep, and kick it once on startup if opted in
-        // (after unlock so vault credentials are available; it self-skips fresh caches).
+        // Advance the CS2 GC sweeps every frame.
         state.tick_gc_autopull();
         state.tick_gc_validate();
-        if (state.unlocked && state.settings.cs2_gc.auto_pull_on_startup &&
-            !state.gc_startup_pull_done) {
+        // Startup auto-puller (once, after unlock so vault credentials are available): mirror
+        // the Refresh all + Refresh GC buttons, cache-gated and silent. Opt-in via the existing
+        // auto_pull_on_startup setting. Each path self-skips accounts within their cache window.
+        if (state.unlocked && !state.gc_startup_pull_done) {
             state.gc_startup_pull_done = true;
-            state.start_gc_autopull();
-        }
-        // Validate NFA/cached tokens once on startup (TTL-gated + staggered). Runs whenever
-        // the CS2 GC feature is on, so revoked tokens get flagged without any manual action.
-        if (state.unlocked && state.settings.cs2_gc.enabled &&
-            !state.gc_validate_startup_done) {
-            state.gc_validate_startup_done = true;
-            state.start_gc_validate(/*force=*/false);
+            state.gc_validate_startup_done = true;  // subsumed by the unified pass below
+            if (state.settings.cs2_gc.auto_pull_on_startup) {
+                state.refresh_account_data(/*force=*/false, /*announce=*/false);
+                state.refresh_gc_all(/*announce=*/false);
+            }
         }
 
         // Periodic auto-refresh (Steam Web API + GC/validate) while the app is open.
