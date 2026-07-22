@@ -353,6 +353,7 @@ void AppState::save_vault_settings() {
     info["show_trade_ban"]     = settings.info.show_trade_ban;
     info["show_steam_level"]   = settings.info.show_steam_level;
     info["show_owned_games"]   = settings.info.show_owned_games;
+    info["show_steam_id"]      = settings.info.show_steam_id;
     info["show_premier"]       = settings.info.show_premier;
     info["show_wingman"]       = settings.info.show_wingman;
     info["show_prime"]         = settings.info.show_prime;
@@ -568,6 +569,7 @@ void AppState::load_vault_settings() {
         get_info("show_trade_ban",     settings.info.show_trade_ban);
         get_info("show_steam_level",   settings.info.show_steam_level);
         get_info("show_owned_games",   settings.info.show_owned_games);
+        get_info("show_steam_id",      settings.info.show_steam_id);
         get_info("show_premier",       settings.info.show_premier);
         get_info("show_wingman",       settings.info.show_wingman);
         get_info("show_prime",         settings.info.show_prime);

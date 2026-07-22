@@ -125,6 +125,7 @@ struct Settings {
         bool show_trade_ban = true;
         bool show_steam_level = true;
         bool show_owned_games = true;
+        bool show_steam_id = true;
         bool show_premier = true;
         bool show_wingman = true;
         bool show_prime = true;

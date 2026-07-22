@@ -202,6 +202,7 @@ void draw_account_info_section(app::AppState& state) {
         ImGui::TableNextColumn(); ImGui::Checkbox("Trade ban",          &state.settings.info.show_trade_ban);
         ImGui::TableNextColumn(); ImGui::Checkbox("Steam level",        &state.settings.info.show_steam_level);
         ImGui::TableNextColumn(); ImGui::Checkbox("Owned games count",  &state.settings.info.show_owned_games);
+        ImGui::TableNextColumn(); ImGui::Checkbox("Steam ID",           &state.settings.info.show_steam_id);
 
         // Populated by the GCPD scraper (gcpd_enabled below); needs a fresh login.
         ImGui::TableNextColumn(); ImGui::Checkbox("Premier rating",     &state.settings.info.show_premier);

@@ -231,7 +231,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
                 push_chip("Spent", buf);
             }
         }
-        if (a.steam_id_64 != 0) {
+        if (state.settings.info.show_steam_id && a.steam_id_64 != 0) {
             char sid[24];
             std::snprintf(sid, sizeof(sid), "%llu",
                           static_cast<unsigned long long>(a.steam_id_64));
