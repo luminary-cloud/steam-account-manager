@@ -1,6 +1,5 @@
 #include "core/launch/login_driver.hpp"
 
-#include <atomic>
 #include <chrono>
 #include <cwctype>
 #include <string>
@@ -15,6 +14,7 @@
 
 #include "core/crypto/secure_string.hpp"
 #include "core/launch/code_clipboard.hpp"
+#include "core/launch/launch_gen.hpp"
 #include "core/log.hpp"
 #include "core/sda/totp.hpp"
 #include "core/time_aligner.hpp"
@@ -33,10 +33,6 @@ constexpr auto kWindowPollInterval = 100ms;
 constexpr auto kClassifyInterval   = 100ms;
 constexpr auto kDigitInterval      = 50ms;
 constexpr auto kOverallTimeout     = 90s;
-
-// Each run_async() bumps this and captures its own value; workers compare against
-// the latest on every poll so a newer run supersedes an in-flight one.
-std::atomic<std::uint64_t> g_current_gen{0};
 
 bool ieq(std::wstring_view a, std::wstring_view b) {
     if (a.size() != b.size()) return false;
@@ -317,9 +313,7 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
     using clk = std::chrono::steady_clock;
     const auto deadline = clk::now() + kOverallTimeout;
 
-    auto superseded = [gen]() {
-        return g_current_gen.load(std::memory_order_acquire) != gen;
-    };
+    auto superseded = [gen]() { return !launch_gen::is_current(gen); };
 
     HWND login_hwnd = nullptr;
     while (clk::now() < deadline) {
@@ -356,9 +350,8 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
                 SAM_LOG_INFO("login_driver: login confirmed (ActiveUser={})", *au);
                 if (!superseded() && creds.on_login_confirmed) {
                     try {
-                        creds.on_login_confirmed([gen] {
-                            return g_current_gen.load(std::memory_order_acquire) == gen;
-                        });
+                        creds.on_login_confirmed(
+                            [gen] { return launch_gen::is_current(gen); });
                     } catch (...) {
                         SAM_LOG_ERROR("login_driver: on_login_confirmed threw");
                     }
@@ -429,8 +422,7 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
 }  // namespace
 
 bool run_async(std::uint32_t steam_pid, Credentials creds) {
-    const std::uint64_t gen =
-        g_current_gen.fetch_add(1, std::memory_order_acq_rel) + 1;
+    const std::uint64_t gen = launch_gen::begin();
     std::thread([gen, pid = steam_pid, c = std::move(creds)]() mutable {
         try {
             worker_body(gen, pid, std::move(c));

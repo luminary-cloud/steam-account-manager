@@ -44,6 +44,10 @@ struct LaunchResult {
 // maps from downloading (strips them from appworkshop_730.acf and locks it read-only) in
 // the same window; when unset the file is unlocked so Steam downloads workshop normally.
 //
+// On a first login Steam initializes the per-user config from scratch and wipes those
+// pre-writes, so the affected settings are deferred to first_login_reapply, which restarts
+// Steam once with them applied and sets `first_login_deferred`. Both sign-in methods defer.
+//
 // `remember_password` controls the login window's "Remember me" checkbox for password
 // logins (off => Steam doesn't save the session). It has no effect on NFA accounts, whose
 // token sign-in requires a remembered session regardless.

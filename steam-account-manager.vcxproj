@@ -221,6 +221,8 @@
     <ClCompile Include="core\launch\login_driver.cpp" />
     <ClCompile Include="core\launch\code_clipboard.cpp" />
     <ClCompile Include="core\launch\token_launcher.cpp" />
+    <ClCompile Include="core\launch\first_login_reapply.cpp" />
+    <ClCompile Include="core\launch\launch_gen.cpp" />
     <ClCompile Include="core\steam_local\loginusers.cpp" />
     <ClCompile Include="core\steam_local\login_prefs.cpp" />
     <ClCompile Include="core\steam_local\connect_cache.cpp" />
@@ -381,6 +383,8 @@
     <ClInclude Include="core\launch\steam_launcher.hpp" />
     <ClInclude Include="core\launch\cs2_autostart.hpp" />
     <ClInclude Include="core\launch\token_launcher.hpp" />
+    <ClInclude Include="core\launch\first_login_reapply.hpp" />
+    <ClInclude Include="core\launch\launch_gen.hpp" />
     <ClInclude Include="core\launch\login_driver.hpp" />
     <ClInclude Include="core\launch\code_clipboard.hpp" />
     <ClInclude Include="core\steam_local\loginusers.hpp" />

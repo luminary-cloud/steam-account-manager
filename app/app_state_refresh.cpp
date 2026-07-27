@@ -11,6 +11,7 @@
 #include "core/account_store/ban_diff.hpp"
 #include "core/crypto/rng.hpp"
 #include "core/http/client.hpp"
+#include "core/launch/first_login_reapply.hpp"
 #include "core/log.hpp"
 #include "core/steam_api/ban_check.hpp"
 #include "core/steam_api/summaries.hpp"
@@ -1109,6 +1110,21 @@ SignInPoll poll_for_signin(std::uint32_t target) {
     }
     return SignInPoll::NeverSignedIn;
 }
+
+// A first login defers some settings to a reapply that restarts Steam, and Steam rotates the
+// refresh token on every sign-in - so reading the token back before that restart's sign-in
+// stores a value the relaunch immediately supersedes, and the next launch drops to the login
+// form. Wait the restart out first. False if the app is closing. Job-pump thread only.
+bool wait_out_first_login_reapply() {
+    using namespace std::chrono;
+    constexpr int kMaxPolls = 300;  // the reapply is bounded well below this itself
+    for (int i = 0; i < kMaxPolls; ++i) {
+        if (!launch::first_login_reapply::in_flight()) return true;
+        if (!job_pump::interruptible_sleep(seconds(1))) return false;
+    }
+    SAM_LOG_WARN("token read-back: first-login reapply still in flight; reading anyway");
+    return true;
+}
 }  // namespace
 
 void AppState::capture_rotated_token_now(const std::string& account_id,
@@ -1152,7 +1168,9 @@ void AppState::capture_rotated_token_async(std::string account_id,
             return;
         }
 
-        // Signed in: let Steam flush the rotated token to local.vdf, then adopt it.
+        // Signed in: let any first-login restart finish, let Steam flush the rotated token to
+        // local.vdf, then adopt it.
+        if (!wait_out_first_login_reapply()) return;
         if (!job_pump::interruptible_sleep(seconds(3))) return;
         post_ui_callback([this, account_id, login_lower] {
             auto* a = find_account(account_id);
@@ -1195,9 +1213,10 @@ void AppState::verify_cm_token_signin_async(std::string account_id,
             return;
         }
 
-        // Signed in: let Steam flush the rotated token to local.vdf, then adopt it. Steam
-        // rotates the token it was handed, so without this the stored cm_refresh_token
-        // drifts from what Steam holds and eventually stops working.
+        // Signed in: let any first-login restart finish, let Steam flush the rotated token to
+        // local.vdf, then adopt it. Steam rotates the token it was handed, so without this the
+        // stored cm_refresh_token drifts from what Steam holds and eventually stops working.
+        if (!wait_out_first_login_reapply()) return;
         if (!job_pump::interruptible_sleep(seconds(3))) return;
         post_ui_callback([this, account_id, login_lower] {
             auto* a = find_account(account_id);

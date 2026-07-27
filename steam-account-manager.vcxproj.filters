@@ -128,6 +128,8 @@
     <ClCompile Include="core\launch\code_clipboard.cpp"><Filter>core\launch</Filter></ClCompile>
     <ClCompile Include="core\launch\token_launcher.cpp"><Filter>core\launch</Filter></ClCompile>
     <ClCompile Include="core\launch\hwid_inject.cpp"><Filter>core\launch</Filter></ClCompile>
+    <ClCompile Include="core\launch\first_login_reapply.cpp"><Filter>core\launch</Filter></ClCompile>
+    <ClCompile Include="core\launch\launch_gen.cpp"><Filter>core\launch</Filter></ClCompile>
 
     <ClCompile Include="core\hwid\hwid_profile.cpp"><Filter>core\hwid</Filter></ClCompile>
     <ClCompile Include="core\hwid\hwid_gen.cpp"><Filter>core\hwid</Filter></ClCompile>
@@ -435,6 +437,8 @@
     <ClInclude Include="core\launch\code_clipboard.hpp"><Filter>core\launch</Filter></ClInclude>
     <ClInclude Include="core\launch\token_launcher.hpp"><Filter>core\launch</Filter></ClInclude>
     <ClInclude Include="core\launch\hwid_inject.hpp"><Filter>core\launch</Filter></ClInclude>
+    <ClInclude Include="core\launch\first_login_reapply.hpp"><Filter>core\launch</Filter></ClInclude>
+    <ClInclude Include="core\launch\launch_gen.hpp"><Filter>core\launch</Filter></ClInclude>
 
     <ClInclude Include="core\hwid\ipc_layout.hpp"><Filter>core\hwid</Filter></ClInclude>
     <ClInclude Include="core\hwid\hwid_profile.hpp"><Filter>core\hwid</Filter></ClInclude>

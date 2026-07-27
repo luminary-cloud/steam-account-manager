@@ -32,7 +32,8 @@ struct Credentials {
 // Spawns a detached worker that drives the freshly-launched Steam login UI via
 // Windows UI Automation: fills credentials, handles the Remember toggle, and types
 // the 2FA digits, then waits for the main client window to confirm success. A newer
-// call supersedes any in-flight worker via a generation counter checked on each poll.
+// launch - this one or a token launch - supersedes any in-flight worker via the shared
+// launch_gen counter, checked on each poll.
 // Always returns true and runs entirely async.
 bool run_async(std::uint32_t steam_pid, Credentials creds);
 

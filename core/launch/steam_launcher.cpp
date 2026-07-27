@@ -11,14 +11,12 @@
 
 #include "core/cs2_config/launch_options.hpp"
 #include "core/cs2_config/workshop_block.hpp"
-#include "core/launch/cs2_autostart.hpp"
+#include "core/launch/first_login_reapply.hpp"
 #include "core/launch/hwid_inject.hpp"
 #include "core/launch/login_driver.hpp"
 #include "core/launch/token_launcher.hpp"
 #include "core/log.hpp"
-#include "core/steam_local/connect_cache.hpp"
 #include "core/steam_local/login_prefs.hpp"
-#include "core/steam_local/loginusers.hpp"
 #include "core/strings.hpp"
 #include "platform/process.hpp"
 #include "platform/registry.hpp"
@@ -26,10 +24,6 @@
 namespace sam::launch {
 
 namespace {
-constexpr auto kSetupPollInterval = std::chrono::milliseconds(250);
-constexpr auto kMinSetupDwell     = std::chrono::seconds(5);
-constexpr auto kSetupTimeout      = std::chrono::seconds(60);
-
 // Steam writes local.vdf/config.vdf as both steam.exe and steamwebhelper.exe exit, so a
 // shutdown has to wait for both before we touch those files, or a late write from a
 // lingering helper overwrites ours. steamservice.exe is a long-running background service,
@@ -99,14 +93,14 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
     if (a.is_nfa) {
         return launch_account_with_token(a, cs2_launch_options, disable_cloud_on_login,
                                          disable_news_on_login, disable_workshop_on_login,
-                                         hwid_component_mask);
+                                         hwid_component_mask, gamesense_loader, luminary_loader);
     }
     if (use_token) {
         core::Account token_view = a;
         token_view.refresh_token = a.cm_refresh_token;
         return launch_account_with_token(token_view, cs2_launch_options, disable_cloud_on_login,
                                          disable_news_on_login, disable_workshop_on_login,
-                                         hwid_component_mask);
+                                         hwid_component_mask, gamesense_loader, luminary_loader);
     }
 
     LaunchResult out;
@@ -179,132 +173,27 @@ LaunchResult launch_account(const core::Account& a, std::string_view cs2_launch_
 
     if (defer_news || defer_cloud || defer_launch_options) {
         out.first_login_deferred = true;
-        // Steam account names are ASCII, so a byte-wise widen of the lowercased login is fine.
-        const std::string login_lower = core::to_lower(a.login);
-        const std::wstring login_w(login_lower.begin(), login_lower.end());
-        const std::filesystem::path exe = *exe_path;
-        const std::uint64_t sid = a.steam_id_64;
+        first_login_reapply::Params p;
+        p.steam_exe = *exe_path;
+        p.steam_id_64 = a.steam_id_64;
+        p.login_lower = core::to_lower(a.login);
         // string_view-backed; copy so it outlives this call into the async callback.
-        const std::string opts(cs2_launch_options);
-        // CS2-autostart methods resume their launch from inside the callback, after the
+        p.cs2_launch_options = std::string(cs2_launch_options);
+        p.apply_launch_options = defer_launch_options;
+        p.apply_news = defer_news;
+        p.apply_cloud = defer_cloud;
+        // The driver already confirms the sign-in before firing the callback.
+        p.sign_in_timeout_seconds = 0;
+        // CS2-autostart methods resume their launch from inside the reapply, after the
         // relaunch, so it doesn't race the restart.
-        const core::LoginMethod method = a.login_method;
-        const auto hwid_profile = a.hwid;
-        const auto hwid_mask = hwid_component_mask;
-        const std::filesystem::path loader = std::move(gamesense_loader);
-        const std::filesystem::path lum_loader = std::move(luminary_loader);
-        creds.on_login_confirmed =
-            [exe, login_w, login_lower, sid, opts, method, hwid_profile, hwid_mask, loader,
-             lum_loader, defer_news, defer_cloud, defer_launch_options](
-                const std::function<bool()>& still_current) {
-                // ActiveUser flips the moment Steam authenticates, long before it creates
-                // the account's userdata or writes its login state (loginusers/config.vdf),
-                // so stopping Steam right away kills it mid-setup and the relaunch has
-                // nothing to sign in with (blank login window). Wait until Steam has set up
-                // the account's userdata, grabbing the remember-me token it stored along the
-                // way. First login only, so this one-time wait is acceptable.
-                SAM_LOG_INFO("first-login reapply: waiting for Steam to finish first-login "
-                             "setup before restart");
-                std::optional<std::string> cc_token;
-                bool setup_ready = false;
-                {
-                    const auto start = std::chrono::steady_clock::now();
-                    std::optional<long long> ready_after_s;
-                    for (;;) {
-                        if (still_current && !still_current()) {
-                            SAM_LOG_INFO("first-login reapply: superseded during setup "
-                                         "wait; aborting");
-                            return;
-                        }
-                        if (!cc_token)
-                            cc_token = steam_local::read_connect_cache_value(login_lower);
-                        setup_ready =
-                            steam_local::login_config_presence(sid).userdata_present;
-                        const auto elapsed = std::chrono::steady_clock::now() - start;
-                        if (setup_ready && cc_token && !ready_after_s)
-                            ready_after_s = std::chrono::duration_cast<std::chrono::seconds>(
-                                elapsed).count();
-                        if (elapsed >= kMinSetupDwell && setup_ready && cc_token) break;
-                        if (elapsed >= kSetupTimeout) break;
-                        std::this_thread::sleep_for(kSetupPollInterval);
-                    }
-                    const auto waited = std::chrono::duration_cast<std::chrono::seconds>(
-                        std::chrono::steady_clock::now() - start).count();
-                    if (setup_ready)
-                        SAM_LOG_INFO("first-login reapply: setup ready after {}s, waited {}s; "
-                                     "restarting", ready_after_s.value_or(0), waited);
-                    else
-                        SAM_LOG_WARN("first-login reapply: userdata not created within {}s; "
-                                     "proceeding and writing login state explicitly", waited);
-                }
-
-                // Steam is now set up. Shut it down (flushes its now-full localconfig/
-                // sharedconfig and creates remotecache.vdf), apply the settings in-place so
-                // they survive, then relaunch with auto-login. One restart, first login only.
-                LaunchResult tmp;
-                if (!shutdown_running_steam(exe, tmp))
-                    SAM_LOG_WARN("first-login reapply: shutdown: {}", tmp.message);
-                // Let Steam's final config flush settle before we edit and relaunch.
-                std::this_thread::sleep_for(std::chrono::milliseconds(800));
-
-                if (defer_launch_options) {
-                    const auto r = cs2_config::apply_launch_options(sid, opts);
-                    if (!r.ok)
-                        SAM_LOG_WARN("first-login reapply: launch options: {}", r.message);
-                }
-                if (defer_news) {
-                    const auto r = steam_local::set_news_notify_off(sid);
-                    if (!r.ok) SAM_LOG_WARN("first-login reapply: news: {}", r.message);
-                }
-                if (defer_cloud) {
-                    // remotecache.vdf now exists, so the cloud write's remotecache refresh
-                    // can outrank the server copy.
-                    const auto r = steam_local::set_cloud_enabled_off(sid);
-                    if (!r.ok) SAM_LOG_WARN("first-login reapply: cloud: {}", r.message);
-                }
-
-                // A newer launch may have started during the shutdown; don't relaunch the
-                // wrong account or fight its auto-login. The prefs above are already on disk.
-                if (still_current && !still_current()) {
-                    SAM_LOG_INFO("first-login reapply: superseded; skipping relaunch");
-                    return;
-                }
-                // Write the full login state ourselves so the relaunch auto-logs in like
-                // the NFA token path, instead of trusting how far Steam's setup got before
-                // we stopped it: the remember-me token (restored only if the shutdown
-                // dropped it), the loginusers entry, and the config.vdf name -> SteamID map.
-                // set_remembered_account is not enough here: it no-ops when Steam hasn't
-                // written the loginusers entry yet, which is exactly the first-login race.
-                if (cc_token && !steam_local::read_connect_cache_value(login_lower))
-                    steam_local::write_connect_cache_raw(login_lower, *cc_token);
-                steam_local::ensure_loginusers_entry(sid, login_lower, "");
-                steam_local::ensure_config_vdf_account(sid, login_lower);
-                platform::registry::set_auto_login_user(login_w);
-                platform::registry::set_remember_password(true);
-                auto relaunch_pid = platform::process::launch(exe, L"");
-                if (!relaunch_pid) {
-                    SAM_LOG_WARN("first-login reapply: relaunch failed; settings are on disk "
-                                 "and apply on the next sign-in");
-                    return;
-                }
-                SAM_LOG_INFO("first-login reapply: applied prefs and relaunched as {}",
-                             login_lower);
-
-                if (hwid_profile.has_value()) {
-                    core::Account tmp_acc;
-                    tmp_acc.hwid = hwid_profile;
-                    tmp_acc.login = login_lower;
-                    maybe_inject_hwid(tmp_acc, *relaunch_pid, hwid_mask);
-                }
-
-                // Resume the CS2 auto-launch the caller skipped for the deferred case:
-                // Steam is back up and signing in on this final instance, so there's no
-                // restart left to race it.
-                if (method != core::LoginMethod::Normal) {
-                    SAM_LOG_INFO("first-login reapply: starting CS2 autostart post-relaunch");
-                    cs2_autostart::start_async(method, sid, loader, lum_loader);
-                }
-            };
+        p.method = a.login_method;
+        p.gamesense_loader = std::move(gamesense_loader);
+        p.luminary_loader = std::move(luminary_loader);
+        p.hwid = a.hwid;
+        p.hwid_mask = hwid_component_mask;
+        creds.on_login_confirmed = [p](const std::function<bool()>& still_current) {
+            first_login_reapply::run(p, still_current);
+        };
     }
 
     out.guard_code_was_typed = login_driver::run_async(*pid, std::move(creds));
