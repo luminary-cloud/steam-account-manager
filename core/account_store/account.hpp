@@ -26,6 +26,15 @@ enum class LoginMethod : std::uint8_t {
     LaunchCs2Luminary  = 3,  // launch CS2 then run the luminary loader (--auto --game=cs2)
 };
 
+// Under safe mode the loader-backed methods behave as a plain CS2 launch. The account's
+// stored choice is kept as-is; it just doesn't run anything external. Every chip, tooltip
+// and launch path goes through this so the UI can't advertise what the launch won't do.
+constexpr LoginMethod effective_login_method(LoginMethod m, bool safe_mode) {
+    if (!safe_mode) return m;
+    return (m == LoginMethod::LaunchCs2Gamesense || m == LoginMethod::LaunchCs2Luminary)
+        ? LoginMethod::LaunchCs2 : m;
+}
+
 // Live validity of a client token, established by a real sign-in rather than JWT expiry
 // (a revoked token stays unexpired for months). Unknown until first validated. Used for
 // both an NFA account's refresh_token (via the CM logon result) and a full-access

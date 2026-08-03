@@ -59,9 +59,6 @@ std::wstring u8_to_ws(const std::string& s) {
 
 }  // namespace
 
-// to_json / from_json must share the type's namespace (sam::core) so nlohmann
-// ADL finds them.
-
 void to_json(json& j, const Tag& t) {
     j = json{{"id", t.id}, {"name", t.name}, {"color", t.color_rgba}};
 }
@@ -352,8 +349,7 @@ void to_json(json& j, const Vault& v) {
 }
 
 void from_json(const json& j, Vault& v) {
-    // The on-disk header version is authoritative for compatibility; the JSON
-    // field is informational. Bump to current so the next save uses the latest.
+
     v.schema_version = static_cast<int>(store::kSchemaVersion);
     (void)j.value("schema_version", static_cast<int>(store::kSchemaVersion));
     if (j.contains("tags") && j["tags"].is_array()) {
@@ -368,7 +364,6 @@ void from_json(const json& j, Vault& v) {
 }
 
 }  // namespace sam::core
-
 
 namespace sam::core::store {
 
@@ -581,8 +576,8 @@ Account* find_existing_account(Vault& vault,
 }
 
 namespace {
-constexpr std::uint32_t kNfaColorRgba = 0xF5A623FFu;     // amber
-constexpr std::uint32_t kCachedColorRgba = 0x3FB68BFFu;  // teal-green
+constexpr std::uint32_t kNfaColorRgba = 0xF5A623FFu;
+constexpr std::uint32_t kCachedColorRgba = 0x3FB68BFFu;
 }
 
 std::string ensure_nfa_group(Vault& vault) {
@@ -705,7 +700,7 @@ MergeReport merge_into(Vault& dst, Vault imported) {
         auto match = std::find_if(dst.accounts.begin(), dst.accounts.end(),
             [&](const Account& existing) { return same_account(existing, incoming); });
         if (match != dst.accounts.end()) {
-            // Keep the destination ULID so existing references stay stable.
+
             std::string preserved_id = match->id;
             *match = std::move(incoming);
             match->id = std::move(preserved_id);

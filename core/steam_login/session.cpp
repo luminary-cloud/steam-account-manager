@@ -27,14 +27,13 @@ std::int64_t now_seconds() {
     return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
 }
 
-// JWT payload is the second dot-separated segment, base64url-encoded.
 std::string jwt_payload(std::string_view jwt) {
     const auto first = jwt.find('.');
     if (first == std::string_view::npos) return {};
     const auto second = jwt.find('.', first + 1);
     if (second == std::string_view::npos) return {};
     std::string seg(jwt.substr(first + 1, second - first - 1));
-    // Decoder accepts base64url, but padding may be missing.
+
     while (seg.size() % 4 != 0) seg += '=';
     const auto raw = crypto::base64_decode(seg);
     return std::string(reinterpret_cast<const char*>(raw.data()), raw.size());
@@ -46,7 +45,7 @@ std::string make_steam_login_secure(std::uint64_t steam_id_64,
                                      const crypto::SecureString& access_token) {
     if (steam_id_64 == 0 || access_token.empty()) return {};
     std::string token(access_token.begin(), access_token.end());
-    // Pipes must be URL-encoded: browsers send `<steamid>%7C%7C<JWT>` literally.
+
     return std::to_string(steam_id_64) + "%7C%7C" + token;
 }
 
@@ -71,7 +70,7 @@ std::uint64_t jwt_steam_id(const crypto::SecureString& jwt) {
         const auto j = json::parse(payload);
         if (!j.contains("sub")) return 0;
         const auto& sub = j["sub"];
-        // Steam encodes the steam_id_64 as a decimal string, not a number.
+
         if (sub.is_string()) {
             const auto& s = sub.get_ref<const std::string&>();
             if (s.empty()) return 0;
@@ -160,9 +159,6 @@ bool finalize_login_targets(std::uint64_t steam_id_64,
 
     const std::string rt(refresh_token.begin(), refresh_token.end());
 
-    // POST refresh_token as `nonce`; Steam returns per-domain settoken URLs.
-    // CSRF check requires the `sessionid` form value to match a `sessionid`
-    // cookie, so we send the same value as both.
     http::Request fin;
     fin.method = http::Method::Post;
     fin.url = "https://login.steampowered.com/jwt/finalizelogin";
@@ -222,7 +218,6 @@ bool transfer_login(std::uint64_t steam_id_64,
         return false;
     }
 
-    // Only the community-domain cookie is needed for GCPD.
     for (const auto& t : targets) {
         if (t.url.find("steamcommunity.com") == std::string::npos) continue;
 
@@ -230,7 +225,7 @@ bool transfer_login(std::uint64_t steam_id_64,
         st.method = http::Method::Post;
         st.url = t.url;
         st.headers["Content-Type"] = "application/x-www-form-urlencoded";
-        st.follow_redirects = false;  // settoken responds with cookies, not redirects we want
+        st.follow_redirects = false;
         st.body = "nonce=" + http::url_encode(t.nonce) +
                   "&auth="  + http::url_encode(t.auth)  +
                   "&steamID=" + std::to_string(steam_id_64);
@@ -259,8 +254,6 @@ bool transfer_login(std::uint64_t steam_id_64,
 bool refresh_access_token(core::Account& a) {
     if (a.refresh_token.empty()) return false;
 
-    // Bearer is the refresh_token: it carries the "derive" scope needed to mint
-    // access tokens, which the mobile access_token's [web,mobile] scope lacks.
     CAuthentication_AccessToken_GenerateForApp_Request body;
     const std::string rt(a.refresh_token.begin(), a.refresh_token.end());
     body.set_refresh_token(rt);
@@ -292,7 +285,6 @@ bool refresh_access_token(core::Account& a) {
         return false;
     }
 
-    // Unified-messaging responses carry the eresult in headers, not the body.
     auto find_header = [&](const std::string& name) -> std::string {
         const auto it = resp.headers.find(name);
         return it != resp.headers.end() ? it->second : std::string{};
@@ -315,8 +307,7 @@ bool refresh_access_token(core::Account& a) {
 
     const std::string at = parsed.access_token();
     if (at.empty()) {
-        // x-eresult=15 (AccessDenied) is expected for a web:mobile refresh_token
-        // (see mobile_auth.cpp::begin_session); caller falls back to auto_relogin.
+
         SAM_LOG_WARN("session: refresh: empty access_token in response (x-eresult={} x-error_message='{}')",
                      er.empty() ? "?" : er, em);
         return false;
@@ -327,7 +318,7 @@ bool refresh_access_token(core::Account& a) {
     a.steam_login_secure = crypto::make_secure(
         make_steam_login_secure(a.steam_id_64, a.access_token));
     if (!parsed.refresh_token().empty()) {
-        // Steam occasionally rotates the refresh token.
+
         a.refresh_token = crypto::make_secure(parsed.refresh_token());
     }
     SAM_LOG_INFO("session: refresh ok, new access_token exp={} ({} chars)",

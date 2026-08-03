@@ -4,18 +4,18 @@
 
 namespace sam::platform::startup_task {
 
-// Creates/removes a single Scheduled Task that launches this exe at logon with
-// highest privileges. A task is required because the app is requireAdministrator
-// and can't auto-start from the HKCU Run key (Windows skips elevated apps there).
+// Creates/removes a single Scheduled Task that launches this exe at logon. A task is used
+// rather than the HKCU Run key because Windows skips elevated apps there, and because only
+// a task can start the app already elevated (no UAC prompt at logon).
 //
-// `args` are the command-line arguments to pass (e.g. L"--startup" for the
-// headless refresh, L"--minimized" or L"" for the full GUI). `persistent` removes
-// the 5-minute execution-time limit, which is needed for the long-running GUI but
-// would never trigger for the headless one-shot. Re-registers the same task in
-// place, so switching modes is just another enable call. `args`/`persistent` are
-// ignored when disabling.
+// `args` is the command line to pass (L"--startup" for the headless refresh, L"--minimized"
+// or L"" for the GUI). `persistent` drops the 5-minute execution limit, needed for the
+// long-running GUI. `highest` must track Settings::run_as_admin, or a task left at highest
+// would silently elevate at logon after admin was turned off; registering at highest needs
+// admin, so this returns false if an unelevated process asks. Re-registers in place, so
+// switching modes is another enable call. All three are ignored when disabling.
 bool set_run_at_logon(bool enable, const std::wstring& args = L"--startup",
-                      bool persistent = false);
+                      bool persistent = false, bool highest = true);
 
 bool is_run_at_logon_enabled();
 

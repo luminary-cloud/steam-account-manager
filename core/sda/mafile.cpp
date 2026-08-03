@@ -72,23 +72,6 @@ std::vector<std::uint8_t> derive_sda_key(const crypto::SecureString& password,
 
 }  // namespace
 
-MafileLoadResult parse_mafile_json(std::string_view json_text) {
-    json j;
-    try {
-        j = json::parse(json_text);
-    } catch (const std::exception& ex) {
-        throw MafileError(std::string{"mafile: malformed JSON: "} + ex.what());
-    }
-
-    if (looks_like_encrypted(j)) {
-        throw MafileEncrypted("mafile: encrypted (call load_mafile with the password)");
-    }
-    MafileLoadResult out;
-    out.guard = from_json_obj(j);
-    extract_session(j, out);
-    return out;
-}
-
 MafileLoadResult load_mafile(const std::filesystem::path& path,
                              const crypto::SecureString& password) {
     const std::string text = read_text(path);

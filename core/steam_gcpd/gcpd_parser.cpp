@@ -100,7 +100,6 @@ std::int64_t now_seconds() {
     return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
 }
 
-// Parses Steam's "YYYY-MM-DD HH:MM:SS GMT" format. Returns 0 on failure.
 std::int64_t parse_gcpd_timestamp(const std::string& s) {
     if (s.empty()) return 0;
     int y = 0, mo = 0, d = 0, h = 0, mi = 0, se = 0;
@@ -123,7 +122,6 @@ std::int64_t parse_gcpd_timestamp(const std::string& s) {
     return (t == -1) ? 0 : static_cast<std::int64_t>(t);
 }
 
-// All `<table class="generic_kv_table">` elements as row lists, header first.
 std::vector<std::vector<Row>> extract_tables(std::string_view html) {
     std::vector<std::vector<Row>> out;
     static const std::regex tbl_re(
@@ -135,11 +133,6 @@ std::vector<std::vector<Row>> extract_tables(std::string_view html) {
         out.push_back(rows_from_table((*it)[1].str()));
     }
     return out;
-}
-
-bool header_starts_with(const std::vector<Row>& tbl, std::string_view kw) {
-    if (tbl.empty() || tbl.front().cells.empty()) return false;
-    return contains_ci(tbl.front().cells.front(), kw);
 }
 
 bool header_contains_any_cell(const std::vector<Row>& tbl,
@@ -163,20 +156,17 @@ MatchmakingData parse_matchmaking(std::string_view html) {
     const std::int64_t now = now_seconds();
 
     for (const auto& tbl : tables) {
-        if (tbl.size() < 2) continue;   // need header + a data row
+        if (tbl.size() < 2) continue;
         const auto& header = tbl.front().cells;
         if (header.empty()) continue;
 
-        // Cooldown table: header is Expiration | Level | Acknowledged.
         if (contains_ci(header[0], "Cooldown")) {
             for (std::size_t i = 1; i < tbl.size(); ++i) {
                 const auto& row = tbl[i].cells;
                 if (row.empty()) continue;
-                const std::int64_t ts = parse_gcpd_timestamp(row[0]);  // localized "Never" -> 0
+                const std::int64_t ts = parse_gcpd_timestamp(row[0]);
                 if (ts == 0) {
-                    // Non-date expiration ("Never") + a penalty Level >= 1 is a
-                    // permanent cooldown. Keying off the integer Level stays
-                    // locale-agnostic.
+
                     const bool has_level = row.size() > 1 && to_int(row[1], 0) >= 1;
                     if (!row[0].empty() && has_level) {
                         out.cooldown_expires_unix = sam::core::kCooldownNever;
@@ -184,7 +174,7 @@ MatchmakingData parse_matchmaking(std::string_view html) {
                     }
                     continue;
                 }
-                // A permanent cooldown outranks temporary rows; don't clobber it.
+
                 if (out.cooldown_expires_unix == sam::core::kCooldownNever) continue;
                 if (ts > now &&
                     (out.cooldown_expires_unix == 0 || ts < out.cooldown_expires_unix)) {
@@ -195,8 +185,6 @@ MatchmakingData parse_matchmaking(std::string_view html) {
             continue;
         }
 
-        // Main table: Mode | Wins | Ties | Losses | Skill Group | Last Match |
-        // Region. Skip the per-map variant (header has Map in some locale).
         if (contains_ci(header[0], "Matchmaking Mode")) {
             if (header_contains_any_cell(tbl, {"Map", "Mappa", "Mapa", "Carte", "Karte"})) {
                 continue;
@@ -207,8 +195,8 @@ MatchmakingData parse_matchmaking(std::string_view html) {
                 if (skill_col < 0 && contains_ci(header[c], "Skill")) skill_col = static_cast<int>(c);
                 if (wins_col  < 0 && contains_ci(header[c], "Wins"))  wins_col  = static_cast<int>(c);
             }
-            if (skill_col < 0) skill_col = 4;  // canonical position fallback
-            if (wins_col  < 0) wins_col  = 1;  // canonical: Mode | Wins | Ties | ...
+            if (skill_col < 0) skill_col = 4;
+            if (wins_col  < 0) wins_col  = 1;
 
             for (std::size_t i = 1; i < tbl.size(); ++i) {
                 const auto& row = tbl[i].cells;
@@ -240,7 +228,7 @@ bool looks_like_gcpd_page(std::string_view html) {
 }
 
 bool looks_like_login_page(std::string_view html) {
-    // Steam's login HTML embeds `g_steamID = false;` before authentication.
+
     return contains_ci(html, "g_steamID = false") ||
            contains_ci(html, "<title>Sign In");
 }
@@ -251,8 +239,6 @@ AccountMainData parse_accountmain(std::string_view html) {
     if (tables.empty()) return out;
     out.ok = true;
 
-    // accountmain renders the profile rank as free text in one <td>, not rows,
-    // so concatenate all cell text and grep for the labelled values.
     std::string blob;
     for (const auto& tbl : tables) {
         for (const auto& row : tbl) {

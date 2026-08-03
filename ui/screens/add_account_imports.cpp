@@ -38,7 +38,7 @@ namespace {
 
 struct MafileImportResult {
     bool ok = false;
-    bool merged = false;          // existing account updated rather than created
+    bool merged = false;
     std::string error;
     std::string account_id;
     std::string login;
@@ -61,7 +61,7 @@ MafileImportResult import_one_mafile(app::AppState& state,
                                 !loaded.session_refresh_token.empty();
         auto access  = crypto::make_secure(loaded.session_access_token);
         auto refresh = crypto::make_secure(loaded.session_refresh_token);
-        // Some SDA exports omit Session.SteamID; the access_token's sub claim is the steam_id_64.
+
         if (resolved_sid == 0 && has_tokens) {
             resolved_sid = steam_login::jwt_steam_id(access);
         }
@@ -176,8 +176,6 @@ InfoDatImportResult import_one_info_dat(app::AppState& state,
                 if (!e.avatar_url.empty())
                     a.web.avatar_url_full = e.avatar_url;
 
-                // Ban snapshot from the file; overwritten by the first online refresh,
-                // but lets VAC/etc pills show immediately.
                 a.bans.community_banned = e.community_banned;
                 a.bans.vac_banned       = e.vac_banned;
                 a.bans.vac_ban_count    = e.vac_ban_count;
@@ -215,9 +213,9 @@ InfoDatImportResult import_one_info_dat(app::AppState& state,
 struct MafileBatchSummary {
     int imported = 0;
     int merged = 0;
-    int blank_steam_id = 0;              // imported but no steam_id_64 resolved
+    int blank_steam_id = 0;
     bool web_api_key_missing = false;
-    std::vector<std::string> failures;   // "<filename>: <error>"
+    std::vector<std::string> failures;
 };
 
 struct InfoDatBatchSummary {
@@ -225,9 +223,9 @@ struct InfoDatBatchSummary {
     int created  = 0;
     int merged   = 0;
     int accounts_total = 0;
-    int blank_steam_id = 0;             // imported but no steam_id_64 resolved
+    int blank_steam_id = 0;
     bool web_api_key_missing = false;
-    std::vector<std::string> failures;  // "<filename>: <error>"
+    std::vector<std::string> failures;
 };
 
 }  // namespace
@@ -239,9 +237,6 @@ struct LoginToken {
     std::string token;
 };
 
-// Splits "<login>----<token>" (the form NFA exports use) or a bare token, and drops
-// any trailing "----key:value" metadata some exporters append after the JWT. The
-// token is the field between the first and second "----" (a JWT never contains it).
 LoginToken split_login_token(std::string raw) {
     auto trim = [](std::string s) {
         while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
@@ -291,8 +286,6 @@ JwtImportResult import_jwt_token(app::AppState& state, const std::string& raw,
         if (a.session_id.empty()) a.session_id = crypto::random_session_id();
         if (fresh) a.created_unix = now_seconds();
 
-        // No stored password = NFA (launches via token injection, lands in the NFA group).
-        // Importing a token onto a full-access account just stores it, type unchanged.
         const bool nfa = a.password.empty();
         a.is_nfa = nfa;
         if (nfa && assign_nfa_group) a.group_id = core::store::ensure_nfa_group(state.vault);
@@ -320,12 +313,11 @@ void draw_import_mafile(app::AppState& state) {
     static std::array<char, 1024> path_buf{};
     static std::string mafile_password;
     static std::string steam_password;
-    static std::vector<std::string> queued;       // from drag-drop
+    static std::vector<std::string> queued;
     static MafileBatchSummary summary;
     static bool has_summary = false;
     static std::string error;
 
-    // Drain the WM_DROPFILES queue.
     {
         std::lock_guard lk(state.drop_mutex);
         if (!state.pending_mafile_drops.empty()) {
@@ -343,8 +335,7 @@ void draw_import_mafile(app::AppState& state) {
                         ".maFile in it, or drag files/folders onto this window.");
     ImGui::SetNextItemWidth(420.0F);
     ImGui::InputText("##path", path_buf.data(), path_buf.size());
-    hover_tooltip("Path to a .maFile (single account) or a directory containing one or "
-                  "more .maFile files (bulk import).");
+    hover_tooltip("A .maFile, or a folder of them for a bulk import.");
     ImGui::SameLine();
     if (action_button("Browse...##mafile-browse")) {
         platform::file_dialog::Options opts;
@@ -366,8 +357,7 @@ void draw_import_mafile(app::AppState& state) {
             error.clear();
         }
     }
-    hover_tooltip("Pick a single .maFile via the system dialog. To bulk-import a folder, "
-                  "type the folder path above or drop it on the window.");
+    hover_tooltip("For a whole folder, type the path above or drop it on the window.");
 
     if (!queued.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
@@ -379,13 +369,11 @@ void draw_import_mafile(app::AppState& state) {
 
     widgets::draw_password_field("maFile password (if encrypted)",
                                   mafile_password, false, 280.0F);
-    hover_tooltip("Only required if the maFile was exported with encryption enabled. "
-                  "Applied to every file in this batch.");
+    hover_tooltip("Only needed for encrypted maFiles. Applied to the whole batch.");
 
     widgets::draw_password_field("Steam password (optional)##mafile-steampw",
                                   steam_password, false, 280.0F);
-    hover_tooltip("Optional Steam password applied to every account imported in this batch. "
-                  "Leave empty if you'll add per-account passwords later.");
+    hover_tooltip("Applied to every account in this batch. Can be set per account later.");
 
     if (state.settings.web_api_key.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
@@ -422,8 +410,7 @@ void draw_import_mafile(app::AppState& state) {
                 auto r = import_one_mafile(state, p, mafile_password, steam_password);
                 if (r.ok) {
                     if (r.merged) ++summary.merged; else ++summary.imported;
-                    // No resolved steam_id_64 means the account won't auto-refresh and
-                    // shows as a blank card until one is provided.
+
                     if (auto* a = state.find_account(r.account_id);
                         a && a->steam_id_64 == 0) {
                         ++summary.blank_steam_id;
@@ -435,12 +422,12 @@ void draw_import_mafile(app::AppState& state) {
             }
             state.vault_dirty = true;
             state.save_vault_if_dirty();
-            // Stagger bulk refreshes so a big import doesn't burst the Web API.
+
             if (account_ids.size() == 1) {
                 state.pull_all_for_account(account_ids.front());
             } else if (!account_ids.empty()) {
                 state.refresh_accounts_staggered(std::move(account_ids));
-                state.start_gc_autopull();  // maFile imports are full-access: pull their GC data
+                state.start_gc_autopull();
             }
             has_summary = true;
 
@@ -513,9 +500,7 @@ void draw_import_info_dat(app::AppState& state) {
                         "or drag the file(s) onto this window.");
     ImGui::SetNextItemWidth(420.0F);
     ImGui::InputText("##info-dat-path", path_buf.data(), path_buf.size());
-    hover_tooltip("An info.dat file (XML inside a Rijndael-256/PBKDF2-SHA1 envelope), or a "
-                  "directory containing one or more .dat files. Each file can hold many "
-                  "accounts.");
+    hover_tooltip("An info.dat, or a folder of them. Each file can hold many accounts.");
     ImGui::SameLine();
     if (action_button("Browse...##info-dat-browse")) {
         platform::file_dialog::Options opts;
@@ -537,8 +522,7 @@ void draw_import_info_dat(app::AppState& state) {
             error.clear();
         }
     }
-    hover_tooltip("Pick a single info.dat via the system dialog. To bulk-import a folder of "
-                  ".dat files, type the folder path above or drop it on the window.");
+    hover_tooltip("For a whole folder, type the path above or drop it on the window.");
 
     if (!queued.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
@@ -550,13 +534,11 @@ void draw_import_info_dat(app::AppState& state) {
 
     widgets::draw_password_field("Decryption password (if encrypted)##info-dat-pw",
                                   file_password, false, 280.0F);
-    hover_tooltip("The password the info.dat was encrypted with. Leave empty if the file "
-                  "is plain XML.");
+    hover_tooltip("Only needed for encrypted files. Leave empty for plain XML.");
 
     widgets::draw_password_field("Field key (optional)##info-dat-key",
                                   field_key, false, 280.0F);
-    hover_tooltip("The built-in key list auto-detects most exports. Set this only if your "
-                  "info.dat was produced by a build whose field key isn't in the list.");
+    hover_tooltip("Most exports are auto-detected. Only set this if yours isn't.");
 
     if (state.settings.web_api_key.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
@@ -610,12 +592,12 @@ void draw_import_info_dat(app::AppState& state) {
             }
             state.vault_dirty = true;
             state.save_vault_if_dirty();
-            // info.dat files can carry many accounts each; stagger to avoid a Web API burst.
+
             if (all_ids.size() == 1) {
                 state.pull_all_for_account(all_ids.front());
             } else if (!all_ids.empty()) {
                 state.refresh_accounts_staggered(std::move(all_ids));
-                state.start_gc_autopull();  // info.dat imports are full-access: pull their GC data
+                state.start_gc_autopull();
             }
             has_summary = true;
 
@@ -675,9 +657,8 @@ void draw_import_jwt_token(app::AppState& state) {
     ImGui::TextUnformatted("Token");
     ImGui::InputTextMultiline("##nfa-token", token_buf.data(), token_buf.size(),
                               ImVec2(440.0F, 80.0F));
-    hover_tooltip("Format: username----eyA...  The username before the dashes is the Steam account "
-                  "name (needed for Login); the rest is the JWT refresh token, stored encrypted. An "
-                  "NFA account has no password; this token is its only credential.");
+    hover_tooltip("Format: username----eyA... The token is this account's only "
+                  "credential, stored encrypted.");
 
     if (state.settings.web_api_key.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());

@@ -1,14 +1,11 @@
 #include "core/launch/token_launcher.hpp"
 
-#include <cctype>
 #include <chrono>
 #include <cstdint>
-#include <filesystem>
 #include <string>
 #include <thread>
 #include <utility>
 
-#include "core/cs2_config/launch_options.hpp"
 #include "core/cs2_config/workshop_block.hpp"
 #include "core/launch/first_login_reapply.hpp"
 #include "core/launch/hwid_inject.hpp"
@@ -32,7 +29,6 @@ std::int64_t now_seconds() {
     return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
 }
 
-// Steam account names are ASCII, so a byte-wise widen is sufficient.
 std::wstring widen_ascii(const std::string& s) {
     return std::wstring(s.begin(), s.end());
 }
@@ -44,20 +40,11 @@ LaunchResult fail(const std::string& message) {
     return out;
 }
 
-// How long the reapply worker waits for Steam to report the token sign-in before giving up.
-// Generous: it covers a cold client start and any self-update Steam does on the way.
 constexpr int kTokenSignInTimeoutSeconds = 180;
 
 }  // namespace
 
-LaunchResult launch_account_with_token(const core::Account& a,
-                                       std::string_view cs2_launch_options,
-                                       bool disable_cloud_on_login,
-                                       bool disable_news_on_login,
-                                       bool disable_workshop_on_login,
-                                       std::uint32_t hwid_component_mask,
-                                       std::filesystem::path gamesense_loader,
-                                       std::filesystem::path luminary_loader) {
+LaunchResult launch_account_with_token(const core::Account& a, const LaunchOptions& opts) {
     if (a.refresh_token.empty() || a.steam_id_64 == 0)
         return fail("Token login needs a refresh token and a resolved Steam ID.");
     if (a.login.empty())
@@ -71,44 +58,21 @@ LaunchResult launch_account_with_token(const core::Account& a,
 
     LaunchResult out;
     auto steam_exe = resolve_steam_exe(out);
-    if (!steam_exe) return out;                 // out carries the SteamNotInstalled reason
-    // One bump per launch, whatever the method: it supersedes any worker still driving a
-    // previous launch (login driver, first-login reapply) and guards our own worker below.
+    if (!steam_exe) return out;
+
     const std::uint64_t gen = launch_gen::begin();
     if (!shutdown_running_steam(*steam_exe, out)) return out;
 
-    // A first login (no per-user config yet) is initialized from scratch by Steam, which
-    // overwrites anything we pre-write while it's down; LaunchOptions can't even be written
-    // (localconfig.vdf doesn't exist yet). Detect that per setting and defer it to the
-    // reapply worker below instead. When the file already exists the in-place edit survives,
-    // so keep the pre-write + single launch (no restart). Read presence BEFORE the writes:
-    // set_news_notify_off / set_cloud_enabled_off create the files they touch.
-    const auto presence = steam_local::login_config_presence(a.steam_id_64);
-    const bool defer_news = disable_news_on_login && !presence.localconfig_present;
-    const bool defer_cloud = disable_cloud_on_login && !presence.sharedconfig_present;
-    // LaunchOptions live in localconfig.vdf, so the first-login wipe hits them too.
-    const bool defer_launch_options =
-        !cs2_launch_options.empty() && !presence.localconfig_present;
+    if (opts.after_steam_down) opts.after_steam_down();
 
-    // Steam is down now: safe to set launch options without Steam clobbering them.
-    if (!cs2_launch_options.empty() && !defer_launch_options) {
-        const auto r =
-            cs2_config::apply_launch_options(a.steam_id_64, std::string(cs2_launch_options));
-        if (!r.ok) SAM_LOG_WARN("token-launch: cs2 launch options: {}", r.message);
-    }
-    if (disable_news_on_login && !defer_news) {
-        const auto r = steam_local::set_news_notify_off(a.steam_id_64);
-        if (!r.ok) SAM_LOG_WARN("token-launch: disable news: {}", r.message);
-    }
-    if (disable_cloud_on_login && !defer_cloud) {
-        const auto r = steam_local::set_cloud_enabled_off(a.steam_id_64);
-        if (!r.ok) SAM_LOG_WARN("token-launch: disable cloud: {}", r.message);
-    }
-    // Block/unlock CS2 workshop-map downloads for this account per the global toggle.
+    const auto presence = steam_local::login_config_presence(a.steam_id_64);
+    const auto deferred =
+        first_login_reapply::apply_login_prefs(a.steam_id_64, opts, presence, "token-launch");
+
     {
-        const auto r = disable_workshop_on_login
+        const auto r = opts.disable_workshop_on_login
                            ? cs2_config::apply_workshop_block(a.steam_id_64)
-                           : cs2_config::unlock_workshop_block();
+                           : cs2_config::clear_workshop_block(a.steam_id_64);
         if (!r.ok) SAM_LOG_WARN("token-launch: workshop block: {}", r.message);
     }
 
@@ -118,16 +82,12 @@ LaunchResult launch_account_with_token(const core::Account& a,
     steam_local::ensure_loginusers_entry(a.steam_id_64, login, a.web.persona_name);
     if (!steam_local::write_connect_cache_token(login, a.refresh_token))
         return fail("Could not write the login token to Steam's local.vdf.");
-    // Read back what we just wrote, while Steam is still down: a deferred reapply needs it to
-    // tell our (soon consumed) token apart from the one Steam rotates to during the sign-in.
+
     const auto injected_cc = steam_local::read_connect_cache_value(login);
-    // Steam maps the AutoLoginUser name to its Steam ID via config.vdf; without
-    // this entry it ignores the injected token and shows the login window.
+
     if (!steam_local::ensure_config_vdf_account(a.steam_id_64, login))
         SAM_LOG_WARN("token-launch: config.vdf account entry not written");
-    // "Ask which account to use each time Steam starts" (AlwaysShowUserChooser) makes
-    // Steam show the picker and ignore AutoLoginUser, stalling the token sign-in. Clear
-    // it now while Steam is shut down so the launch below signs in silently.
+
     if (!steam_local::disable_account_chooser())
         SAM_LOG_WARN("token-launch: could not clear AlwaysShowUserChooser in config.vdf");
 
@@ -138,37 +98,33 @@ LaunchResult launch_account_with_token(const core::Account& a,
         return out;
     }
 
-    auto hwid_res = maybe_inject_hwid(a, *pid, hwid_component_mask);
-    out.hwid_outcome = hwid_res.outcome;
-    out.hwid_error = std::move(hwid_res.error);
+    if (!opts.safe_mode) {
+        auto hwid_res = maybe_inject_hwid(a, *pid, opts.hwid_component_mask);
+        out.hwid_outcome = hwid_res.outcome;
+        out.hwid_error = std::move(hwid_res.error);
+    }
 
     SAM_LOG_INFO("token-launch: started steam.exe pid={} as login={}", *pid, login);
 
-    if (defer_news || defer_cloud || defer_launch_options) {
+    if (deferred.any()) {
         out.first_login_deferred = true;
         first_login_reapply::Params p;
         p.steam_exe = *steam_exe;
         p.steam_id_64 = a.steam_id_64;
         p.login_lower = login;
-        p.cs2_launch_options = std::string(cs2_launch_options);
-        p.apply_launch_options = defer_launch_options;
-        p.apply_news = defer_news;
-        p.apply_cloud = defer_cloud;
-        // No login window to watch here, so the worker confirms the sign-in itself off the
-        // registry, and leaves Steam alone if it never happens (rejected token).
+        p.cs2_launch_options = opts.cs2_launch_options;
+        p.deferred = deferred;
+
         p.sign_in_timeout_seconds = kTokenSignInTimeoutSeconds;
         p.clear_account_chooser = true;
         p.injected_connect_cache = injected_cc;
-        // The caller skips its own autostart for a deferred launch; the worker resumes it
-        // after the restart so CS2 isn't killed mid-launch.
-        p.method = a.login_method;
-        p.gamesense_loader = std::move(gamesense_loader);
-        p.luminary_loader = std::move(luminary_loader);
-        p.hwid = a.hwid;
-        p.hwid_mask = hwid_component_mask;
 
-        // Marked before the thread starts so the token read-back watchers, which the caller
-        // kicks off right after we return, can't miss the restart they have to wait out.
+        p.method = core::effective_login_method(a.login_method, opts.safe_mode);
+        p.gamesense_loader = opts.gamesense_loader;
+        p.luminary_loader = opts.luminary_loader;
+        p.hwid = opts.safe_mode ? std::nullopt : a.hwid;
+        p.hwid_mask = opts.hwid_component_mask;
+
         first_login_reapply::mark_scheduled();
         std::thread([p = std::move(p), gen] {
             try {

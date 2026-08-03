@@ -6,8 +6,6 @@
 
 namespace sam::platform {
 
-std::filesystem::path exe_dir();
-
 std::filesystem::path local_appdata_dir();
 
 // Raw %LOCALAPPDATA% root, no app subfolder; used to locate other apps' data

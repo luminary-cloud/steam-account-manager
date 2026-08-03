@@ -14,10 +14,10 @@ constexpr wchar_t kSteamSubkey[] = L"Software\\Valve\\Steam";
 
 }
 
-std::optional<std::wstring> read_string_hkcu(const std::wstring& subkey,
-                                              const std::wstring& value_name) {
+std::optional<std::wstring> read_string(HKEY root, const std::wstring& subkey,
+                                         const std::wstring& value_name) {
     HKEY h = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_QUERY_VALUE, &h) != ERROR_SUCCESS) {
+    if (RegOpenKeyExW(root, subkey.c_str(), 0, KEY_QUERY_VALUE, &h) != ERROR_SUCCESS) {
         return std::nullopt;
     }
 
@@ -35,16 +35,15 @@ std::optional<std::wstring> read_string_hkcu(const std::wstring& subkey,
     RegCloseKey(h);
     if (rc != ERROR_SUCCESS) return std::nullopt;
 
-    while (!buf.empty() && buf.back() == L'\0') buf.pop_back();  // registry may pad with NULs
+    while (!buf.empty() && buf.back() == L'\0') buf.pop_back();
     return buf;
 }
 
-bool write_string_hkcu(const std::wstring& subkey,
-                       const std::wstring& value_name,
-                       const std::wstring& value) {
+bool write_string(HKEY root, const std::wstring& subkey, const std::wstring& value_name,
+                  const std::wstring& value) {
     HKEY h = nullptr;
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, nullptr,
-                         REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr, &h, nullptr) != ERROR_SUCCESS) {
+    if (RegCreateKeyExW(root, subkey.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE,
+                         KEY_SET_VALUE, nullptr, &h, nullptr) != ERROR_SUCCESS) {
         return false;
     }
     const auto bytes = static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t));
@@ -52,6 +51,33 @@ bool write_string_hkcu(const std::wstring& subkey,
                                        reinterpret_cast<const BYTE*>(value.c_str()), bytes);
     RegCloseKey(h);
     return rc == ERROR_SUCCESS;
+}
+
+bool delete_value(HKEY root, const std::wstring& subkey, const std::wstring& value_name) {
+    HKEY h = nullptr;
+    if (RegOpenKeyExW(root, subkey.c_str(), 0, KEY_SET_VALUE, &h) != ERROR_SUCCESS) {
+
+        return true;
+    }
+    const LSTATUS rc = RegDeleteValueW(h, value_name.c_str());
+    RegCloseKey(h);
+    return rc == ERROR_SUCCESS || rc == ERROR_FILE_NOT_FOUND;
+}
+
+bool delete_key_recursive(HKEY root, const std::wstring& subkey) {
+    const LSTATUS rc = RegDeleteTreeW(root, subkey.c_str());
+    return rc == ERROR_SUCCESS || rc == ERROR_FILE_NOT_FOUND;
+}
+
+std::optional<std::wstring> read_string_hkcu(const std::wstring& subkey,
+                                              const std::wstring& value_name) {
+    return read_string(HKEY_CURRENT_USER, subkey, value_name);
+}
+
+bool write_string_hkcu(const std::wstring& subkey,
+                       const std::wstring& value_name,
+                       const std::wstring& value) {
+    return write_string(HKEY_CURRENT_USER, subkey, value_name, value);
 }
 
 std::optional<std::uint32_t> read_dword_hkcu(const std::wstring& subkey,
@@ -99,7 +125,7 @@ std::optional<std::filesystem::path> read_steam_install_dir() {
     }
     if (auto se = read_string_hkcu(kSteamSubkey, L"SteamExe")) {
         std::filesystem::path p(*se);
-        // SteamExe is usually a path to steam.exe; take its parent.
+
         if (std::filesystem::is_regular_file(p, ec)) {
             auto parent = p.parent_path();
             if (std::filesystem::is_directory(parent, ec)) return parent;

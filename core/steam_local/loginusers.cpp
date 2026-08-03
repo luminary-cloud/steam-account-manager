@@ -22,7 +22,6 @@ namespace sam::steam_local {
 
 namespace {
 
-// Minimal text-VDF tokenizer: quoted strings, { } braces, and // line comments.
 struct Token {
     enum Kind { String, LBrace, RBrace, End };
     Kind kind = End;
@@ -42,7 +41,6 @@ public:
         if (c == '}') { ++pos_; return {Token::RBrace, {}}; }
         if (c == '"') return read_quoted();
 
-        // Unquoted token: read until whitespace or brace.
         const std::size_t start = pos_;
         while (pos_ < src_.size()) {
             char ch = src_[pos_];
@@ -85,7 +83,7 @@ private:
             }
             out.push_back(c);
         }
-        return {Token::String, std::move(out)};  // unterminated; best-effort
+        return {Token::String, std::move(out)};
     }
 
     std::string_view src_;
@@ -183,7 +181,6 @@ std::vector<LocalAccount> read_loginusers() {
     std::vector<LocalAccount> out;
     Tokenizer tk(text);
 
-    // Tolerate the "users" key appearing anywhere at top level.
     while (true) {
         Token t = tk.next();
         if (t.kind == Token::End) break;
@@ -252,7 +249,6 @@ VdfNode parse_vdf(std::string_view text) {
     return root;
 }
 
-// Only \ and " are escaped, matching what Valve writes.
 void write_escaped(std::string& out, std::string_view s) {
     out.push_back('"');
     for (char c : s) {
@@ -345,13 +341,13 @@ bool set_remembered_account(std::uint64_t steam_id_64) {
         if (!entry.is_block) continue;
         const bool is_target = entry.key == target_sid;
         if (is_target) {
-            // Steam writes "1"/"0" as quoted strings; match that exactly.
+
             upsert_scalar(entry, "RememberPassword", "1");
             upsert_scalar(entry, "AllowAutoLogin",  "1");
             upsert_scalar(entry, "MostRecent",      "1");
             matched = true;
         } else {
-            // Leave RememberPassword/AllowAutoLogin so the account stays saved.
+
             upsert_scalar(entry, "MostRecent", "0");
         }
     }
@@ -363,7 +359,7 @@ bool set_remembered_account(std::uint64_t steam_id_64) {
     }
 
     std::string serialized;
-    // loginusers.vdf has no wrapping root; write each root child at depth 0.
+
     for (const auto& c : root.children) serialize_node(c, serialized, 0);
 
     try {
@@ -392,7 +388,6 @@ bool ensure_loginusers_entry(std::uint64_t steam_id_64,
     }
     const auto path = *dir / "config" / "loginusers.vdf";
 
-    // parse_vdf("") yields an empty root when the file doesn't exist yet.
     VdfNode root = parse_vdf(read_file_to_string(path));
 
     VdfNode* users = find_child(root, "users");
@@ -424,10 +419,6 @@ bool ensure_loginusers_entry(std::uint64_t steam_id_64,
     upsert_scalar(*entry, "Timestamp",
                   std::to_string(static_cast<long long>(std::time(nullptr))));
 
-    // Only one account can be the most-recent; clear it on the rest. Leave their
-    // RememberPassword/AllowAutoLogin so they stay saved in Steam's switcher. Steam
-    // auto-logs into the account named by the AutoLoginUser registry value (set by
-    // the caller in token_launcher.cpp), not by these per-account flags.
     for (auto& child : users->children) {
         if (!child.is_block || child.key == target_sid) continue;
         upsert_scalar(child, "MostRecent", "0");
@@ -468,7 +459,6 @@ bool ensure_config_vdf_account(std::uint64_t steam_id_64,
     VdfNode* accounts = ensure_block_path(
         root, {"InstallConfigStore", "Software", "Valve", "Steam", "Accounts"});
 
-    // The account-name key is dynamic, so find-or-create it by hand.
     VdfNode* entry = find_child(*accounts, name);
     if (!entry) {
         VdfNode e;
@@ -480,8 +470,6 @@ bool ensure_config_vdf_account(std::uint64_t steam_id_64,
     entry->is_block = true;
     upsert_scalar(*entry, "SteamID", std::to_string(steam_id_64));
 
-    // Steam stamps a brand-new config.vdf with a 9-digit MTBF; add one only when
-    // we're creating the file so we never clobber Steam's own value on an update.
     if (fresh) {
         VdfNode* steam = ensure_block_path(
             root, {"InstallConfigStore", "Software", "Valve", "Steam"});
@@ -501,7 +489,7 @@ bool ensure_config_vdf_account(std::uint64_t steam_id_64,
             std::span<const std::uint8_t>(
                 reinterpret_cast<const std::uint8_t*>(serialized.data()),
                 serialized.size()),
-            /*restrict_acl=*/false);  // Steam's sandboxed helper must read this.
+            false);
     } catch (const std::exception& ex) {
         SAM_LOG_ERROR("ensure_config_vdf_account: write failed: {}", ex.what());
         return false;
@@ -519,7 +507,6 @@ bool disable_account_chooser() {
     }
     const auto path = *dir / "config" / "config.vdf";
 
-    // parse_vdf("") yields an empty root when the file doesn't exist yet.
     VdfNode root = parse_vdf(read_file_to_string(path));
 
     VdfNode* auth = ensure_block_path(
@@ -534,7 +521,7 @@ bool disable_account_chooser() {
             std::span<const std::uint8_t>(
                 reinterpret_cast<const std::uint8_t*>(serialized.data()),
                 serialized.size()),
-            /*restrict_acl=*/false);  // Steam's sandboxed helper must read this.
+            false);
     } catch (const std::exception& ex) {
         SAM_LOG_ERROR("disable_account_chooser: write failed: {}", ex.what());
         return false;

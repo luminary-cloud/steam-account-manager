@@ -27,18 +27,11 @@ namespace {
 constexpr const char* kAddPopupName    = "Add Steam Guard";
 constexpr const char* kRemovePopupName = "Remove Steam Guard";
 
-// Per-account reveal-until-unix for the R-code; masked by default.
 std::unordered_map<std::string, std::int64_t> g_rcode_reveal_until;
 
 std::int64_t unix_now() {
     return std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
-bool ensure_token_fresh(core::Account& a) {
-    if (!steam_login::needs_refresh(a, 300)) return true;
-    if (a.refresh_token.empty()) return false;
-    return steam_login::refresh_access_token(a);
 }
 
 void dispatch_add(app::AppState& app, AddSdaDialogState& s) {
@@ -169,9 +162,6 @@ void dispatch_finalize(app::AppState& app, AddSdaDialogState& s) {
                 return;
             }
 
-            // Finalize was ambiguous (e.g. status 2 "already finalized") or out
-            // of tries. Steam often activates anyway, so confirm against the live
-            // status before declaring failure.
             s.working_text = "Checking the authenticator with Steam...";
             s.step = AddSdaDialogState::Step::Working;
             dispatch_verify_active(app, s);
@@ -223,8 +213,6 @@ void dispatch_verify_active(app::AppState& app, AddSdaDialogState& s) {
                 return;
             }
 
-            // When the maFile has a token_gid it must match what Steam reports as
-            // live; otherwise fall back to "a Valve mobile authenticator is active".
             const bool has_gid = !mafile_token_gid.empty();
             const bool steam_has_authenticator =
                 status.authenticator_type == 1 || !status.token_gid.empty();
@@ -321,8 +309,7 @@ void request_add_sda(app::AppState& app, AddSdaDialogState& s, std::string accou
 
     auto* a = app.find_account(s.account_id);
     if (a && a->sda.has_value() && !a->sda->fully_enrolled) {
-        // Pick up a half-finished link rather than calling AddAuthenticator
-        // again, which would burn another revocation code.
+
         s.acknowledged_rcode = true;
         s.step = AddSdaDialogState::Step::AwaitActivation;
     } else {

@@ -22,7 +22,6 @@ namespace {
 
 using namespace std::chrono_literals;
 
-// Bumped on each start_async; a worker bails as soon as a newer run begins.
 std::atomic<std::uint64_t> g_gen{0};
 
 std::mutex g_msg_mutex;
@@ -33,11 +32,11 @@ void notify(std::string text, bool warning = false) {
     g_msgs.push_back({std::move(text), warning});
 }
 
-constexpr auto kLoginTimeout = 180s;   // wait for sign-in (Steam may update on launch)
+constexpr auto kLoginTimeout = 180s;
 constexpr auto kLoginPoll    = 500ms;
-constexpr auto kCs2Timeout   = 180s;   // wait for cs2.exe after the launch request
+constexpr auto kCs2Timeout   = 180s;
 constexpr auto kCs2Poll      = 1s;
-constexpr auto kInjectSettle = 2s;     // let cs2.exe initialize before injecting
+constexpr auto kInjectSettle = 2s;
 constexpr int  kLoaderAttempts = 3;
 
 void run_loader(std::uint32_t cs2_pid, const std::filesystem::path& loader) {
@@ -89,9 +88,6 @@ void worker_body(std::uint64_t gen, core::LoginMethod method,
 
     using clk = std::chrono::steady_clock;
 
-    // Steam sets ActiveUser to the account id (low 32 bits of the SteamID) once
-    // logged in, 0 while on the login screen. Match our account when known so
-    // another login can't trigger us.
     const auto target = static_cast<std::uint32_t>(steam_id_64 & 0xFFFFFFFFull);
     const auto login_deadline = clk::now() + kLoginTimeout;
     bool logged_in = false;
@@ -114,7 +110,6 @@ void worker_body(std::uint64_t gen, core::LoginMethod method,
         return;
     }
 
-    // Launch CS2 through the running client (queued by Steam if needed).
     if (!platform::process::launch(*steam_exe, L"-- steam://rungameid/730")) {
         SAM_LOG_ERROR("cs2_autostart: failed to launch steam://rungameid/730");
         notify("Failed to launch CS2.", true);
@@ -149,9 +144,6 @@ void worker_body(std::uint64_t gen, core::LoginMethod method,
             return;
         }
 
-        // cs2.exe is running but the game window may not exist yet. Poll until
-        // a visible window owned by cs2.exe appears, so the luminary loader
-        // doesn't race the game's initialisation.
         notify("Waiting for CS2 window...", false);
         constexpr auto kWindowTimeout = 120s;
         const auto win_deadline = clk::now() + kWindowTimeout;

@@ -19,9 +19,6 @@ constexpr int kEResultOK = 1;
 constexpr std::uint32_t kProtocolVersion = 65580;
 constexpr int kOsTypeWindows = 16;
 
-// A non-zero per-session logon id. Steam dedupes client sessions by (public IP,
-// logon id); without a distinct value our logon collides with the running Steam
-// client and gets kicked with LoggedInElsewhere (EResult 6).
 std::uint32_t new_logon_id() {
     std::random_device rd;
     return static_cast<std::uint32_t>(rd()) | 1u;
@@ -104,6 +101,21 @@ bool CmSession::send(std::uint32_t emsg, const google::protobuf::MessageLite& bo
 
 bool CmSession::send_raw(std::uint32_t emsg, const std::string& body) {
     ::CMsgProtoBufHeader header;
+    return send_with_header(emsg, header, body);
+}
+
+bool CmSession::send_service_method(std::string_view target_job_name,
+                                    const google::protobuf::MessageLite& body,
+                                    std::uint64_t jobid) {
+    ::CMsgProtoBufHeader header;
+    header.set_target_job_name(std::string(target_job_name));
+    header.set_jobid_source(jobid);
+    return send_with_header(EMsg::ServiceMethodCallFromClient, header,
+                            body.SerializeAsString());
+}
+
+bool CmSession::send_with_header(std::uint32_t emsg, ::CMsgProtoBufHeader& header,
+                                 const std::string& body) {
     if (steam_id_ != 0) header.set_steamid(steam_id_);
     header.set_client_sessionid(session_id_);
     const auto frame = encode(emsg, header, body);

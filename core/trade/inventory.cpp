@@ -49,10 +49,7 @@ InventoryFetchResult fetch_inventory(core::Account& a, std::uint64_t owner_steam
                                      int count, std::uint64_t start_assetid) {
     http::ScopedProxy proxy_guard(std::string(a.proxy.data(), a.proxy.size()));
     InventoryFetchResult out;
-    if (a.is_nfa) {
-        out.error = "trades require a full login";
-        return out;
-    }
+
     if (!steam_login::ensure_web_session(a)) {
         out.error = "session expired - refresh or re-login this account";
         out.needs_relogin = true;
@@ -97,7 +94,7 @@ InventoryFetchResult fetch_inventory(core::Account& a, std::uint64_t owner_steam
         const json& assets = field(j, "assets");
         const json& descriptions = field(j, "descriptions");
         if (!assets.is_array() || assets.empty() || !descriptions.is_array()) {
-            // An empty inventory still returns success; a private/blocked one does not.
+
             out.ok = truthy(field(j, "success")) ||
                      field(j, "total_inventory_count").is_number();
             if (!out.ok) out.error = "inventory unavailable (private?)";

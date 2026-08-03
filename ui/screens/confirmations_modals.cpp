@@ -354,8 +354,19 @@ CardAction draw_confirmation_card(const sda::Confirmation& c, float width,
     }
     draw_icon(c, kIconSize);
     ImGui::SameLine(0.0F, 12.0F);
+
+    constexpr float kPillRightPad = 6.0F;
+    constexpr float kPillTextGap  = 8.0F;
+    const float head_x = ImGui::GetCursorPosX();
+    const float head_max_w = ImGui::GetWindowSize().x - kPillWidth - kPillRightPad -
+                             kPillTextGap - head_x;
+
     ImGui::BeginGroup();
-    ImGui::TextUnformatted(c.headline.c_str());
+    const std::string headline = truncate_to_width(c.headline, head_max_w);
+    ImGui::TextUnformatted(headline.c_str());
+    if (headline != c.headline && ImGui::IsItemHovered()) {
+        set_tooltip("%s", c.headline.c_str());
+    }
     const std::string rel = format_relative(c.creation_unix);
     if (!rel.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
@@ -366,8 +377,7 @@ CardAction draw_confirmation_card(const sda::Confirmation& c, float width,
 
     {
         const auto style = style_for(c.type);
-        const float right_pad = 6.0F;
-        ImGui::SetCursorPos(ImVec2(ImGui::GetWindowSize().x - kPillWidth - right_pad,
+        ImGui::SetCursorPos(ImVec2(ImGui::GetWindowSize().x - kPillWidth - kPillRightPad,
                                    row_top + 2.0F));
         draw_pill(style.label, style.fill, true, kPillWidth);
     }
@@ -376,9 +386,30 @@ CardAction draw_confirmation_card(const sda::Confirmation& c, float width,
                                row_top + kIconSize + ImGui::GetStyle().ItemSpacing.y));
 
     if (!c.summary.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
-        ImGui::TextWrapped("%s", c.summary.c_str());
-        ImGui::PopStyleColor();
+        const float summary_h = ImGui::GetWindowSize().y - kButtonRowH -
+                                ImGui::GetCursorPosY() - ImGui::GetStyle().ItemSpacing.y;
+        if (summary_h > 0.0F) {
+            const ImVec2 p0 = ImGui::GetCursorScreenPos();
+            const float wrap_w = ImGui::GetContentRegionAvail().x;
+
+            ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0F);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0F, 0.0F));
+            ImGui::BeginChild("##summary", ImVec2(0.0F, summary_h), ImGuiChildFlags_None,
+                              ImGuiWindowFlags_NoScrollbar |
+                                  ImGuiWindowFlags_NoScrollWithMouse);
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
+            ImGui::TextWrapped("%s", c.summary.c_str());
+            ImGui::PopStyleColor();
+            ImGui::EndChild();
+            ImGui::PopStyleVar(2);
+
+            const bool clipped =
+                ImGui::CalcTextSize(c.summary.c_str(), nullptr, false, wrap_w).y > summary_h;
+            if (clipped &&
+                ImGui::IsMouseHoveringRect(p0, ImVec2(p0.x + wrap_w, p0.y + summary_h))) {
+                set_tooltip("%s", c.summary.c_str());
+            }
+        }
     }
 
     const float spacing   = ImGui::GetStyle().ItemSpacing.x;

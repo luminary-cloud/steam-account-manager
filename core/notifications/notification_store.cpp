@@ -85,7 +85,7 @@ void NotificationStore::save_locked() const {
 
 void NotificationStore::push(BanEvent event) {
     if (events_.size() >= kMaxEvents) {
-        // Prefer dropping acked events first.
+
         auto it = events_.begin();
         for (; it != events_.end(); ++it) {
             if (it->ack_unix > 0) break;

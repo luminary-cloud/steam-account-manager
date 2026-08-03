@@ -28,7 +28,7 @@ void worker_loop() {
         try {
             task();
         } catch (...) {
-            // Workers must never propagate exceptions out; swallow and move on.
+
         }
     }
 }

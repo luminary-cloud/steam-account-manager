@@ -12,43 +12,47 @@ struct LoginPrefResult {
     std::filesystem::path target;
 };
 
-// Sets news > NotifyAvailableGames = "0" in the launched account's localconfig.vdf
-// (<Steam>/userdata/<accountid>/config/localconfig.vdf), creating the news block if
-// absent. Turns off Steam's "Notify me about additions or changes to my games, new
-// releases, and upcoming releases" notification. MUST run while Steam is shut down for
-// that user, or Steam overwrites the file from memory on exit. The existing file is
-// backed up with a UTC timestamp suffix first. On a first login the file doesn't exist
-// yet, so it (and its parent dirs) are created with just this setting. ok=false only if
-// Steam isn't installed or the account has no resolved SteamID.
-LoginPrefResult set_news_notify_off(std::uint64_t steam_id_64);
+// The per-account settings that live in localconfig.vdf. Applied together in one
+// read-modify-write so a launch rewrites (and backs up) the file once instead of per option.
+struct LocalConfigPrefs {
+    // news > NotifyAvailableGames = "0": Steam's "Notify me about additions or changes to my
+    // games, new releases, and upcoming releases" notification.
+    bool news_notify_off = false;
+    // friends > PersonaStateDesired = "7" (Invisible), with SignIntoFriends = "1" and the
+    // matching WebStorage > FriendStoreLocalPrefs_<accountid> blob the friends UI reads back.
+    // Writing only the friends block leaves the two disagreeing, so both go together.
+    bool persona_invisible = false;
+    // streaming_v2 > EnableStreaming = "0": Steam's "Enable Remote Play". Steam only writes
+    // this block once the account has run at least once, so it is created when missing.
+    bool remote_play_off = false;
 
-// Sets CloudEnabled = "0" in the launched account's sharedconfig.vdf
-// (<Steam>/userdata/<accountid>/7/remote/sharedconfig.vdf), creating the
-// UserRoamingConfigStore > Software > Valve > Steam path if absent. Turns off Steam Cloud
-// for the account. MUST run while Steam is shut down. Existing files are backed up first;
-// on a first login the file is created (with parent dirs). sharedconfig.vdf is itself a
-// cloud-synced file (app 7), so to make the change stick for an account that already has
-// cloud data we deliberately leave 7/remotecache.vdf UNTOUCHED: that makes Steam treat the
-// edit as an ordinary pending local change and upload it (disabling Cloud server-side) on
-// the next sync, rather than re-downloading the server's "cloud on" copy. The upload lands
-// on the first-login restart's relaunch. ok=false only if Steam isn't installed or the
-// account has no resolved SteamID.
+    bool any() const { return news_notify_off || persona_invisible || remote_play_off; }
+};
+
+// Applies every set option to userdata/<accountid>/config/localconfig.vdf, creating missing
+// blocks. MUST run while Steam is shut down, or Steam overwrites the file from memory on exit.
+// Existing files are backed up first; one that won't parse is left alone. ok=false only if
+// Steam isn't installed, the SteamID is unresolved, or the file couldn't be read/written.
+LoginPrefResult apply_localconfig_prefs(std::uint64_t steam_id_64,
+                                        const LocalConfigPrefs& prefs);
+
+// Turns Steam Cloud off for the account via userdata/<accountid>/7/remote/sharedconfig.vdf.
+// MUST run while Steam is shut down. Existing files are backed up first.
 //
-// When amending an existing sharedconfig.vdf the file is then locked read-only: Steam
-// rewrites it from memory on shutdown and would otherwise flip CloudEnabled back to 1, so
-// the read-only attribute makes that rewrite fail and the 0 sticks. A read-only file is
-// still readable, so sign-in is unaffected, and re-running this clears the lock first. A
-// brand-new (first-login) file is left writable so Steam's own setup isn't blocked.
+// sharedconfig.vdf is itself cloud-synced (app 7), so 7/remotecache.vdf is deliberately left
+// untouched: Steam then treats the edit as a pending local change and uploads it on the next
+// sync (during the first-login restart) instead of re-downloading the server's "cloud on"
+// copy. An amended file is also locked read-only, because Steam's shutdown rewrite would
+// otherwise flip CloudEnabled back to 1. A first-login file stays writable so Steam's own
+// setup isn't blocked.
 LoginPrefResult set_cloud_enabled_off(std::uint64_t steam_id_64);
 
-// Whether the per-user config files backing the news / cloud settings already exist on
-// disk for the account. An absent file means the upcoming sign-in is a first login that
-// Steam will initialize from scratch, clobbering anything pre-written, so the setting has
-// to be (re)applied after that first login instead. Returns both-false if the SteamID is
-// unresolved or Steam isn't installed, in which case the caller falls back to the normal
-// pre-write (no deferral).
+// Whether the config files backing the settings above already exist. An absent file means the
+// next sign-in is a first login, which Steam initializes from scratch and would clobber
+// anything pre-written, so the caller must defer the setting until after it. Both-false if the
+// SteamID is unresolved or Steam isn't installed, in which case the caller pre-writes normally.
 struct LoginConfigPresence {
-    bool localconfig_present = false;   // backs set_news_notify_off
+    bool localconfig_present = false;   // backs apply_localconfig_prefs
     bool sharedconfig_present = false;  // backs set_cloud_enabled_off
     bool userdata_present = false;      // userdata/<accountid> dir exists: Steam set the
                                         // account up locally (used to tell a first-login

@@ -28,20 +28,14 @@ namespace {
 
 constexpr char kMobileClient[] = "android";
 constexpr char kMobileClientVersion[] = "777777 3.6.4";
-// mobileconf write endpoints (ajaxop, multiajaxop) silently return
-// {"success":false} for a browser-looking UA even with valid cookies/JWT; GCPD
-// has no such check. Matches geel9/SteamAuth MOBILE_APP_USER_AGENT verbatim.
+
 constexpr char kUserAgent[] =
     "Dalvik/2.1.0 (Linux; U; Android 9; Valve Steam App Version/3)";
 
-// Built from the access_token, matching SDA's GetSteamLoginSecure. The
-// /login/settoken cookie's JWT is community-audience and /mobileconf/* silently
-// rejects it; GCPD doesn't enforce mobile audience so it reads settoken instead.
 std::string steam_login_secure_value(const core::Account& a) {
     return steam_login::make_steam_login_secure(a.steam_id_64, a.access_token);
 }
 
-// Cookie value is "<steamid>%7C%7C<jwt>"; return the JWT segment.
 std::string jwt_from_cookie(const std::string& cookie_value) {
     const auto sep = cookie_value.find("%7C%7C");
     if (sep == std::string::npos) return {};
@@ -49,8 +43,7 @@ std::string jwt_from_cookie(const std::string& cookie_value) {
 }
 
 ConfirmationType detect_type(int t) {
-    // Steam's enum: 2=Trade, 3=MarketListing, 6=AccountRecovery,
-    // 7=PhoneNumberChange, 8=FeatureOptOut.
+
     switch (t) {
         case 2: return ConfirmationType::Trade;
         case 3: return ConfirmationType::MarketListing;
@@ -87,9 +80,6 @@ std::string make_confirmation_hash(const std::string& identity_secret_b64,
     return crypto::base64_encode(std::span<const std::uint8_t>{mac.data(), mac.size()});
 }
 
-// Mirrors SteamAuth's GenerateConfirmationQueryParams: fixed key order, only the
-// base64 hash URL-encoded. mobileconf compares some values literally, so
-// encoding the colon in device_id or reordering keys breaks the request.
 std::string base_query(const core::Account& a, std::string_view tag) {
     if (!a.sda.has_value()) return {};
     const auto& sda = *a.sda;
@@ -109,8 +99,7 @@ std::string base_query(const core::Account& a, std::string_view tag) {
 }
 
 void apply_cookies(http::Request& req, const core::Account& a) {
-    // SDA's GetCookies insertion order (steamLoginSecure first); the header
-    // builder preserves insertion order, so this is the wire order.
+
     req.cookies.push_back({"steamLoginSecure",
                             steam_login_secure_value(a),
                             "steamcommunity.com", "/", true, true});
@@ -129,8 +118,7 @@ http::Request build_request(http::Method method,
     req.method = method;
     req.url = url;
     req.user_agent = kUserAgent;
-    // Mirror SDA: only User-Agent. Adding X-Requested-With or Accept trips a
-    // silent rejection on mobileconf write endpoints.
+
     apply_cookies(req, a);
     return req;
 }
@@ -244,8 +232,7 @@ bool respond_to_confirmation(const core::Account& a,
         const auto j = json::parse(resp.body);
         const bool success = j.value("success", false);
         if (!success) {
-            // success=false usually arrives with no message; dump everything
-            // for debuggability. mobileconf requires "mobile" in the token aud.
+
             std::string set_cookies;
             for (const auto& sc : resp.set_cookies) {
                 if (!set_cookies.empty()) set_cookies += " | ";
@@ -327,8 +314,6 @@ bool respond_bulk_chunk(const core::Account& a,
         return false;
     }
 
-    // multiajaxop expects repeated `cid[]`/`ck[]`; same string layout as the
-    // GET URL with op out front.
     std::string body = "op=" + std::string(op) + "&" + query;
     for (std::size_t i = 0; i < n; ++i) {
         body += "&cid[]=" + items[i].id;

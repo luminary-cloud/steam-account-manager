@@ -68,10 +68,6 @@ void ToastStack::render(const std::function<void(const ToastItem&)>& on_click) {
     const float origin_x = vp->WorkPos.x + vp->WorkSize.x - kToastWidth - kToastMargin;
     float origin_y = vp->WorkPos.y + vp->WorkSize.y - kToastMargin;
 
-    // Budget the text column to wrap short of the close ("x") button. The same
-    // wrap_w feeds both the height estimate (CalcTextSize) and the render-time
-    // wrap; a mismatch would wrap an extra line that the fixed-height,
-    // no-scrollbar window then clips.
     const float close_w =
         ImGui::CalcTextSize("x").x + ImGui::GetStyle().FramePadding.x * 2.0F;
     const float wrap_w = kToastWidth - kToastPad * 2.0F - close_w - 6.0F;
@@ -97,8 +93,7 @@ void ToastStack::render(const std::function<void(const ToastItem&)>& on_click) {
             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing |
             ImGuiWindowFlags_NoNav;
         if (ImGui::Begin(win_name.c_str(), nullptr, flags)) {
-            // PushTextWrapPos takes a window-local X; text starts at kToastPad,
-            // so kToastPad + wrap_w gives an effective wrap width of wrap_w.
+
             ImGui::PushTextWrapPos(kToastPad + wrap_w);
             ImGui::TextUnformatted(it->message.c_str());
             ImGui::PopTextWrapPos();

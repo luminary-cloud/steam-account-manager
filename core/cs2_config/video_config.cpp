@@ -1,5 +1,6 @@
 #include "core/cs2_config/video_config.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
@@ -25,7 +26,6 @@ std::wstring timestamp_suffix() {
     return ss.str();
 }
 
-// `child` is `parent` or lives underneath it. Both should be canonical.
 bool is_subpath(const fs::path& child, const fs::path& parent) {
     auto c = child.begin();
     auto p = parent.begin();
@@ -35,10 +35,6 @@ bool is_subpath(const fs::path& child, const fs::path& parent) {
     return true;
 }
 
-// Same path, or one contains the other. Stops a recursive copy from feeding on its
-// own freshly-written files (or an import from deleting its own source via
-// remove_all). Returns false if either path can't be canonicalized, letting the copy
-// proceed rather than blocking a valid operation.
 bool paths_overlap(const fs::path& a, const fs::path& b) {
     std::error_code ea, eb;
     const fs::path ca = fs::weakly_canonical(a, ea);
@@ -54,10 +50,6 @@ struct CopyStats {
     std::string first_error;
 };
 
-// Recursively copies the contents of `src` into `dst` (which must already exist),
-// overwriting existing files. Symlinks/junctions are skipped so the copy can't escape
-// the tree. Per-entry failures are counted and skipped so one locked or denied file
-// does not abort the whole copy.
 void copy_tree(const fs::path& src, const fs::path& dst, CopyStats& st) {
     std::error_code ec;
     fs::recursive_directory_iterator it(
@@ -113,7 +105,52 @@ void copy_tree(const fs::path& src, const fs::path& dst, CopyStats& st) {
                 ++st.files_copied;
             }
         }
-        // Other entry types (block/char/fifo/socket) are ignored.
+
+    }
+}
+
+bool is_appid_folder(const std::wstring& name) {
+    if (name.empty()) return false;
+    return std::all_of(name.begin(), name.end(),
+                       [](wchar_t c) { return c >= L'0' && c <= L'9'; });
+}
+
+void copy_appid_folders(const fs::path& src, const fs::path& dst, CopyStats& st,
+                        std::vector<std::wstring>& appids_out) {
+    std::error_code ec;
+    fs::directory_iterator it(src, fs::directory_options::skip_permission_denied, ec);
+    const fs::directory_iterator end;
+    if (ec) {
+        ++st.errors;
+        if (st.first_error.empty()) st.first_error = ec.message();
+        return;
+    }
+
+    for (; it != end; it.increment(ec)) {
+        if (ec) {
+            ++st.errors;
+            if (st.first_error.empty()) st.first_error = ec.message();
+            break;
+        }
+
+        std::error_code item_ec;
+        if (it->is_symlink(item_ec) || !it->is_directory(item_ec)) continue;
+
+        const std::wstring name = it->path().filename().wstring();
+        if (!is_appid_folder(name)) continue;
+
+        const fs::path target = dst / name;
+        fs::create_directories(target, item_ec);
+        if (item_ec) {
+            ++st.errors;
+            if (st.first_error.empty()) st.first_error = item_ec.message();
+            continue;
+        }
+        ++st.dirs_made;
+
+        const int before = st.files_copied;
+        copy_tree(it->path(), target, st);
+        if (st.files_copied > before) appids_out.push_back(name);
     }
 }
 
@@ -140,7 +177,6 @@ DeployResult deploy_video_config(std::uint64_t steam_id_64,
         return out;
     }
 
-    // userdata folders are named by the SteamID3 account number (lower 32 bits).
     const auto account_id = static_cast<std::uint32_t>(steam_id_64 & 0xFFFFFFFFull);
     fs::path target = *steam / L"userdata" / std::to_wstring(account_id) /
                       L"730" / L"local" / L"cfg" / L"cs2_video.txt";
@@ -196,7 +232,6 @@ DeployResult deploy_730_folder(std::uint64_t steam_id_64,
         return out;
     }
 
-    // userdata folders are named by the SteamID3 account number (lower 32 bits).
     const auto account_id = static_cast<std::uint32_t>(steam_id_64 & 0xFFFFFFFFull);
     fs::path dst_root = *steam / L"userdata" / std::to_wstring(account_id) / L"730";
     out.target = dst_root;
@@ -246,7 +281,7 @@ DeployResult import_730_template(const fs::path& src, const fs::path& dst) {
         return out;
     }
 
-    fs::remove_all(dst, ec);  // clear any prior snapshot
+    fs::remove_all(dst, ec);
     ec.clear();
     fs::create_directories(dst, ec);
     if (ec) {
@@ -267,6 +302,105 @@ DeployResult import_730_template(const fs::path& src, const fs::path& dst) {
     out.message = "Imported " + std::to_string(st.files_copied) + " files";
     SAM_LOG_INFO("cs2 730 template: imported {} files, {} dirs, {} errors",
                  st.files_copied, st.dirs_made, st.errors);
+    return out;
+}
+
+DeployResult import_userdata_template(const fs::path& src, const fs::path& dst) {
+    DeployResult out;
+    out.target = dst;
+
+    std::error_code ec;
+    if (!fs::is_directory(src, ec)) {
+        out.message = "not a folder";
+        return out;
+    }
+
+    if (paths_overlap(src, dst)) {
+        out.message = "source folder overlaps the snapshot location";
+        return out;
+    }
+
+    fs::remove_all(dst, ec);
+    ec.clear();
+    fs::create_directories(dst, ec);
+    if (ec) {
+        out.message = "could not create snapshot folder: " + ec.message();
+        return out;
+    }
+
+    std::vector<std::wstring> appids;
+    CopyStats st;
+    copy_appid_folders(src, dst, st, appids);
+
+    if (st.files_copied == 0) {
+        out.message = st.errors > 0
+            ? ("import failed: " + st.first_error)
+            : "no game folders found in that userdata folder";
+        return out;
+    }
+
+    out.ok = true;
+    out.message = "Imported " + std::to_string(st.files_copied) + " files across " +
+                  std::to_string(appids.size()) + " games";
+    SAM_LOG_INFO("userdata template: imported {} files across {} games, {} errors",
+                 st.files_copied, appids.size(), st.errors);
+    return out;
+}
+
+DeployResult deploy_userdata_folder(std::uint64_t steam_id_64,
+                                    const fs::path& template_dir) {
+    DeployResult out;
+
+    if (steam_id_64 == 0) {
+        out.message = "account has no resolved SteamID";
+        return out;
+    }
+
+    std::error_code ec;
+    if (!fs::is_directory(template_dir, ec)) {
+        out.message = "no userdata folder selected";
+        return out;
+    }
+
+    auto steam = platform::registry::read_steam_install_dir();
+    if (!steam) {
+        out.message = "Steam install not found";
+        return out;
+    }
+
+    const auto account_id = static_cast<std::uint32_t>(steam_id_64 & 0xFFFFFFFFull);
+    fs::path dst_root = *steam / L"userdata" / std::to_wstring(account_id);
+    out.target = dst_root;
+
+    if (paths_overlap(template_dir, dst_root)) {
+        out.message = "source folder overlaps the destination";
+        return out;
+    }
+
+    fs::create_directories(dst_root, ec);
+    if (ec) {
+        out.message = "could not create userdata folder: " + ec.message();
+        return out;
+    }
+
+    std::vector<std::wstring> appids;
+    CopyStats st;
+    copy_appid_folders(template_dir, dst_root, st, appids);
+
+    if (st.files_copied == 0) {
+        out.message = st.errors > 0 ? ("userdata copy failed: " + st.first_error)
+                                    : "no game folders to copy";
+        return out;
+    }
+
+    out.ok = true;
+    out.message = "Game folders applied (" + std::to_string(st.files_copied) +
+                  " files across " + std::to_string(appids.size()) + " games)";
+    if (st.errors > 0) {
+        out.message += " (" + std::to_string(st.errors) + " skipped)";
+    }
+    SAM_LOG_INFO("userdata folders: copied {} files, {} games, {} errors -> userdata/{}",
+                 st.files_copied, appids.size(), st.errors, account_id);
     return out;
 }
 

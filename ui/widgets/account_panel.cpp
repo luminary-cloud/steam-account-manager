@@ -37,8 +37,6 @@ constexpr float kAvatarSize = 56.0F;
 constexpr float kFooterReserved = 60.0F;
 constexpr float kFooterGap = 8.0F;
 
-// ByMykel medal icons are bare economy-image URLs that resolve to a small default size.
-// Request a fixed larger size (the same trick trade_offers uses) so the grid is crisp.
 std::string medal_image_url(const std::string& url) {
     if (url.empty() || url.find("/economy/image/") == std::string::npos) return url;
     return url + "/256fx256f";
@@ -62,28 +60,6 @@ std::string format_with_commas(int value) {
         out.append(s, i, 3);
     }
     return out;
-}
-
-std::string format_date(std::int64_t unix_seconds) {
-    if (unix_seconds <= 0) return {};
-    const auto t = static_cast<std::time_t>(unix_seconds);
-    std::tm tm{};
-    gmtime_s(&tm, &t);
-    char buf[16];
-    std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d",
-                  tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
-    return buf;
-}
-
-std::string format_relative(std::int64_t unix_seconds) {
-    if (unix_seconds <= 0) return "never";
-    const auto delta = now_seconds() - unix_seconds;
-    if (delta < 0)        return "in the future";
-    if (delta < 60)       return std::to_string(delta) + "s ago";
-    if (delta < 3600)     return std::to_string(delta / 60) + "m ago";
-    if (delta < 86400)    return std::to_string(delta / 3600) + "h ago";
-    if (delta < 86400*30) return std::to_string(delta / 86400) + "d ago";
-    return format_date(unix_seconds);
 }
 
 }  // namespace
@@ -149,8 +125,6 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
                               + (draw_premier && draw_wingman ? kRankGap : 0.0F)
                               + wingman_w;
 
-    // Profile medals/coins (resolved name + icon, cached in the vault) shown as a centered
-    // grid under the ranks. NFA accounts never carry GC medals.
     constexpr float kMedalSize = 36.0F;
     constexpr float kMedalGapNormal = 4.0F;
     constexpr float kMedalGapCompact = 2.0F;
@@ -280,10 +254,6 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         if (start < chips.size()) chip_rows.emplace_back(start, chips.size());
     }
 
-    // Report the OLDEST applicable freshness timestamp: the bulk Web API call
-    // updates web/bans in seconds but the per-account GCPD scrape (a.cs2) is
-    // staggered and can lag minutes, so folding cs2 in keeps "Xh ago" honest.
-    // Skipped when GCPD isn't applicable so the line doesn't stick at "never".
     std::int64_t last_refresh = 0;
     {
         auto fold = [&](std::int64_t t) {
@@ -309,8 +279,6 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     }
     const bool has_meta_line = !meta_line.empty();
 
-    // The reserved Cached tag is shown as a corner pill, not a body chip, so it
-    // doesn't count toward the body tag row.
     bool has_visible_tags = false;
     for (const auto& tid : a.tag_ids) {
         if (tid != core::store::kCachedTagId) { has_visible_tags = true; break; }
@@ -365,8 +333,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     float middle_h = 0.0F;
     if (draw_premier || draw_wingman) middle_h += rank_block_h;
     if (show_medals) middle_h += 2.0F * sp_y + medals_block_h;
-    // Each section's leading ImGui::Spacing() is an empty item that adds two
-    // item-spacings of gap, not one; use 2*sp_y so this estimate matches render.
+
     if (!chip_rows.empty()) {
         if (middle_h > 0) middle_h += 2.0F * sp_y;
         middle_h += static_cast<float>(chip_rows.size()) * chip_h;
@@ -391,8 +358,6 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     const ImVec2 header_origin_screen = ImGui::GetCursorScreenPos();
     const float  pane_inner_w         = ImGui::GetContentRegionAvail().x;
 
-    // Identity lines read better tightly stacked; the 12px panel spacing is for
-    // the stat sections lower down.
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                         ImVec2(ImGui::GetStyle().ItemSpacing.x, 3.0F));
     draw_avatar(a, kAvatarSize);
@@ -408,9 +373,13 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         }
         if (tf) ImGui::PopFont();
     }
-    if (a.login_method != core::LoginMethod::Normal) {
-        ImGui::SameLine();
-        draw_login_method_chip(a.login_method);
+    {
+
+        const auto m = core::effective_login_method(a.login_method, state.settings.safe_mode);
+        if (m != core::LoginMethod::Normal) {
+            ImGui::SameLine();
+            draw_login_method_chip(m);
+        }
     }
     if (!a.web.persona_name.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
@@ -448,8 +417,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         const ImVec2 after_header = ImGui::GetCursorScreenPos();
         const float trust_x = header_origin_screen.x + pane_inner_w - 16.0F;
         const float trust_y = header_origin_screen.y + 4.0F;
-        // A revoked token overrides the NFA/Cached pill; else Cached imports show a
-        // "Cached" pill in place of the NFA pill.
+
         if (a.is_nfa && a.nfa_status == core::NfaTokenStatus::Revoked)
             draw_revoked_pill(trust_x - 6.0F, trust_y + 7.0F);
         else if (core::store::is_cached_account(a))
@@ -469,9 +437,6 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
 
     if (any_ban_pill) draw_ban_pills(a.bans, opts);
 
-    // Center the rank + stat block between the ban pills and the panel-body
-    // bottom; if it's taller than the remaining space, skip the spacer and let
-    // the child window scroll.
     {
         const float y_cursor  = ImGui::GetCursorPosY();
         const float child_h   = ImGui::GetWindowHeight();
@@ -617,7 +582,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
         ImGui::Spacing();
         bool wrapped = false;
         for (const auto& tag_id : a.tag_ids) {
-            if (tag_id == core::store::kCachedTagId) continue;  // shown as a corner pill
+            if (tag_id == core::store::kCachedTagId) continue;
             for (const auto& t : state.vault.tags) {
                 if (t.id == tag_id) {
                     if (wrapped) ImGui::SameLine();
@@ -679,7 +644,7 @@ CardAction draw_account_panel(app::AppState& state, core::Account& a) {
     const int n_buttons = a.sda.has_value() ? 5 : 4;
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     const float content_w = ImGui::GetContentRegionAvail().x;
-    // Reserve the Login button's attached caret so the rest stay equal-width.
+
     const float btn_w =
         (content_w - kLoginCaretWidth - spacing * static_cast<float>(n_buttons - 1)) /
         static_cast<float>(n_buttons);

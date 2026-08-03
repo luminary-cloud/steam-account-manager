@@ -41,7 +41,6 @@ const json& field(const json& j, const char* key) {
     return it != j.end() ? *it : kNull;
 }
 
-// Steam serializes ids as strings but states/timestamps as numbers; accept both.
 std::uint64_t to_u64(const json& j) {
     if (j.is_string()) {
         try { return std::stoull(j.get<std::string>()); } catch (...) { return 0; }
@@ -147,8 +146,7 @@ TradeOffersResult get_trade_offers(core::Account& a, bool active_only) {
         {"get_descriptions", "1"},
         {"language", "english"},
         {"active_only", active_only ? "1" : "0"},
-        // Far-future cutoff so active_only=1 returns only currently-active offers,
-        // not every offer that has ever changed state (which cutoff 0 would).
+
         {"time_historical_cutoff", "4000000000"},
     };
 

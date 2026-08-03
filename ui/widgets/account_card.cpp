@@ -31,7 +31,7 @@ namespace {
 
 constexpr float kCardHeight = kAccountCardHeight;
 constexpr float kButtonRowH = 40.0F;
-constexpr float kButtonRowReserve = 50.0F;   // button height + gap above
+constexpr float kButtonRowReserve = 50.0F;
 
 std::string format_with_commas(int value) {
     char raw[16];
@@ -53,7 +53,6 @@ std::string format_with_commas(int value) {
     return out;
 }
 
-// Grouped decimal, e.g. 612808 -> "6,128.08". No currency symbol.
 std::string format_cents(std::int64_t cents) {
     char buf[24];
     std::snprintf(buf, sizeof(buf), "%s.%02d",
@@ -62,15 +61,12 @@ std::string format_cents(std::int64_t cents) {
     return buf;
 }
 
-// cents are USD.
 ImVec4 funds_color(std::int64_t cents) {
-    if (cents >= 35000) return theme::success();   // >= $350.00
-    if (cents >= 25000) return theme::warning();   // $250.00 - $349.99
-    return theme::danger();                        // < $250.00
+    if (cents >= 35000) return theme::success();
+    if (cents >= 25000) return theme::warning();
+    return theme::danger();
 }
 
-// Flatten newlines and clip with an ellipsis so a long or multi-line note
-// can't push the rest of the card's layout down.
 std::string fit_notes_single_line(const std::string& notes, float max_w) {
     if (max_w <= 0.0F) return {};
     std::string flat;
@@ -130,12 +126,16 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
     if (!a.web.persona_name.empty()) {
         ImGui::TextUnformatted(a.web.persona_name.c_str());
     } else {
-        // No persona: the heading itself is the login.
+
         draw_login_text(state, a);
     }
-    if (a.login_method != core::LoginMethod::Normal) {
-        ImGui::SameLine();
-        draw_login_method_chip(a.login_method);
+    {
+
+        const auto m = core::effective_login_method(a.login_method, state.settings.safe_mode);
+        if (m != core::LoginMethod::Normal) {
+            ImGui::SameLine();
+            draw_login_method_chip(m);
+        }
     }
     ImGui::PushStyleColor(ImGuiCol_Text, theme::dim_text());
     draw_login_text(state, a);
@@ -166,8 +166,7 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         const float right_pad = 16.0F;
         const float badge_w = 14.0F;
         ImGui::SetCursorPosX(ImGui::GetWindowSize().x - badge_w - right_pad);
-        // A revoked token overrides the NFA/Cached pill; else Cached imports show a
-        // "Cached" pill in place of the NFA pill.
+
         if (a.is_nfa && a.nfa_status == core::NfaTokenStatus::Revoked) {
             const ImVec2 sp = ImGui::GetCursorScreenPos();
             draw_revoked_pill(sp.x - 6.0F, sp.y + 7.0F);
@@ -202,15 +201,13 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
 
     ImGui::Spacing();
 
-    // Stats row laid out as a wrapping flow so a full row spills onto a second
-    // line instead of running off the fixed-width card.
     {
         struct StatSeg {
             const char* label = "";
-            std::string value;          // empty => label-only (e.g. Prime)
-            bool prime = false;         // label in success colour, no value
-            bool value_colored = false; // value drawn with value_color
-            bool value_dim = false;     // value drawn dim (TextDisabled)
+            std::string value;
+            bool prime = false;
+            bool value_colored = false;
+            bool value_dim = false;
             ImVec4 value_color{};
         };
         StatSeg segs[6];
@@ -244,8 +241,7 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
                                     .value_colored = true,
                                     .value_color = funds_color(a.funds.total_spend_usd_cents)};
             } else {
-                // Thresholds are USD-specific; show the raw figure + code with
-                // no threshold color so non-USD isn't mislabeled as dollars.
+
                 segs[n++] = StatSeg{.label = "Spent",
                                     .value = format_cents(a.funds.total_spend_usd_cents) +
                                              " " + a.funds.currency,
@@ -282,8 +278,7 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         };
 
         if (n > 0) {
-            // Wrap when the next segment (plus its separator) would run past the
-            // card's inner right edge.
+
             const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
             const float sp = ImGui::GetStyle().ItemSpacing.x;
             const float sep_w = sp + ImGui::CalcTextSize("·").x + sp;
@@ -305,7 +300,7 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
     if (!a.tag_ids.empty()) {
         bool any = false;
         for (const auto& tag_id : a.tag_ids) {
-            if (tag_id == core::store::kCachedTagId) continue;  // shown as a corner pill
+            if (tag_id == core::store::kCachedTagId) continue;
             for (const auto& t : state.vault.tags) {
                 if (t.id == tag_id) {
                     draw_tag_chip(t.name, t.color_rgba);
@@ -318,9 +313,6 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         if (any) ImGui::NewLine();
     }
 
-    // Cooldown and weekly-drop indicators share the strip just above the action
-    // row; compute their active state once so the rank badges reserve the right
-    // space and both indicators can stack below.
     const auto now_s = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     const bool cd_active = state.settings.info.show_cooldown &&
@@ -330,9 +322,6 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
     const float indicator_line_h = ImGui::GetTextLineHeightWithSpacing();
     const int indicator_rows = (cd_active ? 1 : 0) + (wd_active ? 1 : 0);
 
-    // Premier tier image (ELO overlay or "---") and Wingman rank icon (rank 0 =
-    // unranked), each with a "Wins: N" label above. Equal 3-way horizontal gaps,
-    // vertically centered between the content above and the strip below.
     {
         constexpr float kPremierH = 26.0F;
         constexpr float kWingmanH = 26.0F;
@@ -368,16 +357,13 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
 
             const float bottom_y = ImGui::GetWindowSize().y - kButtonRowReserve -
                                    static_cast<float>(indicator_rows) * indicator_line_h;
-            // The trailing NewLine after the stats row leaves the cursor a full
-            // text-line below the visible content; subtract that so the center is
-            // computed against the actual bottom of the stats text.
+
             const float top_y    = std::max(0.0F,
                 ImGui::GetCursorPosY() - ImGui::GetTextLineHeightWithSpacing());
             const float wins_h   = ImGui::GetTextLineHeight();
             const float row_h    = wins_h + kWinsGap + kBadgeH;
             const float center_y = (top_y + bottom_y) * 0.5F;
-            // Keep clearance above the strip so a tight card nudges the badges up
-            // rather than crowding it.
+
             const float indicator_gap = (indicator_rows > 0) ? 8.0F : 0.0F;
             const float row_y    = std::min(std::max(top_y, center_y - row_h * 0.5F),
                                             std::max(top_y, bottom_y - row_h - indicator_gap));
@@ -442,8 +428,6 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         }
     }
 
-    // Pinned from the bottom up so they never overlap the buttons even when the
-    // content above is tall (cooldown on top when both show).
     if (indicator_rows > 0) {
         float slot_y = ImGui::GetWindowSize().y - kButtonRowReserve -
                        static_cast<float>(indicator_rows) * indicator_line_h;
@@ -488,8 +472,6 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         }
     }
 
-    // In selection mode the action row is replaced by a single checkbox so
-    // per-card actions can't fire while bulk-selecting.
     if (state.selection_mode) {
         const float btn_y = ImGui::GetWindowSize().y - kButtonRowH;
         ImGui::SetCursorPos(ImVec2(ImGui::GetStyle().WindowPadding.x, btn_y));
@@ -508,7 +490,7 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
     const int n_buttons = a.sda.has_value() ? 5 : 4;
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     const float content_w = width - 2.0F * ImGui::GetStyle().WindowPadding.x;
-    // Reserve the Login button's attached caret so the rest stay equal-width.
+
     const float btn_w =
         (content_w - kLoginCaretWidth - spacing * static_cast<float>(n_buttons - 1)) /
         static_cast<float>(n_buttons);
@@ -536,8 +518,7 @@ CardAction draw_account_card(app::AppState& state, core::Account& a, float width
         ImGui::BeginDisabled(refresh_disabled);
         if (action_button("Refresh", ImVec2(btn_w, 0))) action = CardAction::Refresh;
         ImGui::EndDisabled();
-        // IsItemHovered is false on disabled items by default; AllowWhenDisabled
-        // keeps the cooldown reason visible.
+
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             if (refresh_busy) {
                 set_tooltip("Refresh in progress...");

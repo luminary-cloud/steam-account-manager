@@ -74,8 +74,6 @@ bool equals_ci(std::string_view a, std::string_view b) {
     return true;
 }
 
-// Every <tr> in the document, not a specific table class, so a layout reshuffle
-// or class rename can't hide the spend rows.
 std::vector<Row> rows_from_html(std::string_view html) {
     std::vector<Row> rows;
     static const std::regex row_re(R"(<tr[^>]*>([\s\S]*?)</tr>)", std::regex::icase);
@@ -95,7 +93,6 @@ std::vector<Row> rows_from_html(std::string_view html) {
     return rows;
 }
 
-// Money string like "6,128.08" into integer cents, -1 on failure. No floats or locale.
 std::int64_t parse_money_cents(std::string s) {
     s.erase(std::remove(s.begin(), s.end(), ','), s.end());
     s.erase(std::remove(s.begin(), s.end(), ' '), s.end());
@@ -128,11 +125,10 @@ SpendData parse_account_spend(std::string_view html) {
 
     for (const auto& r : rows) {
         if (r.cells.empty()) continue;
-        // Exact match so sibling rows (PackageOnlySpend, OldSpend, PWSpend,
-        // ChinaSpend) don't match.
+
         if (!equals_ci(r.cells[0], "TotalSpend")) continue;
         out.found_total = true;
-        // Row shape: Type | Time Calculated | Amount | Currency.
+
         if (r.cells.size() > 2) out.total_spend_cents = parse_money_cents(r.cells[2]);
         if (r.cells.size() > 3) {
             out.currency = r.cells[3];
@@ -148,7 +144,7 @@ bool looks_like_spend_page(std::string_view html) {
 }
 
 bool looks_like_login_page(std::string_view html) {
-    // Steam's login HTML embeds `g_steamID = false;` before authentication.
+
     return contains_ci(html, "g_steamID = false") ||
            contains_ci(html, "<title>Sign In");
 }

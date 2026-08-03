@@ -134,7 +134,7 @@ __declspec(noinline) void __stdcall ShellcodeEnd() { }
 #pragma optimize("", on)
 #pragma runtime_checks("", restore)
 
-InjectResult map_into(HANDLE hProc, const BYTE* dll_data, SIZE_T dll_size) {
+InjectResult map_into(HANDLE hProc, const BYTE* dll_data) {
     if (reinterpret_cast<const IMAGE_DOS_HEADER*>(dll_data)->e_magic != 0x5A4D)
         return {false, "Invalid DLL magic"};
 
@@ -307,8 +307,6 @@ InjectResult inject_hwid_dll(std::uint32_t pid, const std::string& shared_mem_na
 
     std::vector<BYTE> dll_copy(kHwidDll, kHwidDll + kHwidDllSize);
 
-    // Patch the shared memory name placeholder in .data before mapping.
-    // The DLL has a char[64] at a known symbol initialized with "SAM_IPC_PLACEHOLDER".
     static constexpr char kPlaceholder[] = "SAM_IPC_PLACEHOLDER";
     for (std::size_t i = 0; i + sizeof(kPlaceholder) <= dll_copy.size(); ++i) {
         if (std::memcmp(dll_copy.data() + i, kPlaceholder, sizeof(kPlaceholder)) == 0) {
@@ -319,7 +317,7 @@ InjectResult inject_hwid_dll(std::uint32_t pid, const std::string& shared_mem_na
         }
     }
 
-    auto result = map_into(hProc, dll_copy.data(), dll_copy.size());
+    auto result = map_into(hProc, dll_copy.data());
     CloseHandle(hProc);
     return result;
 }

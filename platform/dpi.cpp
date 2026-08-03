@@ -21,13 +21,13 @@ void enable_per_monitor_v2() {
         set_ctx(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
         return;
     }
-    // Fallback chain for older Win10 builds.
+
     HMODULE shcore = LoadLibraryW(L"Shcore.dll");
     if (shcore) {
         using SetProcessDpiAwarenessFn = HRESULT(WINAPI*)(int);
         auto fn = reinterpret_cast<SetProcessDpiAwarenessFn>(
             GetProcAddress(shcore, "SetProcessDpiAwareness"));
-        if (fn) fn(2);  // PROCESS_PER_MONITOR_DPI_AWARE
+        if (fn) fn(2);
     }
 }
 

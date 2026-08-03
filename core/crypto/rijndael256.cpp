@@ -8,7 +8,6 @@ namespace sam::crypto {
 
 namespace {
 
-// Standard Rijndael / AES S-box.
 constexpr std::array<std::uint8_t, 256> kSbox = {{
     0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
     0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,
@@ -28,7 +27,6 @@ constexpr std::array<std::uint8_t, 256> kSbox = {{
     0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16,
 }};
 
-// Inverse S-box.
 constexpr std::array<std::uint8_t, 256> kInvSbox = {{
     0x52,0x09,0x6a,0xd5,0x30,0x36,0xa5,0x38,0xbf,0x40,0xa3,0x9e,0x81,0xf3,0xd7,0xfb,
     0x7c,0xe3,0x39,0x82,0x9b,0x2f,0xff,0x87,0x34,0x8e,0x43,0x44,0xc4,0xde,0xe9,0xcb,
@@ -48,24 +46,20 @@ constexpr std::array<std::uint8_t, 256> kInvSbox = {{
     0x17,0x2b,0x04,0x7e,0xba,0x77,0xd6,0x26,0xe1,0x69,0x14,0x63,0x55,0x21,0x0c,0x7d,
 }};
 
-// Rcon[i] = xtime(Rcon[i-1]), Rcon[1]=1. Indices 1..15 used for Nk=8, Nr=14.
 constexpr std::uint8_t kRcon[16] = {
     0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40,
     0x80, 0x1B, 0x36, 0x6C, 0xD8, 0xAB, 0x4D, 0x9A,
 };
 
-constexpr int kNb = 8;     // block size in 32-bit words: 32-byte block
-constexpr int kNk = 8;     // key size in 32-bit words: 32-byte key
-constexpr int kNr = 14;    // rounds for Nb=8, Nk=8
-constexpr int kBlockSize = kNb * 4;            // 32
-constexpr int kKeySize   = kNk * 4;            // 32
-constexpr int kRoundKeyBytes = (kNr + 1) * kBlockSize;  // 480
+constexpr int kNb = 8;
+constexpr int kNk = 8;
+constexpr int kNr = 14;
+constexpr int kBlockSize = kNb * 4;
+constexpr int kKeySize   = kNk * 4;
+constexpr int kRoundKeyBytes = (kNr + 1) * kBlockSize;
 
-// ShiftRows offsets for Nb=8 (Rijndael spec table 2): row r shifts left by C(r).
-// Nb=8 uses {0,1,3,4}, which differs from AES-128's {0,1,2,3}.
 constexpr int kShiftOffsets[4] = {0, 1, 3, 4};
 
-// Multiplication by x in GF(2^8) with the AES reduction polynomial 0x1B.
 inline std::uint8_t xtime(std::uint8_t b) {
     return static_cast<std::uint8_t>((b << 1) ^ ((b & 0x80) ? 0x1B : 0x00));
 }
@@ -80,19 +74,17 @@ std::uint8_t gmul(std::uint8_t a, std::uint8_t b) {
     return r;
 }
 
-// For Rijndael with Nk=8 there is an extra SubWord step every Nk words (the
-// "Nk>6" branch in the spec) not present in AES-128/192.
 void key_expansion(std::span<const std::uint8_t> key,
                    std::array<std::uint8_t, kRoundKeyBytes>& w) {
     std::memcpy(w.data(), key.data(), kKeySize);
 
-    const int total_words = kNb * (kNr + 1);  // 120 words
+    const int total_words = kNb * (kNr + 1);
     for (int i = kNk; i < total_words; ++i) {
         std::uint8_t t[4];
         std::memcpy(t, &w[(i - 1) * 4], 4);
 
         if (i % kNk == 0) {
-            // RotWord
+
             const std::uint8_t r0 = t[0];
             t[0] = t[1]; t[1] = t[2]; t[2] = t[3]; t[3] = r0;
             t[0] = kSbox[t[0]];
@@ -113,7 +105,6 @@ void key_expansion(std::span<const std::uint8_t> key,
     }
 }
 
-// Column-major: state[c*4 + r] holds row r, column c.
 using State = std::array<std::uint8_t, kBlockSize>;
 
 void add_round_key(State& s, const std::uint8_t* round_key) {
@@ -125,8 +116,7 @@ void inv_sub_bytes(State& s) {
 }
 
 void inv_shift_rows(State& s) {
-    // Row r shifts RIGHT by kShiftOffsets[r]; rebuild per-row to avoid
-    // in-place overwrite hazards.
+
     for (int r = 1; r < 4; ++r) {
         const int shift = kShiftOffsets[r];
         std::uint8_t tmp[kNb];
@@ -138,11 +128,6 @@ void inv_shift_rows(State& s) {
     }
 }
 
-// InvMixColumns applied column-by-column. Standard inverse MixColumns matrix:
-//   [ 0E 0B 0D 09 ]
-//   [ 09 0E 0B 0D ]
-//   [ 0D 09 0E 0B ]
-//   [ 0B 0D 09 0E ]
 void inv_mix_columns(State& s) {
     for (int c = 0; c < kNb; ++c) {
         const std::uint8_t a0 = s[c * 4 + 0];
@@ -214,7 +199,6 @@ std::vector<std::uint8_t> rijndael256_cbc_pkcs7_decrypt(
         std::memcpy(prev, block_in, kBlockSize);
     }
 
-    // PKCS#7 unpad against the 32-byte block size.
     const std::uint8_t pad = out.back();
     if (pad == 0 || pad > kBlockSize || pad > out.size())
         throw CbcPaddingError("rijndael256: invalid PKCS#7 padding");

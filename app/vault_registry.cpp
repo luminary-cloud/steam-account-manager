@@ -25,7 +25,6 @@ std::int64_t now_unix() {
         .count();
 }
 
-// Move a file if it exists; rename first (same volume), copy+remove as a fallback.
 void move_if_exists(const std::filesystem::path& src, const std::filesystem::path& dst) {
     std::error_code ec;
     if (!std::filesystem::exists(src, ec)) return;
@@ -37,7 +36,6 @@ void move_if_exists(const std::filesystem::path& src, const std::filesystem::pat
     if (!ec) std::filesystem::remove(src, ec);
 }
 
-// Legacy single-vault layout had these siblings directly under data_dir().
 void migrate_legacy_vault(const std::string& id) {
     const auto dir = vault_dir_for(id);
     std::error_code ec;
@@ -66,7 +64,7 @@ const VaultInfo* VaultRegistry::find(const std::string& id) const {
 }
 
 std::string new_vault_id() {
-    // Not a real ULID, but stable and unique enough for a folder name.
+
     static std::atomic<std::uint64_t> counter{0};
     const auto n = counter.fetch_add(1);
     char buf[32];
@@ -154,13 +152,6 @@ void rename_vault(VaultRegistry& reg, const std::string& id, std::string name) {
     }
 }
 
-void set_vault_color(VaultRegistry& reg, const std::string& id, std::uint32_t color) {
-    if (auto* v = reg.find(id)) {
-        v->color_rgba = color;
-        save_registry(reg);
-    }
-}
-
 bool set_vault_icon(VaultRegistry& reg, const std::string& id,
                     const std::filesystem::path& src, std::string* err) {
     auto* v = reg.find(id);
@@ -221,8 +212,7 @@ void set_auto_open(VaultRegistry& reg, const std::string& id) {
 }
 
 VaultResolution init_vaults(AppState& state, bool gui) {
-    // First launch after upgrade (or fresh install): create vaults.json, migrating
-    // a legacy single vault into its own folder if one exists.
+
     std::error_code ec;
     if (!std::filesystem::exists(vaults_json_path(), ec)) {
         VaultRegistry reg;
@@ -241,7 +231,6 @@ VaultResolution init_vaults(AppState& state, bool gui) {
     state.vault_registry = load_registry();
     auto& reg = state.vault_registry;
 
-    // A "switch vault" relaunch left a target in the registry; honour it (GUI only).
     if (gui) {
         const auto pending = platform::read_pending_vault();
         platform::clear_pending_vault();
@@ -263,8 +252,6 @@ VaultResolution init_vaults(AppState& state, bool gui) {
         return VaultResolution::OpenDirect;
     }
 
-    // Multiple vaults: open the designated auto-open vault only if it can unlock
-    // silently (has a DPAPI cache and the user opted into remembering it).
     if (!reg.auto_open_id.empty() && reg.find(reg.auto_open_id)) {
         const bool has_cache = std::filesystem::exists(
             vault_dir_for(reg.auto_open_id) / L"master_pw.bin", ec);

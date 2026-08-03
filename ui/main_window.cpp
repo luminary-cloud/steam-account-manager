@@ -24,12 +24,10 @@ namespace sam::ui {
 
 namespace {
 
-// kContentPaddingX lives in ui/util.hpp so the separator helpers can share it.
 constexpr float kContentPaddingY = 20.0F;
 
 void draw_screen(app::AppState& state) {
-    // The CS2 tab can be hidden mid-session; retire any live client and bounce to
-    // Accounts so we never render (or keep a GC socket open for) a disabled feature.
+
     if (state.current_screen == app::Screen::Cs2 && !state.settings.cs2_gc.enabled) {
         screens::discard_cs2_client(state);
         state.current_screen = app::Screen::Accounts;
@@ -65,16 +63,15 @@ bool draw(app::AppState& state) {
     bool keep_running = true;
     if (ImGui::Begin("sam-root", nullptr, root_flags)) {
         widgets::draw_title_bar(state);
-        // Flush under the bar, else an ItemSpacing gap shows a strip of root background.
+
         ImGui::SetCursorPosY(widgets::kTitleBarHeight);
 
         if (state.unlocked) {
-            // A background refresh flagged an account for re-login: jump to Add Account
-            // so the Full Login wizard picks up the prefilled username (and clears it).
+
             if (state.pending_relogin_login.has_value() &&
                 state.current_screen != app::Screen::AddAccount) {
                 state.current_screen = app::Screen::AddAccount;
-                state.selected_account_id.clear();  // ensure the tab bar shows
+                state.selected_account_id.clear();
             }
 
             widgets::draw_rail_nav(state);
@@ -115,8 +112,7 @@ bool draw(app::AppState& state) {
     state.toasts.render([&state](const widgets::ToastItem& t) {
         if (t.on_click_action == widgets::ToastClickAction::Settings) {
             state.current_screen = app::Screen::Settings;
-            state.pending_settings_category =
-                static_cast<int>(screens::SettingsCategory::NetworkData);
+            state.pending_settings_category = t.settings_category;
             return;
         }
         if (t.account_id.empty()) return;
@@ -124,7 +120,6 @@ bool draw(app::AppState& state) {
         state.current_screen = app::Screen::Accounts;
     });
 
-    // Only once unlocked, so the modal never steals focus from the Unlock password field.
     if (state.unlocked) {
         {
             std::lock_guard lk(state.update_mutex);

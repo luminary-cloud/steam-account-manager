@@ -18,16 +18,14 @@ namespace {
 
 using json = nlohmann::json;
 
-// Posts a steamcommunity.com tradeoffer action and parses the JSON response. Sets
-// needs_relogin on 401/403. Never auto-retries: trade endpoints are aggressively
-// rate limited.
 OfferActionResult post_action(core::Account& a, const std::string& url,
                               const std::string& referer,
                               std::map<std::string, std::string> body) {
     http::ScopedProxy proxy_guard(std::string(a.proxy.data(), a.proxy.size()));
     OfferActionResult out;
+
     if (a.is_nfa) {
-        out.error = "trades require a full login";
+        out.error = "trades need an account with an authenticator";
         return out;
     }
     if (!steam_login::ensure_web_session(a)) {
@@ -41,7 +39,7 @@ OfferActionResult post_action(core::Account& a, const std::string& url,
     http::Request req;
     req.method = http::Method::Post;
     req.url = url;
-    req.max_retries = 0;  // do not hammer a rate-limited trade endpoint
+    req.max_retries = 0;
     req.headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
     req.headers["Referer"] = referer;
     req.body = http::form_encode(body);
@@ -115,8 +113,9 @@ SendOfferResult send_trade_offer(core::Account& a, const TradeUrl& trade_url,
                                  const std::string& message) {
     http::ScopedProxy proxy_guard(std::string(a.proxy.data(), a.proxy.size()));
     SendOfferResult out;
+
     if (a.is_nfa) {
-        out.error = "trades require a full login";
+        out.error = "trades need an account with an authenticator";
         return out;
     }
     if (!trade_url.ok) {
@@ -237,7 +236,7 @@ ConfirmResult confirm_sent_offer(core::Account& a, const std::string& offer_id) 
     }
 
     std::string err;
-    if (sda::respond_to_confirmation(a, *match, /*allow=*/true, &err)) {
+    if (sda::respond_to_confirmation(a, *match, true, &err)) {
         out.ok = true;
         return out;
     }

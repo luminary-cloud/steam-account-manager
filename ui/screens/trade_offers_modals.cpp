@@ -38,7 +38,6 @@ namespace trade = core::trade;
 
 using namespace trade_offers_detail;
 
-// account_id empty -> no preselection; otherwise preselect just that account.
 void open_send_modal_impl(app::AppState& state, const std::string& account_id) {
     g_send.accounts.clear();
     if (!account_id.empty()) g_send.accounts.insert(account_id);
@@ -56,7 +55,6 @@ void open_send_modal_impl(app::AppState& state, const std::string& account_id) {
 void bulk_send_all(app::AppState& state, std::vector<core::Account> accs,
                    trade::TradeUrl tu);
 
-// Remember url in the saved-links list (deduped) and as the default destination.
 void remember_trade_link(app::AppState& state, const std::string& url) {
     auto& saved = state.settings.trade.saved_trade_urls;
     if (std::none_of(saved.begin(), saved.end(),
@@ -80,8 +78,6 @@ void draw_send_modal_impl(app::AppState& state) {
         return;
     }
 
-    // Inventory grid fixed at 3 rows; account grid flexes to fill the rest, with the
-    // footer pinned to the bottom so the popup never scrolls.
     const float kLine  = ImGui::GetTextLineHeightWithSpacing();
     const float kFrame = ImGui::GetFrameHeightWithSpacing();
     constexpr float kChipH   = 44.0F;
@@ -90,14 +86,14 @@ void draw_send_modal_impl(app::AppState& state) {
     const float footer_pin_y = ImGui::GetCursorPosY() + ImGui::GetContentRegionAvail().y -
                                ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.y;
     const float middle_fixed =
-        kLine            // account hint line
-        + kLine          // link label
-        + kFrame         // link combo/input row
-        + kLine          // validity line
-        + kFrame         // separator + spacing
-        + kFrame         // items/bulk load+filter row
-        + items_h        // items/bulk body (fixed 3 rows)
-        + ImGui::GetStyle().ItemSpacing.y * 1.5F;  // inter-section spacing + margin
+        kLine
+        + kLine
+        + kFrame
+        + kLine
+        + kFrame
+        + kFrame
+        + items_h
+        + ImGui::GetStyle().ItemSpacing.y * 1.5F;
 
     ImGui::TextDisabled("Source accounts");
     ImGui::SameLine();
@@ -252,7 +248,6 @@ void draw_send_modal_impl(app::AppState& state) {
         state.save_settings();
     }
 
-    // Rename sub-modal for the link chosen via the combo's right-click menu.
     if (g_send.rename_open_request) {
         ImGui::OpenPopup("Rename saved link");
         g_send.rename_open_request = false;
@@ -310,7 +305,7 @@ void draw_send_modal_impl(app::AppState& state) {
             inv_loading = st.inv_loading;
             inv_error = st.inv_error;
             inv_loaded = st.inv_loaded_unix;
-            // Rebuild the picker cache only when the inventory actually changes.
+
             if (inv_loaded != g_send.inv_cache_unix || g_send.inv_cache_aid != single) {
                 g_send.inv_cache.clear();
                 g_send.inv_cache.reserve(st.inventory.size());
@@ -356,7 +351,7 @@ void draw_send_modal_impl(app::AppState& state) {
         constexpr float base_gap = 8.0F;
         const int cols =
             std::max(1, static_cast<int>((avail + base_gap) / (kTile + base_gap)));
-        // Spread leftover width into the gaps so square tiles fill the row edge-to-edge.
+
         const float tile_gap =
             cols > 1 ? std::max(base_gap, (avail - static_cast<float>(cols) * kTile) /
                                               static_cast<float>(cols - 1))
@@ -467,8 +462,6 @@ void draw_send_modal_impl(app::AppState& state) {
     ImGui::PopStyleVar(2);
 }
 
-// Runs fn(creds); on a session error, does one cooldown-respecting auto-relogin and retries.
-// Works for any result type with ok/needs_relogin members.
 template <typename Fn>
 auto with_relogin(app::AppState& state, core::Account& creds, Fn&& fn) {
     auto res = fn(creds);
@@ -523,7 +516,7 @@ void bulk_accept_all(app::AppState& state) {
             if (res.ok) {
                 ++ok;
                 state.post_ui_callback([&state, aid = t.acc.id, oid = t.oid] {
-                    erase_offer(state, aid, oid, /*from_received=*/true);
+                    erase_offer(state, aid, oid, true);
                 });
             } else {
                 ++failed;

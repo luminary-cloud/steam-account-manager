@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cwctype>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -31,8 +32,10 @@ using Elt = sam::platform::uia::Session::Element;
 
 constexpr auto kWindowPollInterval = 100ms;
 constexpr auto kClassifyInterval   = 100ms;
-constexpr auto kDigitInterval      = 50ms;
 constexpr auto kOverallTimeout     = 90s;
+constexpr int  kMaxPickerAttempts  = 3;
+constexpr auto kPickerRetryDelay   = 1s;
+constexpr auto kStuckBeforeDump    = 5s;
 
 bool ieq(std::wstring_view a, std::wstring_view b) {
     if (a.size() != b.size()) return false;
@@ -49,6 +52,17 @@ std::wstring utf8_to_wide(std::string_view s) {
     if (n <= 0) return {};
     std::wstring out(static_cast<std::size_t>(n), L'\0');
     MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), out.data(), n);
+    return out;
+}
+
+std::string wide_to_utf8(std::wstring_view s) {
+    if (s.empty()) return {};
+    const int n = WideCharToMultiByte(CP_UTF8, 0, s.data(), static_cast<int>(s.size()),
+                                       nullptr, 0, nullptr, nullptr);
+    if (n <= 0) return {};
+    std::string out(static_cast<std::size_t>(n), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, s.data(), static_cast<int>(s.size()),
+                        out.data(), n, nullptr, nullptr);
     return out;
 }
 
@@ -109,9 +123,6 @@ std::wstring get_window_title(HWND h) {
     return out;
 }
 
-// The login UI is hosted by a steamwebhelper.exe child of steam.exe; its title
-// contains "Steam" with length > 5 (excludes the plain "Steam" main-client title).
-// Also accepts the Chinese localised title.
 HWND find_login_window(std::uint32_t main_pid) {
     const auto helpers = find_webhelper_children(main_pid);
     if (helpers.empty()) return nullptr;
@@ -151,6 +162,32 @@ const char* to_str(WindowState s) {
     return "?";
 }
 
+std::optional<Elt> find_add_account(const Elt& doc) {
+    auto links = doc.descendants_by_control_type(UIA_HyperlinkControlTypeId);
+    if (links.size() < 2) return std::nullopt;
+
+    std::optional<Elt> found;
+    int matches = 0;
+    for (auto& link : links) {
+        if (!link.descendants_by_control_type(UIA_ButtonControlTypeId).empty()) continue;
+        ++matches;
+        if (!found) found = link;
+    }
+    if (matches != 1) return std::nullopt;
+    return found;
+}
+
+void dump_subtree(const Elt& el, int depth, int& budget) {
+    if (budget <= 0 || depth > 12) return;
+    --budget;
+
+    SAM_LOG_INFO("login_driver: tree d={} ct={} name='{}'",
+                 depth, el.control_type(), wide_to_utf8(el.name()));
+    for (auto& child : el.all_children()) {
+        dump_subtree(child, depth + 1, budget);
+    }
+}
+
 WindowState classify(const Elt& doc) {
     auto children = doc.all_children();
     if (children.empty()) return WindowState::Invalid;
@@ -171,11 +208,12 @@ WindowState classify(const Elt& doc) {
     SAM_LOG_DEBUG("login_driver: tree children={} edit={} button={} group={} image={} text={}",
                   children.size(), n_edit, n_button, n_group, n_image, n_text);
 
-    // Empirical child-control-type counts for each login-window state.
     if (n_edit == 0 && n_button == 5 && n_group == 0 && n_image == 3 && n_text == 5) {
         return WindowState::Code;
     }
     if (n_edit == 2 && n_button == 1) return WindowState::Login;
+
+    if (n_edit == 0 && find_add_account(doc)) return WindowState::Selection;
     if (n_edit == 0 && n_image >= 2 && n_button > 0 && n_text == 0) return WindowState::Selection;
     if (n_edit == 0 && n_button == 1 && n_text == 2 && n_image == 1) return WindowState::Error;
     if (n_edit == 0 && n_button >= 2 && n_image >= 1 && n_text > 0) return WindowState::Error;
@@ -213,12 +251,9 @@ bool drive_login_state(const Elt& doc, const Credentials& creds) {
         zero_wstring(pass);
     }
 
-    // Steam renders "Remember me" two ways across machines (same version): a real
-    // CheckBox control (Toggle pattern) or a Group acting as a checkbox (Image child =
-    // ticked, Invoke to flip). Prefer the CheckBox, fall back to the Group.
     if (!checkboxes.empty()) {
         Elt& cb = checkboxes[0];
-        const auto state = cb.toggle_state();  // nullopt = unknown/indeterminate
+        const auto state = cb.toggle_state();
         const bool need_toggle =
             state ? (*state != creds.remember_password) : creds.remember_password;
         if (need_toggle) {
@@ -227,7 +262,7 @@ bool drive_login_state(const Elt& doc, const Credentials& creds) {
             cb.toggle();
         }
     } else if (!groups.empty()) {
-        // Presence of an Image child = checkbox is currently ticked.
+
         const bool checked =
             groups[0].first_child_by_control_type(UIA_ImageControlTypeId).has_value();
         if (creds.remember_password != checked) {
@@ -271,8 +306,6 @@ bool drive_code_state(const Elt& doc, std::string_view shared_secret) {
             std::this_thread::sleep_for(20ms);
             send_unicode_char(static_cast<wchar_t>(code[i]));
 
-            // A filled slot button grows a child element (the rendered digit);
-            // poll until it appears before moving to the next digit.
             using clk = std::chrono::steady_clock;
             const auto deadline = clk::now() + kSlotSettleTimeout;
             while (clk::now() < deadline) {
@@ -294,12 +327,19 @@ bool drive_code_state(const Elt& doc, std::string_view shared_secret) {
 }
 
 bool drive_selection_state(const Elt& doc) {
-    // Account picker: invoke "Add Account" (the last Group).
-    auto groups = doc.children_by_control_type(UIA_GroupControlTypeId);
-    if (groups.empty()) return false;
-    auto& g = groups.back();
-    g.focus();
-    return g.invoke();
+    auto add = find_add_account(doc);
+    if (!add) {
+
+        auto groups = doc.children_by_control_type(UIA_GroupControlTypeId);
+        if (groups.empty()) return false;
+        auto& g = groups.back();
+        g.focus();
+        return g.invoke();
+    }
+    add->focus();
+    add->wait_until_enabled(500ms);
+    if (add->invoke()) return true;
+    return add->do_default_action();
 }
 
 void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
@@ -335,14 +375,16 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
 
     bool entered_creds = false;
     bool entered_code  = false;
+    bool dumped_tree   = false;
+    int  picker_attempts = 0;
+    std::optional<clk::time_point> last_picker_attempt;
+    std::optional<clk::time_point> invalid_since;
     while (clk::now() < deadline) {
         if (superseded()) {
             SAM_LOG_INFO("login_driver: superseded by newer run; exiting");
             return;
         }
-        // Gate the registry success check on entered_creds: prevents a stale
-        // ActiveUser (e.g. after hard-killing the previous session) from ending
-        // the run before we've typed anything.
+
         if (entered_creds) {
             const auto au = sam::platform::registry::read_active_user();
             if (au && *au != 0 &&
@@ -374,6 +416,7 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
 
         const WindowState s = classify(*doc);
         SAM_LOG_DEBUG("login_driver: state={}", to_str(s));
+        if (s != WindowState::Invalid) invalid_since.reset();
 
         switch (s) {
             case WindowState::Login:
@@ -390,26 +433,47 @@ void worker_body(std::uint64_t gen, std::uint32_t pid, Credentials creds) {
                         entered_code = true;
                         SAM_LOG_INFO("login_driver: 2FA code submitted");
                     } else if (creds.shared_secret.empty()) {
-                        return;   // user has to type the code themselves
+                        return;
                     } else {
-                        // Per-digit retries already exhausted in drive_code_state.
-                        // Don't re-run: slots are partially filled and we'd type on
-                        // top of an unknown state. Bow out and let the user finish.
+
                         entered_code = true;
                         SAM_LOG_WARN("login_driver: 2FA entry failed after "
                                      "retries; finish in Steam manually");
                     }
                 }
                 break;
-            case WindowState::Selection:
-                drive_selection_state(*doc);
+            case WindowState::Selection: {
+
+                const auto now = clk::now();
+                if (picker_attempts >= kMaxPickerAttempts) break;
+                if (last_picker_attempt && now - *last_picker_attempt < kPickerRetryDelay) break;
+                last_picker_attempt = now;
+                ++picker_attempts;
+                if (drive_selection_state(*doc)) {
+                    SAM_LOG_INFO("login_driver: account picker: opened Add Account");
+                } else if (picker_attempts >= kMaxPickerAttempts) {
+                    SAM_LOG_WARN("login_driver: account picker: could not open Add "
+                                 "Account; click + in Steam to continue");
+                }
                 break;
+            }
             case WindowState::Error:
                 SAM_LOG_WARN("login_driver: Steam reported an error; bailing");
                 return;
+            case WindowState::Invalid: {
+
+                const auto now = clk::now();
+                if (!invalid_since) invalid_since = now;
+                if (!dumped_tree && now - *invalid_since >= kStuckBeforeDump) {
+                    dumped_tree = true;
+                    SAM_LOG_INFO("login_driver: unrecognised screen; dumping UI tree");
+                    int budget = 150;
+                    dump_subtree(*doc, 0, budget);
+                }
+                break;
+            }
             case WindowState::Loading:
             case WindowState::None:
-            case WindowState::Invalid:
                 break;
         }
 

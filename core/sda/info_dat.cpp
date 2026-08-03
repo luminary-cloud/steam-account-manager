@@ -32,13 +32,10 @@ std::string read_file_text(const std::filesystem::path& path) {
     return ss.str();
 }
 
-// info.dat is plain XML or Base64(salt[32] | iv[32] | ct). XML starts with '<'
-// (or a UTF-8 BOM); Base64 of random salt+iv almost never does. Discriminate on
-// the first non-whitespace byte.
 bool looks_like_xml(std::string_view text) {
     for (char c : text) {
         if (c == ' ' || c == '\t' || c == '\r' || c == '\n') continue;
-        if (static_cast<unsigned char>(c) == 0xEF) return true;  // UTF-8 BOM
+        if (static_cast<unsigned char>(c) == 0xEF) return true;
         return c == '<';
     }
     return false;
@@ -52,18 +49,6 @@ std::string_view trim_view(std::string_view s) {
     return s;
 }
 
-// Hand-rolled XML extraction specialised for .NET XmlSerializer output.
-
-void skip_ws(std::string_view s, std::size_t& pos) {
-    while (pos < s.size()) {
-        const char c = s[pos];
-        if (c != ' ' && c != '\t' && c != '\r' && c != '\n') break;
-        ++pos;
-    }
-}
-
-// Inner text of the first `<tag>...</tag>` in `block`, with XML entities
-// decoded. Treats `<tag xsi:nil="true" />` and `<tag />` as empty.
 std::string find_field(std::string_view block, std::string_view tag) {
     std::size_t pos = 0;
     while (pos < block.size()) {
@@ -77,12 +62,12 @@ std::string find_field(std::string_view block, std::string_view tag) {
         const char after = block[open + 1 + tag.size()];
         if (after != '>' && after != ' ' && after != '/' && after != '\t' &&
             after != '\r' && after != '\n') {
-            // `<tag` prefix of a different element (e.g. <SharedSecretRef>).
+
             pos = open + 1;
             continue;
         }
         std::size_t tag_end = open + 1 + tag.size();
-        // Self-closing `<tag ... />` -> empty value.
+
         std::size_t close_bracket = block.find('>', tag_end);
         if (close_bracket == std::string_view::npos) return {};
         if (close_bracket > 0 && block[close_bracket - 1] == '/') return {};
@@ -126,7 +111,7 @@ std::string find_field(std::string_view block, std::string_view tag) {
                 if (ok && code >= 0 && code < 0x80) {
                     out.push_back(static_cast<char>(code));
                 } else if (ok) {
-                    // UTF-8 encode; BMP-only is enough for this format.
+
                     if (code < 0x800) {
                         out.push_back(static_cast<char>(0xC0 | (code >> 6)));
                         out.push_back(static_cast<char>(0x80 | (code & 0x3F)));
@@ -164,8 +149,6 @@ int to_int(std::string_view s) {
 
 namespace {
 
-// Returns nullopt if the input is not envelope-shaped or PKCS#7 unpad fails.
-// Public callers use try_unwrap_field(), which walks the key try-list.
 std::optional<std::string> try_decrypt_string_cipher(std::string_view base64_envelope,
                                                       std::string_view password) {
     base64_envelope = trim_view(base64_envelope);
@@ -179,7 +162,6 @@ std::optional<std::string> try_decrypt_string_cipher(std::string_view base64_env
     }
     if (raw.empty()) return std::nullopt;
 
-    // salt(32) + iv(32) + ciphertext (multiple of the 32-byte Rijndael-256 block).
     if (raw.size() < kSaltLen + kIvLen + 32) return std::nullopt;
     if ((raw.size() - kSaltLen - kIvLen) % 32 != 0) return std::nullopt;
 
@@ -250,7 +232,6 @@ std::vector<InfoDatAccount> parse_info_dat_xml(std::string_view xml,
         a.game_ban_count   = to_int (find_field(block, "NumberOfGameBans"));
         a.economy_ban      = find_field(block, "EconomyBan");
 
-        // Skip empty entries XmlSerializer leaves behind for nil/default rows.
         if (!a.name.empty() || !a.password.empty() || !a.shared_secret.empty()) {
             out.push_back(std::move(a));
         }

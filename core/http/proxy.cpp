@@ -58,7 +58,6 @@ void set_io_timeout(SOCKET s, DWORD ms) {
     setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&ms), sizeof(ms));
 }
 
-// Bounded connect time. Returns INVALID_SOCKET on failure.
 SOCKET dial(const std::string& host, std::uint16_t port, int timeout_sec) {
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
@@ -99,8 +98,6 @@ SOCKET dial(const std::string& host, std::uint16_t port, int timeout_sec) {
     return s;
 }
 
-// SOCKS5 greeting, optional username/password auth (RFC 1929), and a CONNECT to
-// host:port sent as a domain name so the proxy resolves it.
 bool socks5_connect(SOCKET up, const ProxyEndpoint& px,
                     const std::string& host, std::uint16_t port) {
     const bool have_creds = !px.user.empty() || !px.pass.empty();
@@ -128,15 +125,15 @@ bool socks5_connect(SOCKET up, const ProxyEndpoint& px,
         unsigned char ar[2];
         if (!recv_n(up, ar, 2) || ar[1] != 0x00) return false;
     } else if (sel[1] != 0x00) {
-        return false;  // 0xFF (no acceptable methods) or an unexpected method
+        return false;
     }
 
     if (host.size() > 255) return false;
     std::vector<unsigned char> req;
-    req.push_back(0x05);  // version
-    req.push_back(0x01);  // CONNECT
-    req.push_back(0x00);  // reserved
-    req.push_back(0x03);  // address type: domain name
+    req.push_back(0x05);
+    req.push_back(0x01);
+    req.push_back(0x00);
+    req.push_back(0x03);
     req.push_back(static_cast<unsigned char>(host.size()));
     req.insert(req.end(), host.begin(), host.end());
     req.push_back(static_cast<unsigned char>(port >> 8));
@@ -163,8 +160,6 @@ bool socks5_connect(SOCKET up, const ProxyEndpoint& px,
     return recv_n(up, bound_port, 2);
 }
 
-// Reads WinHTTP's "CONNECT host:port HTTP/1.1" request one byte at a time so we
-// never swallow tunnel bytes that follow the blank line.
 bool read_connect_target(SOCKET client, std::string& host, std::uint16_t& port) {
     std::string buf;
     unsigned char c = 0;
@@ -244,7 +239,6 @@ void handle_connection(SOCKET client, ProxyEndpoint upstream) {
         return;
     }
 
-    // Tunnel is live; let both directions run untimed until either side closes.
     set_io_timeout(client, 0);
     set_io_timeout(up, 0);
     std::thread pump([client, up] {
@@ -332,7 +326,7 @@ std::optional<std::string> socks_bridge_address(const ProxyEndpoint& upstream) {
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = 0;  // let the OS pick a free port
+    addr.sin_port = 0;
     if (bind(listener, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR ||
         listen(listener, SOMAXCONN) == SOCKET_ERROR) {
         closesocket(listener);

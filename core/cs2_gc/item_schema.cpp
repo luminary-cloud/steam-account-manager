@@ -31,14 +31,10 @@ constexpr char kMirrorItemsGame[] =
 constexpr char kMirrorEnglish[] =
     "https://raw.githubusercontent.com/SteamDatabase/GameTracking-CS2/master/"
     "game/csgo/pak01_dir/resource/csgo_english.txt";
-// Names + icons for actual market items come from the actively-maintained
-// ByMykel/CSGO-API (Valve removed items_game_cdn.txt from the live files). Skins key
-// on weapon def_index + paint_index; cases/agents/collectibles on def_index; stickers/
-// graffiti/patches/music kits on their kit id (an econ attribute on the item).
+
 constexpr char kByMykelBase[] =
     "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/";
 
-// The base/default agent loadout item (every account has it); not storable.
 constexpr std::uint32_t kDefaultAgentDef = 987;
 
 std::string http_get(const std::string& url) {
@@ -80,7 +76,6 @@ const char* wear_name(float w) {
     return "Battle-Scarred";
 }
 
-// Parses "#eb4b4b" (or "eb4b4b") into packed 0xRRGGBB; 0 on anything unparseable.
 std::uint32_t parse_hex_rgb(const std::string& s) {
     std::size_t i = (!s.empty() && s.front() == '#') ? 1 : 0;
     std::uint32_t v = 0;
@@ -189,8 +184,6 @@ bool ItemSchema::load(std::uint32_t version, const std::string& gc_items_game_ur
                     }
     }
 
-    // ByMykel/CSGO-API: names + icons for the real market items, cached next to the
-    // schema and refreshed when the GC schema version changes or a file is missing.
     struct Src {
         const char* file;
         IconKind kind;
@@ -276,7 +269,7 @@ void ItemSchema::parse_bymykel(const std::string& body, IconKind kind) {
                 }
             }
         } catch (const std::exception&) {
-            continue;  // skip malformed entries
+            continue;
         }
     }
 }
@@ -336,9 +329,7 @@ ResolvedItem ItemSchema::resolve(const EconItem& item) const {
     r.icon_url = e != nullptr ? e->icon : std::string{};
     r.name = decorate(e != nullptr ? e->name : fallback_name(item), item);
     if (e != nullptr) r.border_rgb = e->rarity_rgb;
-    // Not storable: collectibles / base agent (by def_index); default/account-bound
-    // items (origin 0: default music kit, badges, coins, default loadout); and items
-    // flagged non-tradable (flag bit 8, e.g. the X-Ray P250 and non-tradable cases).
+
     constexpr std::uint32_t kFlagNotTradable = 8;
     r.storable = non_storable_defs_.find(item.def_index) == non_storable_defs_.end() &&
                  item.origin != 0 && (item.flags & kFlagNotTradable) == 0;

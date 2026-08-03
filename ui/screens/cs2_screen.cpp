@@ -24,14 +24,6 @@ namespace sam::ui::screens {
 
 namespace {
 
-// True when this account's weekly drop has been claimed for the current weekly period.
-// The GC has no explicit "claimed" flag, so the loaded store's generation_time is the source
-// of truth: it is set when a drop is granted on rank-up, so a zero balance whose generation
-// falls in the current week (since the last Wednesday reset) means this week's drop was taken.
-// Crucially the GC keeps showing last week's drop after the reset -- same generation, zero
-// balance -- until a new one is granted, so a pre-reset generation must NOT count as claimed;
-// that is what resets the card at the week boundary. The persistent reset marker is kept in
-// step with this in on_snapshot, since account-list contexts have no live store of their own.
 bool drop_claimed_this_week(const cs2_gc::WeeklyReward& reward) {
     if (!reward.loaded || reward.available) return false;
     const std::int64_t now = now_seconds();
@@ -39,13 +31,10 @@ bool drop_claimed_this_week(const cs2_gc::WeeklyReward& reward) {
     return reward.generation_time >= static_cast<std::uint32_t>(last_reset);
 }
 
-// Persona name, or the privacy-aware login when there is no persona, matching the label
-// other screens show for an account.
 std::string cs2_account_label(const app::AppState& state, const core::Account& a) {
     return a.web.persona_name.empty() ? widgets::login_label(state, a) : a.web.persona_name;
 }
 
-// Header chip showing the selected account (avatar + name). Returns true when clicked.
 bool draw_cs2_account_chip(const app::AppState& state, const core::Account* picked) {
     constexpr float kH = 40.0F;
     constexpr float kW = 260.0F;
@@ -77,9 +66,6 @@ bool draw_cs2_account_chip(const app::AppState& state, const core::Account* pick
     return clicked;
 }
 
-// Single-select account grid for the header popup: filterable chips with avatar + name.
-// Clicking a chip points the screen at that account and closes the popup. Adapted from the
-// trade-offer picker (trade_offers_modals.cpp), single-select instead of multi.
 void draw_cs2_account_picker(app::AppState& state, char (&search)[64]) {
     ImGui::SetNextItemWidth(220.0F);
     ImGui::InputTextWithHint("##cs2acctsearch", "filter", search, sizeof(search));
@@ -87,7 +73,7 @@ void draw_cs2_account_picker(app::AppState& state, char (&search)[64]) {
     const std::string af = core::to_lower(search);
     std::vector<const core::Account*> accts;
     for (auto& a : state.vault.accounts) {
-        if (a.steam_id_64 == 0) continue;  // the GC needs a resolved SteamID
+        if (a.steam_id_64 == 0) continue;
         if (!af.empty() &&
             core::to_lower(cs2_account_label(state, a)).find(af) == std::string::npos &&
             core::to_lower(a.login).find(af) == std::string::npos)
@@ -200,10 +186,7 @@ void start_client(app::AppState& state, const core::Account& acct) {
             if (!valid()) return;
             st->cs2_screen->snapshot = std::move(snap);
             st->apply_gc_snapshot_cache(aid, st->cs2_screen->snapshot);
-            // Keep the persistent weekly-drop marker (what the account list reads, with no
-            // live store of its own) in step with the GC store: light it once this week's drop
-            // is taken, and clear it after a new week has reset even while the GC still shows
-            // last week's drop. Gated on the setting; manual marking owns it when off.
+
             core::Account* acc = st->find_account(aid);
             if (acc == nullptr) return;
             const cs2_gc::WeeklyReward& reward = st->cs2_screen->snapshot.reward;
@@ -245,10 +228,7 @@ void start_client(app::AppState& state, const core::Account& acct) {
             cs.status = msg;
         });
     };
-    // Cache what the weekly drop picked into the vault. Not gated on the screen still
-    // showing this account (valid()): the claim already happened, so persist it as long
-    // as the account exists, and also mark the weekly-drop reset so the account-list
-    // marker lights up like the manual "Mark claimed" menu does.
+
     cb.on_reward_claimed = [st, aid](std::uint32_t gen, std::vector<std::uint64_t> ids,
                                      std::vector<std::string> names) {
         st->post_ui_callback([st, aid, gen, ids = std::move(ids),
@@ -267,15 +247,10 @@ void start_client(app::AppState& state, const core::Account& acct) {
     s.client = std::make_unique<cs2_gc::Cs2GcClient>(std::move(creds), std::move(cb));
 }
 
-// Hand the live GC client to the background reaper so account/tab switches and
-// Disconnect never block the render thread joining its worker.
 void discard_client(Cs2ScreenState& s) {
     if (s.client) cs2_gc::retire(std::move(s.client));
 }
 
-// One selectable item tile (rounded panel, inset icon, rarity-colored border, optional
-// selection highlight, storage-unit count badge, name-on-hover tooltip). Returns true
-// when clicked; advances the cursor by w x h.
 bool draw_tile(const cs2_gc::DisplayItem& it, float w, float h, bool selected) {
     const float inset = h * 0.12F;
     const ImVec2 c0 = ImGui::GetCursorScreenPos();
@@ -293,7 +268,7 @@ bool draw_tile(const cs2_gc::DisplayItem& it, float w, float h, bool selected) {
                              ? IM_COL32((it.border_rgb >> 16) & 0xFF, (it.border_rgb >> 8) & 0xFF,
                                         it.border_rgb & 0xFF, 255)
                              : ImGui::ColorConvertFloat4ToU32(theme::border());
-    // Vendored ImGui swapped AddRect thickness<->flags; pass thickness before flags.
+
     dl->AddRect(c0, c1, border, 6.0F, 2.0F);
     if (selected)
         dl->AddRect(c0, c1, ImGui::ColorConvertFloat4ToU32(theme::accent()), 6.0F, 3.0F);
@@ -307,8 +282,6 @@ bool draw_tile(const cs2_gc::DisplayItem& it, float w, float h, bool selected) {
     return clicked;
 }
 
-// Lays out `items` as a cols x rows paginated grid (tiles fill the column width, capped)
-// with a Page nav row. is_selected() drives the highlight; on_click() fires per click.
 template <class SelFn, class ClickFn>
 void draw_grid(const std::vector<cs2_gc::DisplayItem>& items, int& page, int cols, int rows,
                SelFn is_selected, ClickFn on_click) {
@@ -350,9 +323,6 @@ void draw_grid(const std::vector<cs2_gc::DisplayItem>& items, int& page, int col
     }
 }
 
-// A progress bar with its label centered over the whole bar (ImGui's built-in overlay
-// hugs the fill edge). Pass "" as the overlay to draw the bar alone, then stamp the text
-// at the rect center via the draw list.
 void progress_bar_centered(float frac, float width, const char* text) {
     frac = std::clamp(frac, 0.0F, 1.0F);
     ImGui::ProgressBar(frac, ImVec2(width, 0.0F), "");
@@ -402,7 +372,7 @@ void draw_units(Cs2ScreenState& s, float width) {
                     s.open_unit,
                     std::vector<std::uint64_t>(s.selected_unit.begin(), s.selected_unit.end()));
                 s.selected_unit.clear();
-                s.unit_loading = true;  // refresh the contents grid after the batch runs
+                s.unit_loading = true;
                 s.contents_page = 0;
                 s.client->load_unit(s.open_unit);
             }
@@ -462,7 +432,7 @@ void draw_inventory(Cs2ScreenState& s, float width) {
                 s.open_unit,
                 std::vector<std::uint64_t>(s.selected_inv.begin(), s.selected_inv.end()));
             s.selected_inv.clear();
-            s.unit_loading = true;  // refresh the open unit's contents after the batch runs
+            s.unit_loading = true;
             s.contents_page = 0;
             s.client->load_unit(s.open_unit);
         }
@@ -479,8 +449,6 @@ void draw_inventory(Cs2ScreenState& s, float width) {
     ImGui::EndChild();
 }
 
-// Weekly-drop card: the claim UI while a drop is redeemable, else the level-progress bar
-// plus the claimed/not-ready status (see drop_claimed_this_week for the detection).
 void draw_weekly_drop(Cs2ScreenState& s, float width) {
     ImGui::BeginChild("##cs2_drop", ImVec2(width, 0.0F),
                       ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
@@ -492,8 +460,7 @@ void draw_weekly_drop(Cs2ScreenState& s, float width) {
     if (reward.available) {
         ImGui::Text("Weekly drop ready: %u to claim", reward.redeemable_balance);
         const std::size_t cap = reward.redeemable_balance;
-        // When you can take every candidate there's nothing to choose -- show a plain
-        // preview. Otherwise let the user pick which `cap` items to keep.
+
         const bool claim_all = reward.items.size() <= cap;
         draw_grid(
             reward.items, s.reward_page, 5, 1,
@@ -501,7 +468,7 @@ void draw_weekly_drop(Cs2ScreenState& s, float width) {
                 return !claim_all && s.selected_reward.count(it.id) != 0;
             },
             [&](const cs2_gc::DisplayItem& it) {
-                if (claim_all) return;  // preview only
+                if (claim_all) return;
                 if (s.selected_reward.count(it.id) != 0) s.selected_reward.erase(it.id);
                 else if (s.selected_reward.size() < cap) s.selected_reward.insert(it.id);
             });
@@ -528,8 +495,7 @@ void draw_weekly_drop(Cs2ScreenState& s, float width) {
         }
         ImGui::EndDisabled();
     } else {
-        // A headline line above the bar so this card's progress bar lines up with the
-        // mission card's (which has its name line above its bar).
+
         const bool claimed = drop_claimed_this_week(reward);
         std::string names;
         if (claimed)
@@ -556,9 +522,6 @@ void draw_weekly_drop(Cs2ScreenState& s, float width) {
             progress_bar_centered(frac, bar_w, overlay);
         }
 
-        // Secondary note below the bar (mirrors the mission card's dim note line). Show the
-        // reset date whenever the store is loaded (claimed or just not earned yet), plus the
-        // picked items once claimed.
         if (reward.loaded) {
             if (claimed && !names.empty()) ImGui::TextDisabled("Picked: %s", names.c_str());
             char when[32] = "";
@@ -571,8 +534,6 @@ void draw_weekly_drop(Cs2ScreenState& s, float width) {
     ImGui::EndChild();
 }
 
-// Weekly recurring mission card: name + centered progress bar. The XP is granted by the
-// game server as you play; there is no GC message to claim it, hence the note (no button).
 void draw_weekly_mission(Cs2ScreenState& s, float width) {
     ImGui::BeginChild("##cs2_mission", ImVec2(width, 0.0F),
                       ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
@@ -706,8 +667,7 @@ void draw_cs2(app::AppState& state) {
     ImGui::TextUnformatted(s.status.c_str());
     ImGui::SameLine();
     if (s.connected) {
-        // Manual re-pull of the inventory/store (e.g. after buying skins). Live changes
-        // also refresh on their own; this is for when you want to force it.
+
         if (ImGui::SmallButton("Refresh") && s.client) s.client->refresh();
         ImGui::SameLine();
     }
@@ -730,15 +690,11 @@ void draw_cs2(app::AppState& state) {
     }
 
     ImGui::Spacing();
-    // Reserve a right gutter equal to the left indent so the cards sit symmetrically in the
-    // page (PushItemWidth's inset applies to items, not to child windows).
+
     const float gap = ImGui::GetStyle().ItemSpacing.x;
     const float avail = ImGui::GetContentRegionAvail().x - kContentPaddingX;
     const float col = (avail - gap) * 0.5F;
 
-    // Only the cards enabled in settings, laid out two-up in their original order
-    // (drop, mission, then units, inventory) so hiding one never leaves a dangling
-    // SameLine.
     const auto& gc = state.settings.cs2_gc;
     std::vector<std::function<void(float)>> cards;
     if (gc.show_weekly_drop)    cards.push_back([&](float w) { draw_weekly_drop(s, w); });
@@ -746,10 +702,6 @@ void draw_cs2(app::AppState& state) {
     if (gc.show_storage_units)  cards.push_back([&](float w) { draw_units(s, w); });
     if (gc.show_inventory)      cards.push_back([&](float w) { draw_inventory(s, w); });
 
-    // The page sets ItemSpacing.y to 10 for section spacing, which otherwise
-    // leaks into the cards and their fixed 5-row grids and pushes the whole page
-    // into a few-pixel scroll. Use the theme's 8px row spacing inside the cards;
-    // the unchanged x keeps the two-up gap that col was sized against.
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, 8.0F));
     for (std::size_t i = 0; i < cards.size(); i += 2) {
         if (i > 0) ImGui::Spacing();

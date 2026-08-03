@@ -31,8 +31,6 @@ std::string read_file(const std::filesystem::path& p) {
     return ss.str();
 }
 
-// Key is the string hex(crc32(name)) + "1", not (crc<<4)|1 which overflows
-// uint32 when the top nibble is set. `name` must already be lowercased.
 std::string connect_cache_key(const std::string& name) {
     char hexbuf[16];
     std::snprintf(hexbuf, sizeof(hexbuf), "%x",
@@ -62,7 +60,7 @@ bool write_connect_cache_raw(const std::string& account_name,
     const std::string name = core::to_lower(account_name);
     const std::string key = connect_cache_key(name);
 
-    VdfNode root = parse_vdf(read_file(path));  // "" when local.vdf is absent
+    VdfNode root = parse_vdf(read_file(path));
     VdfNode* connect_cache = ensure_block_path(
         root, {"MachineUserConfigStore", "Software", "Valve", "Steam", "ConnectCache"});
     upsert_scalar(*connect_cache, key, raw_value);
@@ -91,7 +89,6 @@ bool write_connect_cache_token(const std::string& account_name,
 
     const std::string name = core::to_lower(account_name);
 
-    // DPAPI-wrap the bare JWT, entropy = the account name bytes (no NUL).
     std::string plaintext(refresh_token.begin(), refresh_token.end());
     std::vector<std::uint8_t> blob;
     try {

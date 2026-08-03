@@ -38,8 +38,7 @@ std::vector<std::uint8_t> random_bytes(std::size_t n) {
 }
 
 std::string random_device_id() {
-    // UUIDv4 layout: 8-4-4-4-12 hex digits, with the version (4) in nibble 13 and
-    // the variant bits in nibble 17.
+
     std::array<std::uint8_t, 16> bytes{};
     bcrypt_fill(bytes.data(), bytes.size());
     bytes[6] = static_cast<std::uint8_t>((bytes[6] & 0x0F) | 0x40);
@@ -62,8 +61,7 @@ std::string random_device_id() {
 }
 
 std::string random_session_id() {
-    // SDA's GetRandomHexNumber(32): 32 uppercase hex from 16 bytes. Used as the
-    // sessionid cookie and the CSRF value POSTed to /jwt/finalizelogin.
+
     auto bytes = random_bytes(16);
     std::string out;
     out.resize(bytes.size() * 2);

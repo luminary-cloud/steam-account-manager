@@ -69,7 +69,6 @@ bool decode_png(const unsigned char* data, std::size_t len, std::vector<unsigned
     return true;
 }
 
-// Reads hbmColor directly (not DrawIconEx) so alpha stays un-premultiplied, as ImGui expects.
 bool load_app_icon_rgba(std::vector<unsigned char>& rgba_out, UINT& w_out, UINT& h_out) {
     HICON icon = static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr),
         MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR));
@@ -89,7 +88,7 @@ bool load_app_icon_rgba(std::vector<unsigned char>& rgba_out, UINT& w_out, UINT&
     BITMAPINFO bi{};
     bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bi.bmiHeader.biWidth = static_cast<LONG>(w);
-    bi.bmiHeader.biHeight = -static_cast<LONG>(h);  // top-down
+    bi.bmiHeader.biHeight = -static_cast<LONG>(h);
     bi.bmiHeader.biPlanes = 1;
     bi.bmiHeader.biBitCount = 32;
     bi.bmiHeader.biCompression = BI_RGB;
@@ -103,7 +102,6 @@ bool load_app_icon_rgba(std::vector<unsigned char>& rgba_out, UINT& w_out, UINT&
     DestroyIcon(icon);
     if (scanned == 0) return false;
 
-    // GetDIBits hands back BGRA; swap to RGBA for DXGI_FORMAT_R8G8B8A8_UNORM.
     bool any_alpha = false;
     for (std::size_t i = 0; i + 3 < rgba_out.size(); i += 4) {
         const unsigned char b = rgba_out[i];
@@ -111,7 +109,7 @@ bool load_app_icon_rgba(std::vector<unsigned char>& rgba_out, UINT& w_out, UINT&
         rgba_out[i + 2] = b;
         if (rgba_out[i + 3] != 0) any_alpha = true;
     }
-    // A legacy icon with no alpha reads back fully transparent; force opaque.
+
     if (!any_alpha) {
         for (std::size_t i = 0; i + 3 < rgba_out.size(); i += 4) rgba_out[i + 3] = 255;
     }

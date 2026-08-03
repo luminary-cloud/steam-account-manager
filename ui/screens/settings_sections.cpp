@@ -57,7 +57,6 @@ bool write_master_pw_cache(app::AppState& state) {
 void draw_proxy_section(app::AppState& state) {
     separator_text("Proxy");
 
-    // Shared by both Test buttons: forces the given proxy regardless of mode, reports exit IP.
     static std::string single_test_result;
     static bool        single_testing = false;
     static std::string acct_test_result;
@@ -91,15 +90,13 @@ void draw_proxy_section(app::AppState& state) {
     {
         int mode_idx = static_cast<int>(state.settings.proxy_mode);
         ImGui::SetNextItemWidth(200);
-        if (ImGui::Combo("Proxy mode", &mode_idx, "None\0Single proxy\0Per-account\0")) {
+        if (styled_combo("Proxy mode", &mode_idx, "None\0Single proxy\0Per-account\0")) {
             state.settings.proxy_mode = static_cast<app::ProxyMode>(mode_idx);
             state.sync_proxy_policy();
             state.save_settings();
         }
-        hover_tooltip("None: every account connects directly (default). Single proxy: one proxy "
-                      "for all accounts. Per-account: each account uses its own proxy; accounts "
-                      "without one stay direct. Applies to the app's web traffic, not the launched "
-                      "Steam client.");
+        hover_tooltip("One proxy for all accounts, or one each. Covers the app's own web "
+                      "traffic, not the launched Steam client.");
 
         if (state.settings.proxy_mode == app::ProxyMode::Single) {
             if (widgets::draw_password_field("Proxy URL##single-proxy",
@@ -107,8 +104,8 @@ void draw_proxy_section(app::AppState& state) {
                 state.sync_proxy_policy();
                 state.save_settings();
             }
-            hover_tooltip("scheme://[user:pass@]host:port  e.g. "
-                          "socks5://user:pass@host:1080 (http/https also work).");
+            hover_tooltip("scheme://[user:pass@]host:port, e.g. socks5://user:pass@host:1080. "
+                          "http and https also work.");
             ImGui::BeginDisabled(single_testing || state.settings.single_proxy.empty());
             if (action_button("Test##single-proxy", ImVec2(80, 0))) {
                 run_proxy_test(state.settings.single_proxy, &single_test_result, &single_testing);
@@ -207,25 +204,19 @@ void draw_authenticator_section(app::AppState& state) {
     separator_text("Authenticator");
     ImGui::Checkbox("Auto-copy code on account select",
                     &state.settings.sda.auto_copy_on_select);
-    hover_tooltip("Copies the current Steam Guard code to the clipboard whenever you "
-                  "pick a different account in the Authenticator picker. Clipboard "
-                  "auto-clear above still applies.");
     ImGui::Checkbox("Show next code preview",
                     &state.settings.sda.show_next_code);
-    hover_tooltip("Dim text under the current code showing what it will rotate to "
-                  "in the next 30-second window.");
     ImGui::Checkbox("Hide current code (click to reveal)",
                     &state.settings.sda.hide_current_code);
-    hover_tooltip("Hides the code until you click it. Reveals for 5 seconds, then re-hides.");
+    hover_tooltip("Stays revealed for 5 seconds, then hides again.");
 
     if (ImGui::Checkbox("Global hotkey to copy current code",
                         &state.settings.sda.global_hotkey_enabled)) {
         state.needs_hotkey_reregister = true;
         state.save_settings();
     }
-    hover_tooltip("Registers a system-wide shortcut that copies the current Steam Guard "
-                  "code for the most recently selected account, even when this app isn't "
-                  "focused. Default is Ctrl + Shift + G.");
+    hover_tooltip("Copies the selected account's code without focusing the app. "
+                  "Default Ctrl + Shift + G.");
     {
         auto mods_text = [](std::uint32_t m) {
             std::string s;
@@ -303,23 +294,21 @@ void draw_confirmations_section(app::AppState& state) {
     ImGui::SetNextItemWidth(180);
     ImGui::SliderInt("Per-account refresh cooldown (s)",
                      &state.settings.confirmations.per_account_cooldown_seconds, 0, 300);
-    hover_tooltip("Min seconds between confirmation-list refreshes for the same account. "
-                  "Prevents accidental spamming of Steam's /mobileconf endpoint.");
+    hover_tooltip("Minimum gap between refreshes of the same account, so Steam's "
+                  "mobileconf endpoint isn't spammed.");
     ImGui::SetNextItemWidth(180);
     ImGui::SliderInt("Refresh-all stagger (ms)",
                      &state.settings.confirmations.refresh_stagger_ms, 0, 2000);
-    hover_tooltip("Delay between submissions when you click Refresh all. With 100+ accounts "
-                  "this prevents Steam from rate-limiting the whole IP.");
+    hover_tooltip("Gap between accounts during Refresh all. Stops Steam rate-limiting "
+                  "the whole IP.");
     ImGui::SetNextItemWidth(180);
     ImGui::SliderInt("Permanent-failure after N session errors",
                      &state.settings.confirmations.permanent_failure_threshold, 1, 10);
-    hover_tooltip("After this many consecutive session errors, the account is skipped by "
-                  "Refresh all and the background poller. Manual refresh still works and "
-                  "clears the mark on success.");
+    hover_tooltip("The account is then skipped by batch refreshes. Manual refresh still "
+                  "works and clears the mark.");
     ImGui::Checkbox("Background poll for new confirmations",
                     &state.settings.confirmations.background_poll_enabled);
-    hover_tooltip("Wakes a background thread every N minutes to run Refresh all. "
-                  "Skips accounts marked permanent-failure and respects the per-account cooldown.");
+    hover_tooltip("Runs Refresh all on a timer, skipping permanent-failure accounts.");
     ImGui::BeginDisabled(!state.settings.confirmations.background_poll_enabled);
     ImGui::SetNextItemWidth(180);
     ImGui::SliderInt("Poll interval (minutes)",
@@ -333,16 +322,20 @@ void draw_confirmations_section(app::AppState& state) {
 
     ImGui::Spacing();
     ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
-    ImGui::TextWrapped("Auto-approve is policy that can lose money. The app never auto-denies. "
-                       "Trade approvals require a steamid whitelist (added later). Off by default.");
+    ImGui::TextWrapped("Auto-approve is policy that can lose money. The app never auto-denies, "
+                       "and trade approvals only ever go to your trusted-partner list.");
     ImGui::PopStyleColor();
     ImGui::Checkbox("Auto-approve enabled",
                     &state.settings.confirmations.auto_approve_enabled);
+    hover_tooltip("Approves the kinds ticked below without asking. Nothing is ever denied "
+                  "automatically.");
     ImGui::BeginDisabled(!state.settings.confirmations.auto_approve_enabled);
     ImGui::Checkbox("...market listings",
                     &state.settings.confirmations.auto_approve_market);
+    hover_tooltip("Confirms your own Community Market listings as they are created.");
     ImGui::Checkbox("...phone-number-change confirmations",
                     &state.settings.confirmations.auto_approve_phone_change);
+    hover_tooltip("Only turn this on while you are changing the number yourself.");
     ImGui::EndDisabled();
 
     ImGui::Spacing();
@@ -355,15 +348,15 @@ void draw_cs2_config_section(app::AppState& state) {
     separator_text("CS2 config on login");
     {
         int mode_idx = static_cast<int>(state.settings.cs2_video.mode);
-        ImGui::SetNextItemWidth(200);
-        if (ImGui::Combo("CS2 config mode", &mode_idx,
-                         "None\0Video txt only\0Whole 730 folder\0")) {
+        ImGui::SetNextItemWidth(240);
+        if (styled_combo("CS2 config mode", &mode_idx,
+                         "None\0Video txt only\0Whole 730 folder\0"
+                         "All game folders (userdata)\0")) {
             state.settings.cs2_video.mode = static_cast<app::CS2ConfigMode>(mode_idx);
             state.save_settings();
         }
-        hover_tooltip("None: nothing on login. Video txt only: copy cs2_video.txt into "
-                      "userdata/<id>/730/local/cfg. Whole 730 folder: copy an entire 730 "
-                      "folder into userdata/<id>/730 (files merged over any existing ones).");
+        hover_tooltip("What gets copied into the launched account's userdata on login: "
+                      "a cs2_video.txt, a whole 730 folder, or every game folder.");
     }
 
     if (state.settings.cs2_video.mode == app::CS2ConfigMode::VideoTxt) {
@@ -382,7 +375,7 @@ void draw_cs2_config_section(app::AppState& state) {
                             {L"All files (*.*)", L"*.*"}};
             const auto res = platform::file_dialog::open_file(opts);
             if (res.ok) {
-                // Keep our own copy so it survives the original being moved or deleted.
+
                 std::error_code ec;
                 std::filesystem::copy_file(res.path, app::cs2_video_template_path(),
                                            std::filesystem::copy_options::overwrite_existing, ec);
@@ -403,8 +396,7 @@ void draw_cs2_config_section(app::AppState& state) {
                 state.save_settings();
             }
         }
-        hover_tooltip("The chosen file is copied to the app data folder and used as the single "
-                      "default for every account.");
+        hover_tooltip("Copied to the app data folder and used for every account.");
     } else if (state.settings.cs2_video.mode == app::CS2ConfigMode::Folder730) {
         ImGui::TextUnformatted("Source 730 folder:");
         ImGui::SameLine();
@@ -419,7 +411,7 @@ void draw_cs2_config_section(app::AppState& state) {
             opts.title = L"Select CS2 730 folder";
             const auto res = platform::file_dialog::pick_folder(opts);
             if (res.ok) {
-                // Snapshot into app data so it survives the original being moved or deleted.
+
                 const auto imp = cs2_config::import_730_template(
                     res.path, app::cs2_730_template_dir());
                 if (!imp.ok) {
@@ -439,10 +431,9 @@ void draw_cs2_config_section(app::AppState& state) {
                 state.save_settings();
             }
         }
-        hover_tooltip("Pick a 730 folder (the CS2 userdata settings folder). A copy is taken "
-                      "now and, on login, merged into userdata/<id>/730. Re-choose to update "
-                      "the copy.");
-        // A real 730 folder should contain local/cfg.
+        hover_tooltip("A copy is taken now and merged into the account's 730 folder on "
+                      "login. Re-choose to update it.");
+
         if (!state.settings.cs2_video.folder_source_label.empty()) {
             std::error_code vec;
             if (!std::filesystem::is_directory(
@@ -451,6 +442,113 @@ void draw_cs2_config_section(app::AppState& state) {
                                    "Note: no local/cfg inside; is this really a 730 folder?");
             }
         }
+    } else if (state.settings.cs2_video.mode == app::CS2ConfigMode::UserdataFolder) {
+
+        static bool s_importing = false;
+        static std::string s_error;
+
+        static std::string s_noted_for = "\x01";
+        static std::string s_games;
+        static bool s_no_config_beside = false;
+
+        const std::string& src_label = state.settings.cs2_video.userdata_source_label;
+        if (!s_importing && s_noted_for != src_label) {
+            s_noted_for = src_label;
+            s_games.clear();
+            s_no_config_beside = false;
+            if (!src_label.empty()) {
+
+                std::error_code sec;
+                std::vector<std::string> ids;
+                for (auto it = std::filesystem::directory_iterator(
+                         app::userdata_template_dir(), sec);
+                     !sec && it != std::filesystem::directory_iterator();
+                     it.increment(sec)) {
+                    if (it->is_directory(sec)) {
+                        ids.push_back(to_utf8(it->path().filename().wstring()));
+                    }
+                }
+                for (std::size_t i = 0; i < ids.size(); ++i) {
+                    s_games += (i == 0 ? std::to_string(ids.size()) + " game folders: "
+                                       : std::string{", "}) + ids[i];
+                }
+
+                const std::filesystem::path src(src_label);
+                if (std::filesystem::is_directory(src, sec)) {
+                    s_no_config_beside =
+                        !std::filesystem::is_directory(src / "config", sec);
+                }
+            }
+        }
+
+        ImGui::TextUnformatted("Source userdata folder:");
+        ImGui::SameLine();
+        if (src_label.empty()) {
+            ImGui::TextDisabled("none selected");
+        } else {
+            ImGui::TextDisabled("%s", src_label.c_str());
+        }
+
+        ImGui::BeginDisabled(s_importing);
+        if (action_button("Choose userdata folder...", ImVec2(200, 0))) {
+            platform::file_dialog::Options opts;
+            opts.parent = state.main_hwnd;
+            opts.title = L"Select Steam userdata account folder";
+            const auto res = platform::file_dialog::pick_folder(opts);
+            if (res.ok) {
+                s_importing = true;
+                s_error.clear();
+
+                app::job_pump::submit([&state, src = res.path] {
+                    const auto imp = cs2_config::import_userdata_template(
+                        src, app::userdata_template_dir());
+                    state.post_ui_callback([&state, src, imp] {
+                        s_importing = false;
+                        if (!imp.ok) {
+                            s_error = imp.message;
+                            SAM_LOG_ERROR("userdata template import failed: {}",
+                                          imp.message);
+                            return;
+                        }
+                        state.settings.cs2_video.userdata_source_label = src.string();
+                        state.save_settings();
+
+                        s_noted_for.clear();
+                    });
+                });
+            }
+        }
+        if (!src_label.empty()) {
+            ImGui::SameLine();
+            if (action_button("Clear##cs2-userdata", ImVec2(80, 0))) {
+                std::error_code ec;
+                std::filesystem::remove_all(app::userdata_template_dir(), ec);
+                state.settings.cs2_video.userdata_source_label.clear();
+                state.save_settings();
+                s_error.clear();
+            }
+        }
+        ImGui::EndDisabled();
+        hover_tooltip("Pick a userdata\\<id> folder. Every game folder in it is merged "
+                      "into the launched account's userdata on login.");
+
+        if (s_importing) {
+            ImGui::TextDisabled("Copying game folders...");
+        } else if (!s_error.empty()) {
+            ImGui::TextColored(theme::danger(), "%s", s_error.c_str());
+        } else if (!s_games.empty()) {
+            ImGui::TextWrapped("Snapshot holds %s", s_games.c_str());
+        }
+
+        if (s_no_config_beside) {
+            ImGui::TextColored(theme::warning(),
+                               "Note: no config folder beside them; did you pick "
+                               "userdata itself instead of userdata\\<id>?");
+        }
+
+        ImGui::TextDisabled("Steam settings (config\\localconfig.vdf) are never copied.");
+        hover_tooltip("Only the numbered game folders are copied. This app writes the "
+                      "launch options and login preferences itself.");
     }
 
     ImGui::Spacing();
@@ -462,9 +560,8 @@ void draw_cs2_config_section(app::AppState& state) {
         state.settings.cs2_video.launch_options = lo_buf;
         state.save_settings();
     }
-    hover_tooltip("Written to appid 730's LaunchOptions for the account you launch (e.g. "
-                  "-novid -tickrate 128 +fps_max 400). Applied while Steam is restarting so "
-                  "Steam won't overwrite it. Leave empty to keep Steam's current options.");
+    hover_tooltip("CS2 launch options for the account you launch, e.g. -novid +fps_max 400. "
+                  "Leave empty to keep Steam's current ones.");
 }
 
 void draw_gamesense_section(app::AppState& state) {
@@ -507,9 +604,8 @@ void draw_gamesense_section(app::AppState& state) {
             ImGui::PopStyleColor();
         }
     }
-    hover_tooltip("The loader .exe is copied into the app data folder (data\\gamesense). "
-                  "Accounts set to \"Launch CS2 + gamesense\" run it after CS2 starts. "
-                  "Pick again to update the loader.");
+    hover_tooltip("Copied into the app data folder. Accounts set to \"Launch CS2 + "
+                  "gamesense\" run it once CS2 starts.");
 }
 
 void draw_luminary_section(app::AppState& state) {
@@ -552,9 +648,8 @@ void draw_luminary_section(app::AppState& state) {
             ImGui::PopStyleColor();
         }
     }
-    hover_tooltip("The loader .exe is copied into the app data folder (data\\luminary). "
-                  "Accounts set to \"Launch CS2 + luminary\" run it with --auto --game=cs2 "
-                  "after CS2 starts. Pick again to update the loader.");
+    hover_tooltip("Copied into the app data folder. Accounts set to \"Launch CS2 + "
+                  "luminary\" run it once CS2 starts.");
 }
 
 void draw_storage_section(app::AppState& state) {
@@ -562,9 +657,9 @@ void draw_storage_section(app::AppState& state) {
     {
         constexpr ImVec4 kWarn(0.90F, 0.70F, 0.20F, 1.0F);
         static std::string s_storage_err;
-        static std::filesystem::path s_pending_dir;  // target awaiting confirmation
+        static std::filesystem::path s_pending_dir;
         static bool s_pending_is_default = false;
-        static bool s_restart_pending = false;       // a change applied this session
+        static bool s_restart_pending = false;
 
         ImGui::TextUnformatted("Data folder:");
         ImGui::SameLine();
@@ -598,8 +693,8 @@ void draw_storage_section(app::AppState& state) {
                     ImGui::OpenPopup("Move data folder");
                 }
             }
-            hover_tooltip("Copy the vault, settings, and logs to another folder (e.g. a second "
-                          "drive or USB stick). Takes effect after a restart.");
+            hover_tooltip("Moves the vault, settings and logs elsewhere, e.g. a USB stick. "
+                          "Takes effect after a restart.");
 
             if (platform::using_custom_data_dir()) {
                 ImGui::SameLine();
@@ -617,7 +712,6 @@ void draw_storage_section(app::AppState& state) {
             if (action_button("Open data folder", ImVec2(160, 0))) {
                 open_folder(platform::data_dir());
             }
-            hover_tooltip("Open the data folder (vault, settings, logs) in Explorer.");
         }
 
         if (!s_storage_err.empty()) {
@@ -646,7 +740,7 @@ void draw_storage_section(app::AppState& state) {
                 std::string err;
                 if (platform::relocate_data_dir(s_pending_dir, &err)) {
                     if (s_pending_is_default) {
-                        platform::clear_custom_data_dir(nullptr);  // nullptr = default location
+                        platform::clear_custom_data_dir(nullptr);
                     }
                     s_restart_pending = true;
                 } else {
@@ -695,7 +789,6 @@ void draw_vaults_section(app::AppState& state) {
     auto& reg = state.vault_registry;
     const std::string active = platform::active_vault_id();
 
-    // Deferred actions so we don't mutate the vault list mid-iteration.
     std::string switch_to, delete_id;
 
     std::vector<app::VaultInfo*> items;
@@ -711,7 +804,6 @@ void draw_vaults_section(app::AppState& state) {
         const bool is_active = v.id == active;
         ImGui::PushID(v.id.c_str());
 
-        // Colour swatch (commit on release so we don't rewrite the registry per frame).
         float col[4];
         vaults_unpack_rgba(v.color_rgba, col);
         if (ImGui::ColorEdit4("##color", col,
@@ -721,7 +813,6 @@ void draw_vaults_section(app::AppState& state) {
         if (ImGui::IsItemDeactivatedAfterEdit()) app::save_registry(reg);
         ImGui::SameLine();
 
-        // Name (commit on deactivate).
         char name_buf[128];
         std::snprintf(name_buf, sizeof(name_buf), "%s", v.name.c_str());
         ImGui::SetNextItemWidth(200.0F);
@@ -735,13 +826,12 @@ void draw_vaults_section(app::AppState& state) {
             switch_to = v.id;
         }
 
-        // Auto-open toggle (mutually exclusive across vaults).
         bool auto_open = reg.auto_open_id == v.id;
         if (ImGui::Checkbox("Auto-open at startup", &auto_open)) {
             app::set_auto_open(reg, auto_open ? v.id : std::string{});
         }
-        hover_tooltip("Open this vault automatically on launch (skipping the picker) "
-                      "when it can unlock silently. Only one vault can auto-open.");
+        hover_tooltip("Skips the picker when this vault can unlock silently. "
+                      "Only one vault can auto-open.");
 
         ImGui::SameLine();
         if (action_button("Set icon...")) {
@@ -778,7 +868,6 @@ void draw_vaults_section(app::AppState& state) {
     ImGui::Spacing();
     if (action_button("Create vault...")) ImGui::OpenPopup("Create vault");
 
-    // ---- Create vault modal (creates the file + entry; does not switch to it) ----
     static std::string c_name, c_pw, c_pw_confirm, c_err;
     if (begin_styled_modal("Create vault")) {
         ImGui::TextUnformatted("Name");
@@ -831,7 +920,6 @@ void draw_vaults_section(app::AppState& state) {
         end_styled_modal();
     }
 
-    // ---- Delete confirmation ----
     static std::string s_delete_pending;
     if (!delete_id.empty()) {
         s_delete_pending = delete_id;

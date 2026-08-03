@@ -10,6 +10,10 @@ inline constexpr std::uint32_t kProtoMask = 0x80000000u;
 // The subset of Steam EMsg values the CM client uses (from SteamKit's EMsg enum).
 enum EMsg : std::uint32_t {
     Multi                        = 1,
+    // Unified-message (service method) RPC over the CM. The call carries the method name
+    // in the header's target_job_name and a jobid_source the reply echoes in jobid_target.
+    ServiceMethodResponse        = 147,
+    ServiceMethodCallFromClient  = 151,
     ClientHeartBeat              = 703,
     ClientLogOff                 = 706,
     ClientGamesPlayed            = 742,

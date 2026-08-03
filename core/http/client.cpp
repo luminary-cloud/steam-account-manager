@@ -61,28 +61,21 @@ int jitter_ms(int base_ms) {
 }
 
 std::atomic<bool> g_cancelled{false};
-thread_local std::string g_thread_proxy;                    // per-account proxy (PerAccount mode)
-thread_local std::optional<std::string> g_thread_override;  // forced proxy for Test buttons
+thread_local std::string g_thread_proxy;
+thread_local std::optional<std::string> g_thread_override;
 std::mutex g_policy_mtx;
 ProxyMode g_proxy_mode = ProxyMode::Direct;
 std::string g_single_proxy;
 std::mutex g_session_mtx;
-std::map<std::string, HINTERNET> g_sessions;  // keyed by effective proxy URL ("" = direct)
+std::map<std::string, HINTERNET> g_sessions;
 
-// Returns a WinHTTP session with the given proxy baked in at creation time. The
-// proxy must be set here (NAMED_PROXY) rather than per-request: an AUTOMATIC_PROXY
-// session resolves the proxy at send time (WPAD/PAC -> direct when none is
-// configured) and silently overrides a request-handle WINHTTP_OPTION_PROXY. One
-// session per distinct proxy also keeps each proxy's keep-alive pool separate, so
-// per-account proxies can't cross-contaminate exit IPs. Proxies that can't be set
-// up fall back to a direct session.
 HINTERNET session_for(const std::string& effective_proxy) {
     std::lock_guard lk(g_session_mtx);
     if (g_cancelled.load(std::memory_order_acquire)) return nullptr;
     if (const auto it = g_sessions.find(effective_proxy); it != g_sessions.end())
         return it->second;
 
-    std::wstring wnamed;  // empty => direct (NO_PROXY)
+    std::wstring wnamed;
     if (!effective_proxy.empty()) {
         if (const auto ep = parse_proxy(effective_proxy)) {
             if (ep->is_socks()) {
@@ -112,8 +105,6 @@ HINTERNET session_for(const std::string& effective_proxy) {
     return session;
 }
 
-// Closes every session at process exit if cancel_all() wasn't called (e.g. the
-// headless --startup refresh path).
 struct SessionCleanup {
     ~SessionCleanup() {
         std::lock_guard lk(g_session_mtx);
@@ -126,7 +117,7 @@ SessionCleanup g_session_cleanup;
 void parse_headers(const std::wstring& raw,
                    std::map<std::string, std::string>& out,
                    std::vector<std::string>& cookies_out) {
-    // First line is the status line; the rest are "Name: Value".
+
     std::wstring line;
     bool first = true;
     for (std::size_t i = 0; i <= raw.size(); ++i) {
@@ -200,7 +191,6 @@ bool split_url(const std::string& url, std::wstring& host, INTERNET_PORT& port,
     return true;
 }
 
-// Honors (in order) a thread-local test override, then the global ProxyMode policy.
 std::string resolve_effective_proxy() {
     if (g_thread_override.has_value()) return *g_thread_override;
     std::lock_guard lk(g_policy_mtx);
@@ -212,9 +202,6 @@ std::string resolve_effective_proxy() {
     return {};
 }
 
-// Applies http/https proxy credentials to a request handle. The proxy address lives
-// on the session (see session_for); WinHTTP rejects username/password on a session
-// handle, so they must be set per-request. SOCKS auth is done by the bridge.
 void apply_proxy(HINTERNET request) {
     const std::string proxy = resolve_effective_proxy();
     if (proxy.empty()) return;
@@ -292,7 +279,6 @@ Response perform_once(const Request& req) {
         WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, &disable, sizeof(disable));
     }
 
-    // We set the Cookie header ourselves, so disable WinHTTP's cookie store.
     {
         DWORD flags = WINHTTP_DISABLE_COOKIES;
         WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, &flags, sizeof(flags));

@@ -27,7 +27,6 @@ namespace {
 
 enum class Mode { Existing, Create };
 
-// Persist the DPAPI auto-unlock cache for the active vault now the password is known good.
 void write_active_cache(const std::string& pw) {
     try {
         std::span<const std::uint8_t> pw_bytes{
@@ -39,7 +38,6 @@ void write_active_cache(const std::string& pw) {
     }
 }
 
-// Post-unlock session entry shared by every open path (manual, create, cached).
 void enter_session(app::AppState& state) {
     state.unlocked = true;
     state.needs_vault_pick = false;
@@ -47,9 +45,9 @@ void enter_session(app::AppState& state) {
     state.current_screen = app::Screen::Accounts;
     app::bind_vault_session(state);
     if (state.settings.refresh_on_launch) state.refresh_account_data();
-    // Fill external funds for accounts without a figure yet; no-op once all are fetched.
+
     if (state.settings.info.show_external_funds) {
-        state.refresh_all_spend(/*only_missing=*/true);
+        state.refresh_all_spend(true);
     }
 }
 
@@ -76,8 +74,7 @@ void create_vault(app::AppState& state, const std::string& pw, std::string& erro
                                            sam::crypto::make_secure(pw));
         state.vault = {};
         state.master_password = sam::crypto::make_secure(pw);
-        // Register the freshly created vault if it isn't in the registry yet (the
-        // very first vault, or one created via the picker's Create mode).
+
         const auto id = sam::platform::active_vault_id();
         if (!state.vault_registry.find(id)) {
             app::add_vault_entry(state.vault_registry, id, "My Vault", 0x4F8EF7FFu);
@@ -143,8 +140,7 @@ void draw_unlock(app::AppState& state) {
     static std::string password_confirm;
     static std::string error_message;
     static Mode mode = Mode::Existing;
-    // The active vault can change without leaving this screen (via the picker), so
-    // recompute Existing/Create whenever it does and clear stale field state.
+
     static std::string shown_for_vault;
     const std::string active = sam::platform::active_vault_id();
     if (shown_for_vault != active) {
@@ -230,7 +226,6 @@ void draw_unlock(app::AppState& state) {
         }
     }
 
-    // With several vaults, offer a way back to the picker to choose a different one.
     if (state.vault_registry.vaults.size() > 1) {
         ImGui::Spacing();
         if (action_button("Choose a different vault")) {
@@ -239,8 +234,6 @@ void draw_unlock(app::AppState& state) {
         }
     }
 
-    // Point the app at an existing data folder elsewhere (another drive, USB, fresh
-    // install) so it doesn't start a blank vault.
     static std::filesystem::path located_dir;
     static std::string locate_error;
     ImGui::Spacing();
@@ -260,8 +253,7 @@ void draw_unlock(app::AppState& state) {
             }
         }
     }
-    hover_tooltip("Already have a data folder from another drive or a previous "
-                  "install? Point the app at it (it must contain vault.bin).");
+    hover_tooltip("Point the app at an existing data folder. It must contain vault.bin.");
     if (!locate_error.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
         ImGui::TextWrapped("%s", locate_error.c_str());

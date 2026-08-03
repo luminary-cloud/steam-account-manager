@@ -14,8 +14,6 @@ namespace sam::steam_cm {
 
 namespace {
 
-// Effectively infinite: the reader blocks until a real message or a close/abort, so
-// it must never hit a receive timeout (that aborts the WinHTTP web socket).
 constexpr int kNoTimeoutMs = 0x7FFFFFFF;
 constexpr int kSendTimeoutMs = 15000;
 
@@ -28,8 +26,6 @@ std::wstring to_wide(const std::string& s) {
     return out;
 }
 
-// Mirrors http::session_for: the proxy must be baked into the session, with a
-// SOCKS5 upstream fronted by the local CONNECT bridge.
 HINTERNET make_session(const std::string& effective_proxy) {
     std::wstring named;
     if (!effective_proxy.empty()) {
@@ -112,8 +108,7 @@ bool WsTransport::connect(const std::string& host, std::uint16_t port, const std
         close();
         return false;
     }
-    // No receive timeout: the reader blocks until a message/close. Sends still time
-    // out so a wedged write can't hang the worker.
+
     WinHttpSetTimeouts(static_cast<HINTERNET>(ws_), kNoTimeoutMs, kNoTimeoutMs, kSendTimeoutMs,
                        kNoTimeoutMs);
     {
@@ -155,7 +150,7 @@ RecvStatus WsTransport::recv_one(std::vector<std::uint8_t>& out) {
         if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE ||
             type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE)
             return RecvStatus::Message;
-        // Fragment buffer types: keep reading until the message completes.
+
     }
 }
 
@@ -193,8 +188,7 @@ RecvStatus WsTransport::next_message(std::vector<std::uint8_t>& out, int timeout
 void WsTransport::close() {
     closing_.store(true);
     if (ws_) {
-        // Abortive close: unblocks the reader's pending receive immediately. The
-        // app-level ClientLogOff has already been sent by CmSession::disconnect.
+
         WinHttpCloseHandle(static_cast<HINTERNET>(ws_));
     }
     if (reader_.joinable()) reader_.join();

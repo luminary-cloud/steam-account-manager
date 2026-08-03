@@ -31,10 +31,6 @@ constexpr uint32_t kSoundCard   = 1u << 9;
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "d3d9.lib")
 
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
-
 static std::wstring widen(const std::string& s) {
     if (s.empty()) return {};
     int len = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
@@ -91,10 +87,6 @@ static void create_and_enable(void* target, void* detour, T** original) {
     MH_EnableHook(target);
 }
 
-// ---------------------------------------------------------------------------
-// WMI helpers
-// ---------------------------------------------------------------------------
-
 static void wmi_put_str(IWbemClassObject* obj, const wchar_t* prop, const std::string& value) {
     if (value.empty()) return;
     auto ws = widen(value);
@@ -137,10 +129,6 @@ static std::wstring wmi_get_class(IWbemClassObject* obj) {
     VariantClear(&var);
     return {};
 }
-
-// ---------------------------------------------------------------------------
-// WMI vtable hook chain
-// ---------------------------------------------------------------------------
 
 using FnNext = HRESULT(STDMETHODCALLTYPE*)(IEnumWbemClassObject*, long, ULONG, IWbemClassObject**, ULONG*);
 static FnNext s_orig_next = nullptr;
@@ -291,10 +279,6 @@ static HRESULT STDMETHODCALLTYPE hk_connect_server(IWbemLocator* self, BSTR ns,
     return hr;
 }
 
-// ---------------------------------------------------------------------------
-// Core Audio hooks (sound card via IMMDeviceEnumerator)
-// ---------------------------------------------------------------------------
-
 static const GUID kClsidMMDevEnum =
     {0xbcde0395, 0xe52f, 0x467c, {0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e}};
 
@@ -357,10 +341,6 @@ static HRESULT STDMETHODCALLTYPE hk_get_default_ep(void* self, int flow, int rol
     return hr;
 }
 
-// ---------------------------------------------------------------------------
-// CoCreateInstance hook
-// ---------------------------------------------------------------------------
-
 using FnCoCreateInstance = HRESULT(WINAPI*)(REFCLSID, LPUNKNOWN, DWORD, REFIID, LPVOID*);
 static FnCoCreateInstance s_orig_cocreate = nullptr;
 
@@ -385,10 +365,6 @@ static HRESULT WINAPI hk_cocreate(REFCLSID clsid, LPUNKNOWN outer, DWORD ctx,
     }
     return hr;
 }
-
-// ---------------------------------------------------------------------------
-// DXGI hooks
-// ---------------------------------------------------------------------------
 
 static void spoof_adapter_desc(DXGI_ADAPTER_DESC* desc) {
     const auto& prof = ipc::get_profile();
@@ -486,10 +462,6 @@ static HRESULT WINAPI hk_create_factory2(UINT flags, REFIID iid, void** ppFactor
     return hr;
 }
 
-// ---------------------------------------------------------------------------
-// SMBIOS hook
-// ---------------------------------------------------------------------------
-
 static void smbios_set_string(uint8_t* str_section, size_t sec_size,
                                uint8_t string_index, const std::string& replacement) {
     if (replacement.empty() || string_index == 0) return;
@@ -549,10 +521,6 @@ static UINT WINAPI hk_firmware(DWORD sig, DWORD id, PVOID buf, DWORD size) {
     }
     return result;
 }
-
-// ---------------------------------------------------------------------------
-// System API hooks
-// ---------------------------------------------------------------------------
 
 using FnGlobalMemoryStatusEx = BOOL(WINAPI*)(LPMEMORYSTATUSEX);
 static FnGlobalMemoryStatusEx s_orig_memstatus = nullptr;
@@ -637,10 +605,6 @@ static BOOL WINAPI hk_enum_devices(LPCWSTR device, DWORD devnum, PDISPLAY_DEVICE
     return ok;
 }
 
-// ---------------------------------------------------------------------------
-// D3D9 hooks
-// ---------------------------------------------------------------------------
-
 using FnGetAdapterCount = UINT(STDMETHODCALLTYPE*)(IDirect3D9*);
 static FnGetAdapterCount s_orig_adapter_count = nullptr;
 
@@ -685,10 +649,6 @@ static void hook_d3d9() {
 
     d3d->Release();
 }
-
-// ---------------------------------------------------------------------------
-// steamclient64 auto-discovery hooks
-// ---------------------------------------------------------------------------
 
 using FnMachineGuid   = char(__fastcall*)(unsigned char* buf, DWORD size);
 using FnMacAddress    = DWORD(__fastcall*)(unsigned long long* a1);
@@ -788,10 +748,6 @@ static void hook_steamclient_inner(const char* sc_name) {
         reinterpret_cast<void**>(&s_orig_disk_serial));
 }
 
-// ---------------------------------------------------------------------------
-// tier0_s64 hook
-// ---------------------------------------------------------------------------
-
 using FnGetLocalHostname = const char*(__fastcall*)();
 static FnGetLocalHostname s_orig_hostname = nullptr;
 
@@ -812,10 +768,6 @@ static void hook_tier0() {
                            reinterpret_cast<void*>(hk_hostname), &s_orig_hostname);
     }
 }
-
-// ---------------------------------------------------------------------------
-// DLL load notification
-// ---------------------------------------------------------------------------
 
 struct UNICODE_STRING_NT {
     USHORT Length;
@@ -851,10 +803,6 @@ static void NTAPI on_dll_loaded(ULONG reason, const LDR_DLL_NOTIFICATION_DATA* d
     else if (dll_name_matches(data->BaseDllName, xorstr_(L"tier0_s64.dll")))
         hook_tier0();
 }
-
-// ---------------------------------------------------------------------------
-// init
-// ---------------------------------------------------------------------------
 
 void hooks::init() {
     MH_Initialize();

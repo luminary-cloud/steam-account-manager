@@ -42,7 +42,7 @@ namespace sam::ui::screens {
 namespace add_account_detail {
 
 std::string generate_ulid() {
-    // Not a real ULID, but stable and unique enough for in-app referencing.
+
     static std::atomic<std::uint64_t> counter{0};
     const auto n = counter.fetch_add(1);
     char buf[32];
@@ -52,7 +52,6 @@ std::string generate_ulid() {
     return buf;
 }
 
-// Explorer's "copy as path" wraps the path in quotes; strip those and surrounding space.
 std::string trim_path(std::string s) {
     while (!s.empty() && (s.front() == '"' || s.front() == ' ' || s.front() == '\t'))
         s.erase(s.begin());
@@ -62,7 +61,6 @@ std::string trim_path(std::string s) {
     return s;
 }
 
-// Non-recursive; ext_lower must include the leading dot and be lowercase.
 std::vector<std::filesystem::path> scan_dir_for_extension(
     const std::filesystem::path& dir, std::string_view ext_lower) {
     std::vector<std::filesystem::path> out;
@@ -87,6 +85,13 @@ std::vector<std::filesystem::path> scan_dir_for_extension(
 }  // namespace add_account_detail
 
 namespace {
+
+std::string full_login_token(const core::Account& a, const std::string& jwt) {
+    if (jwt.empty()) return {};
+    if (!a.login.empty()) return a.login + "----" + jwt;
+    if (a.steam_id_64 != 0) return std::to_string(a.steam_id_64) + "----" + jwt;
+    return jwt;
+}
 
 void draw_import_bundle(app::AppState& state) {
     static widgets::ImportBundleState import_state;
@@ -169,9 +174,11 @@ void draw_edit_account_modal(app::AppState& state) {
     static std::string password;
     static std::string shared_secret;
     static std::string notes;
-    static std::array<char, 4096> replace_buf{};   // NFA token replacement
+    static std::array<char, 4096> replace_buf{};
     static std::string replace_error;
-    static std::int64_t reveal_until = 0;          // NFA token reveal expiry (unix)
+    static std::int64_t reveal_until = 0;
+    static std::string mint_account_id;
+    static std::string mint_error;
 
     if (state.account_edit_requested) {
         state.account_edit_requested = false;
@@ -182,6 +189,7 @@ void draw_edit_account_modal(app::AppState& state) {
         replace_buf.fill('\0');
         replace_error.clear();
         reveal_until = 0;
+        mint_error.clear();
         widgets::reset_password_visibility(kPwLabel);
         widgets::reset_password_visibility(kSsLabel);
         if (const auto* acc = state.find_account(state.selected_account_id)) {
@@ -208,7 +216,7 @@ void draw_edit_account_modal(app::AppState& state) {
     const std::int64_t now = now_seconds();
 
     if (acc->is_nfa) {
-        // Token-only account: no password, edits the refresh token plus notes.
+
         separator_text("Account");
         ImGui::Text("Login: %s",
                     acc->login.empty() ? "(unknown)" : acc->login.c_str());
@@ -220,9 +228,7 @@ void draw_edit_account_modal(app::AppState& state) {
         std::string token_plain;
         if (!acc->refresh_token.empty())
             token_plain.assign(acc->refresh_token.begin(), acc->refresh_token.end());
-        const std::string full_token = acc->steam_id_64 != 0
-            ? std::to_string(acc->steam_id_64) + "----" + token_plain
-            : token_plain;
+        const std::string full_token = full_login_token(*acc, token_plain);
 
         separator_text("NFA token");
         const bool revealed = reveal_until > now;
@@ -244,7 +250,7 @@ void draw_edit_account_modal(app::AppState& state) {
                     full_token,
                     std::chrono::seconds(state.settings.clipboard_clear_seconds));
             }
-            hover_tooltip("Copies the full SteamID----JWT token; the clipboard auto-clears.");
+            hover_tooltip("Copies the full login----JWT token; the clipboard auto-clears.");
         }
 
         separator_text("Replace token");
@@ -264,8 +270,7 @@ void draw_edit_account_modal(app::AppState& state) {
                 state.save_vault_if_dirty();
                 state.nfa_dead_notified.erase(r.account_id);
                 state.pull_all_for_account(r.account_id);
-                // import_jwt_token may have grown the vault vector, invalidating `acc`;
-                // reload the modal next frame against the (possibly relocated) account.
+
                 state.selected_account_id = r.account_id;
                 state.account_edit_requested = true;
                 ImGui::EndDisabled();
@@ -280,8 +285,6 @@ void draw_edit_account_modal(app::AppState& state) {
             ImGui::PopStyleColor();
         }
 
-        // Cached imports (from this PC's Steam client) can be promoted to a normal
-        // password account; plain NFA-token accounts can't.
         if (core::store::is_cached_account(*acc)) {
             separator_text("Account type");
             ImGui::PushStyleColor(ImGuiCol_Text,
@@ -298,7 +301,7 @@ void draw_edit_account_modal(app::AppState& state) {
                 if (acc->group_id == core::store::kCachedGroupId) acc->group_id.clear();
                 state.vault_dirty = true;
                 state.save_vault_if_dirty();
-                // Re-open so the modal re-renders as the regular (password) editor.
+
                 state.selected_account_id = acc->id;
                 state.account_edit_requested = true;
                 end_styled_modal();
@@ -331,22 +334,96 @@ void draw_edit_account_modal(app::AppState& state) {
         return;
     }
 
-    // Regular (password) account.
     separator_text("Account credentials");
 
     ImGui::SetNextItemWidth(240.0F);
     ImGui::InputText("Username", login_buf.data(), login_buf.size());
-    hover_tooltip("Steam account name (lowercase username, not the persona/display name). "
-                  "Changing it relabels the account locally; it does not rename it on Steam.");
+    hover_tooltip("The lowercase login name, not the persona. Renaming is local only.");
 
     widgets::draw_password_field(kPwLabel, password, false, 240.0F);
-    hover_tooltip("Stored encrypted with the vault master password. Used by the Launch button "
-                  "to fill the Steam client prompt; never sent to a third party.");
+    hover_tooltip("Stored encrypted. Used by Launch to fill Steam's prompt.");
 
     widgets::draw_password_field(kSsLabel, shared_secret, false, 240.0F);
-    hover_tooltip("Base64 shared_secret from your maFile. Optional. When set, the Code button "
-                  "generates Steam Guard codes and silent re-login can refresh expired sessions "
-                  "without prompting. Leave blank if you don't have it.");
+    hover_tooltip("Base64 shared_secret from your maFile. Optional, but needed for "
+                  "in-app Steam Guard codes.");
+
+    separator_text("Login token");
+    {
+        const std::string jwt = app::cs2_client_token(*acc);
+        if (jwt.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text,
+                                  ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            ImGui::TextWrapped("No login token stored yet. One is minted the first time this "
+                               "account signs in through token injection, or now from the "
+                               "stored password.");
+            ImGui::PopStyleColor();
+
+            const bool minting = mint_account_id == acc->id;
+            const bool can_mint = !acc->password.empty();
+            ImGui::BeginDisabled(minting || !can_mint);
+            if (action_button("Mint token")) {
+                mint_account_id = acc->id;
+                mint_error.clear();
+                state.acquire_cm_token(acc->id, [](bool ok, std::string err) {
+                    mint_account_id.clear();
+                    if (!ok) mint_error = std::move(err);
+                });
+            }
+            ImGui::EndDisabled();
+            if (!can_mint && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                set_tooltip("Minting needs a stored password. This account has none.");
+            }
+            if (minting) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("Signing in...");
+            }
+            if (!mint_error.empty()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
+                ImGui::TextWrapped("%s", mint_error.c_str());
+                ImGui::PopStyleColor();
+            }
+        } else {
+            const std::string full_token = full_login_token(*acc, jwt);
+            const bool revealed = reveal_until > now;
+            if (revealed) {
+                ImGui::PushTextWrapPos(0.0F);
+                ImGui::TextUnformatted(full_token.c_str());
+                ImGui::PopTextWrapPos();
+            } else {
+                ImGui::TextDisabled("(hidden - click Reveal)");
+            }
+            if (action_button(revealed ? "Hide" : "Reveal"))
+                reveal_until = revealed ? 0 : (now + 30);
+            ImGui::SameLine();
+            if (action_button("Copy token")) {
+                platform::clipboard::set_text_with_auto_clear(
+                    full_token,
+                    std::chrono::seconds(state.settings.clipboard_clear_seconds));
+            }
+            hover_tooltip("Copies the full login----JWT token. Steam rotates it on every "
+                          "sign-in, so a copy goes stale once this PC signs in again.");
+
+            const std::int64_t exp = steam_login::jwt_expiry(crypto::make_secure(jwt));
+            if (exp > 0) {
+                const std::int64_t remaining = exp - now;
+                if (remaining <= 0) {
+                    ImGui::TextDisabled("Expired.");
+                } else if (remaining < 86400) {
+                    ImGui::TextDisabled("Expires in %lldh",
+                                        static_cast<long long>(remaining / 3600));
+                } else {
+                    ImGui::TextDisabled("Expires in %lldd",
+                                        static_cast<long long>(remaining / 86400));
+                }
+            }
+            if (acc->cm_status == core::NfaTokenStatus::Revoked) {
+                ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
+                ImGui::TextWrapped("Steam refused this token on the last sign-in. It is "
+                                   "re-minted automatically on the next launch.");
+                ImGui::PopStyleColor();
+            }
+        }
+    }
 
     ImGui::TextUnformatted("Notes");
     {
@@ -373,8 +450,7 @@ void draw_edit_account_modal(app::AppState& state) {
                 acc->sda = std::move(g);
             }
             acc->sda->shared_secret = shared_secret;
-            // Keep the SDA's account_name aligned with the login unless it was
-            // deliberately set to something else.
+
             if (acc->sda->account_name.empty() || acc->sda->account_name == old_login)
                 acc->sda->account_name = acc->login;
         }
@@ -396,8 +472,7 @@ void draw_edit_account_modal(app::AppState& state) {
 }
 
 void draw_add_account(app::AppState& state) {
-    // Editing an existing account is handled by the Edit account modal on the
-    // Accounts screen; this screen is add-only.
+
     ImGui::TextUnformatted("Add account");
     ImGui::Spacing();
 

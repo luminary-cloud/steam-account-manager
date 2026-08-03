@@ -89,7 +89,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
+      <UACExecutionLevel>AsInvoker</UACExecutionLevel>
       <AdditionalDependencies>
         d3d11.lib;dxgi.lib;d3dcompiler.lib;dwmapi.lib;
         Bcrypt.lib;Crypt32.lib;Advapi32.lib;
@@ -154,6 +154,7 @@
     <ClCompile Include="app\luminary_loader.cpp" />
     <ClCompile Include="app\job_pump.cpp" />
     <ClCompile Include="app\conf_poller.cpp" />
+    <ClCompile Include="app\cleaner_runner.cpp" />
     <ClCompile Include="core\time_aligner.cpp" />
     <ClCompile Include="core\log.cpp" />
     <ClCompile Include="core\update_check.cpp" />
@@ -177,6 +178,7 @@
     <ClCompile Include="core\steam_cm\ws_transport.cpp" />
     <ClCompile Include="core\steam_cm\cm_server_list.cpp" />
     <ClCompile Include="core\steam_cm\cm_session.cpp" />
+    <ClCompile Include="core\steam_cm\web_token.cpp" />
     <ClCompile Include="core\cs2_gc\gc_message.cpp" />
     <ClCompile Include="core\cs2_gc\so_cache.cpp" />
     <ClCompile Include="core\cs2_gc\gc_session.cpp" />
@@ -223,7 +225,16 @@
     <ClCompile Include="core\launch\token_launcher.cpp" />
     <ClCompile Include="core\launch\first_login_reapply.cpp" />
     <ClCompile Include="core\launch\launch_gen.cpp" />
+    <ClCompile Include="core\cleaner\vdf_tree.cpp" />
+    <ClCompile Include="core\cleaner\steam_scan.cpp" />
+    <ClCompile Include="core\cleaner\preserve.cpp" />
+    <ClCompile Include="core\cleaner\crash_dumps.cpp" />
+    <ClCompile Include="core\cleaner\targets.cpp" />
+    <ClCompile Include="core\cleaner\profiles.cpp" />
+    <ClCompile Include="core\cleaner\plan.cpp" />
+    <ClCompile Include="core\cleaner\execute.cpp" />
     <ClCompile Include="core\steam_local\loginusers.cpp" />
+    <ClCompile Include="core\steam_local\vdf_file.cpp" />
     <ClCompile Include="core\steam_local\login_prefs.cpp" />
     <ClCompile Include="core\steam_local\connect_cache.cpp" />
     <ClCompile Include="platform\fs.cpp" />
@@ -261,6 +272,7 @@
     <ClCompile Include="ui\screens\confirmations_modals.cpp" />
     <ClCompile Include="ui\screens\settings_screen.cpp" />
     <ClCompile Include="ui\screens\settings_sections.cpp" />
+    <ClCompile Include="ui\screens\settings_cleaner.cpp" />
     <ClCompile Include="ui\screens\trade_offers_screen.cpp" />
     <ClCompile Include="ui\screens\cs2_screen.cpp" />
     <ClCompile Include="ui\screens\trade_offers_modals.cpp" />
@@ -307,6 +319,7 @@
     <ClInclude Include="app\luminary_loader.hpp" />
     <ClInclude Include="app\job_pump.hpp" />
     <ClInclude Include="app\conf_poller.hpp" />
+    <ClInclude Include="app\cleaner_runner.hpp" />
     <ClInclude Include="core\version.hpp" />
     <ClInclude Include="core\time_aligner.hpp" />
     <ClInclude Include="core\log.hpp" />
@@ -336,6 +349,7 @@
     <ClInclude Include="core\steam_cm\ws_transport.hpp" />
     <ClInclude Include="core\steam_cm\cm_server_list.hpp" />
     <ClInclude Include="core\steam_cm\cm_session.hpp" />
+    <ClInclude Include="core\steam_cm\web_token.hpp" />
     <ClInclude Include="core\cs2_gc\gc_emsg.hpp" />
     <ClInclude Include="core\cs2_gc\gc_message.hpp" />
     <ClInclude Include="core\cs2_gc\so_cache.hpp" />
@@ -387,7 +401,17 @@
     <ClInclude Include="core\launch\launch_gen.hpp" />
     <ClInclude Include="core\launch\login_driver.hpp" />
     <ClInclude Include="core\launch\code_clipboard.hpp" />
+    <ClInclude Include="core\cleaner\operation.hpp" />
+    <ClInclude Include="core\cleaner\vdf_tree.hpp" />
+    <ClInclude Include="core\cleaner\steam_scan.hpp" />
+    <ClInclude Include="core\cleaner\preserve.hpp" />
+    <ClInclude Include="core\cleaner\crash_dumps.hpp" />
+    <ClInclude Include="core\cleaner\targets.hpp" />
+    <ClInclude Include="core\cleaner\profiles.hpp" />
+    <ClInclude Include="core\cleaner\plan.hpp" />
+    <ClInclude Include="core\cleaner\execute.hpp" />
     <ClInclude Include="core\steam_local\loginusers.hpp" />
+    <ClInclude Include="core\steam_local\vdf_file.hpp" />
     <ClInclude Include="core\steam_local\login_prefs.hpp" />
     <ClInclude Include="core\steam_local\connect_cache.hpp" />
     <ClInclude Include="core\steam_local\crc32.hpp" />

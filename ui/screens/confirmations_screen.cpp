@@ -38,22 +38,18 @@ bool session_looks_unusable(const core::Account& a) {
 
 bool is_session_error(const std::string& err) {
     if (err.empty()) return false;
-    // Relogin can't backfill identity_secret or device_id; only a maFile can.
+
     if (err.find("missing maFile data") != std::string::npos) return false;
     if (err == "account has no active session") return true;
     if (err == "http 401" || err == "http 403") return true;
     if (err.find("session expired") != std::string::npos) return true;
     if (err.find("needauth")        != std::string::npos) return true;
 
-    // /mobileconf/* returns "Oh nooooooes!" on wrong-audience cookie or bad HMAC;
-    // recover with a fresh mobile-audience auto-relogin.
     std::string lower(err);
     std::transform(lower.begin(), lower.end(), lower.begin(),
                    [](unsigned char c) { return std::tolower(c); });
     if (lower.find("oh nooooooes") != std::string::npos) return true;
 
-    // Bare {"success":false} after the caller's stale cid/nonce refetch: likely the
-    // access_token drifted off the mobile audience, so auto-relogin.
     if (err == sda::kRespondSuccessFalse) return true;
 
     return false;
@@ -290,9 +286,6 @@ void submit_single(app::AppState& state, const core::Account& a,
         std::string err;
         bool ok = sda::respond_to_confirmation(cap_a, cap_c, allow, &err);
 
-        // Steam rotates the nonce when the confirmation is touched elsewhere (e.g. the
-        // phone app). Refetch once, match by id, retry with the fresh nonce. If it's
-        // gone, treat it as already resolved (the optimistic erase at the call site stands).
         if (!ok && err == sda::kRespondSuccessFalse) {
             auto fresh = sda::fetch_confirmations(cap_a);
             if (fresh.ok) {
@@ -366,7 +359,6 @@ void submit_bulk(app::AppState& state, const core::Account& a,
     });
 }
 
-// UI-thread only. Selections are dropped lazily when the confirmation goes away.
 std::unordered_map<std::string, std::unordered_set<std::string>> g_selected_conf_ids;
 
 void recount_pending(app::AppState& state) {
@@ -615,18 +607,14 @@ void draw_confirmations(app::AppState& state) {
         ImGui::TextDisabled("Sort");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(160);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
-        ImGui::Combo("##conf-sort", &g_conf_sort,
+        styled_combo("##conf-sort", &g_conf_sort,
                      "Vault order\0Pending desc\0Persona A-Z\0");
-        ImGui::PopStyleVar();
         ImGui::SameLine();
         ImGui::TextDisabled("Type");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(160);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
-        ImGui::Combo("##conf-type", &g_conf_type_filter,
+        styled_combo("##conf-type", &g_conf_type_filter,
                      "All\0Trade\0Market\0Account recovery\0Phone change\0Other\0");
-        ImGui::PopStyleVar();
     }
 
     auto type_matches_filter = [&](sda::ConfirmationType t) {

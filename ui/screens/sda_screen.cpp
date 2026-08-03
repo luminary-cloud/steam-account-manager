@@ -40,8 +40,6 @@ std::string lowercase(std::string s) {
     return s;
 }
 
-// Header chip showing the selected account (avatar + name), matching the CS2 and
-// trade-offer pickers. Returns true when clicked.
 bool draw_account_chip(app::AppState& state, const core::Account* picked) {
     constexpr float kH = 40.0F;
     constexpr float kW = 320.0F;
@@ -76,9 +74,6 @@ bool draw_account_chip(app::AppState& state, const core::Account* picked) {
     return clicked;
 }
 
-// Single-select account grid for the picker popup: filterable chips with avatar +
-// name, matching the CS2 / trade-offer pickers. Lists every account (Steam Guard
-// state is annotated) so an account without SDA can still be picked to add one.
 void draw_account_grid(app::AppState& state, char (&search)[64]) {
     ImGui::SetNextItemWidth(220.0F);
     ImGui::InputTextWithHint("##sdaacctsearch", "filter", search, sizeof(search));
@@ -240,9 +235,8 @@ void draw_revocation_section(app::AppState& state, core::Account& a) {
         if (action_button("Copy")) {
             platform::clipboard::set_text(a.sda->revocation_code);
         }
-        hover_tooltip("Copy the revocation code to the clipboard.");
     } else {
-        // Reset per-account buffer on account switch so a half-typed code doesn't leak across.
+
         static std::array<char, 32> buf{};
         static std::string buf_owner_id;
         if (buf_owner_id != a.id) {
@@ -269,8 +263,7 @@ void draw_revocation_section(app::AppState& state, core::Account& a) {
             buf.fill(0);
         }
         ImGui::EndDisabled();
-        hover_tooltip("Stores the revocation code in your encrypted vault. Steam cannot "
-                      "regenerate it, only enter a code you saved yourself.");
+        hover_tooltip("Stores it in the vault. Steam cannot regenerate this code.");
     }
 
     ImGui::Spacing();
@@ -371,9 +364,8 @@ void draw_sda(app::AppState& state) {
         }
         ImGui::EndDisabled();
         if (!has_session) {
-            hover_tooltip("This account has no stored session. Run the full mobile "
-                          "login wizard from the Add Account screen first, then "
-                          "come back here.");
+            hover_tooltip("No stored session. Run the full mobile login from Add "
+                          "Account first.");
         }
         draw_modals();
         return;
@@ -400,10 +392,8 @@ void draw_sda(app::AppState& state) {
         if (action_button("Already activated")) {
             widgets::request_verify_sda(state, add_sda_state, a->id);
         }
-        hover_tooltip("Use this if Steam Guard already works on this account (for "
-                      "example an SDA maFile that imported as incomplete). It asks "
-                      "Steam to confirm the authenticator is active and clears the "
-                      "warning, without sending an activation code.");
+        hover_tooltip("Use this if Steam Guard already works here. Confirms with Steam "
+                      "and clears the warning, without an activation code.");
     }
 
     ImGui::Spacing();
@@ -473,8 +463,7 @@ void draw_sda(app::AppState& state) {
     if (action_button("Remove Steam Guard")) {
         widgets::request_remove_sda(remove_sda_state, a->id);
     }
-    hover_tooltip("Asks Steam to revoke the mobile authenticator. Triggers a "
-                  "15-day market and trade hold.");
+    hover_tooltip("Revokes the mobile authenticator. Triggers a 15-day trade hold.");
 
     ImGui::PopID();
 

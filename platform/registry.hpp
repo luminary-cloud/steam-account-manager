@@ -5,7 +5,21 @@
 #include <optional>
 #include <string>
 
+// HKEY without dragging <windows.h> into every consumer; matches the SDK typedef.
+struct HKEY__;
+using HKEY = HKEY__*;
+
 namespace sam::platform::registry {
+
+// Hive-generic forms, for callers that touch more than HKCU (the tracer cleaner
+// reaches into HKLM and HKCR). The _hkcu helpers below are the common case.
+std::optional<std::wstring> read_string(HKEY root, const std::wstring& subkey,
+                                         const std::wstring& value_name);
+bool write_string(HKEY root, const std::wstring& subkey, const std::wstring& value_name,
+                  const std::wstring& value);
+// Both treat "already absent" as success.
+bool delete_value(HKEY root, const std::wstring& subkey, const std::wstring& value_name);
+bool delete_key_recursive(HKEY root, const std::wstring& subkey);
 
 std::optional<std::wstring> read_string_hkcu(const std::wstring& subkey,
                                               const std::wstring& value_name);

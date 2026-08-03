@@ -34,7 +34,7 @@ constexpr float kRowHeight       = 22.0F;
 constexpr float kDotRadius       = 5.0F;
 constexpr float kIndent          = 10.0F;
 constexpr const char* kDragPayload = "SAM_ACCOUNT_ID";
-// Row label when "Hide account name" is on and there's no persona to fall back to.
+
 constexpr const char* kNoNamePlaceholder = "Account";
 
 std::string g_rename_target;
@@ -99,24 +99,6 @@ void set_group_collapsed(app::AppState& state, const std::string& key, bool coll
         v.erase(it);
         state.save_settings();
     }
-}
-
-std::string truncate_to_width(const std::string& text, float max_w) {
-    if (max_w <= 0.0F) return {};
-    if (ImGui::CalcTextSize(text.c_str()).x <= max_w) return text;
-    const float ellipsis_w = ImGui::CalcTextSize("...").x;
-    std::string out = text;
-    while (!out.empty()) {
-        while (!out.empty()) {
-            const unsigned char c = static_cast<unsigned char>(out.back());
-            out.pop_back();
-            if ((c & 0xC0) != 0x80) break;
-        }
-        if (out.empty()) break;
-        if (ImGui::CalcTextSize(out.c_str()).x + ellipsis_w <= max_w) break;
-    }
-    out += "...";
-    return out;
 }
 
 void draw_dot(const ImVec2& center, ImU32 col) {
@@ -499,13 +481,9 @@ ListViewResult draw_list_body(app::AppState& state,
         if (begin_styled_popup(("##group-ctx-" + key).c_str())) {
             if (ImGui::MenuItem("Rename...")) group_to_rename = key;
             if (ImGui::MenuItem("Delete"))    group_to_delete = key;
-            // "Always spoof HWID" auto-generates a profile for every account on launch
-            // unless it's individually excluded. Offer that exclude/include toggle across
-            // the whole group at once. Excluding also drops any profile already generated
-            // for the account: launch only skips spoofing when hwid has no value (the
-            // hwid_excluded flag alone just stops re-generation), so clearing it is what
-            // makes the exclusion take effect immediately.
-            if (state.settings.hwid.always_spoof && ImGui::BeginMenu("HWID spoofer")) {
+
+            if (!state.settings.safe_mode && state.settings.hwid.always_spoof &&
+                ImGui::BeginMenu("HWID spoofer")) {
                 if (ImGui::MenuItem("Exclude all from spoof")) {
                     for (std::size_t idx : indices) {
                         state.vault.accounts[idx].hwid_excluded = true;
@@ -570,7 +548,7 @@ ListViewResult draw_list_body(app::AppState& state,
     }
     draw_rename_group_modal(state);
 
-    ImGui::EndChild();   // ##groups-pane
+    ImGui::EndChild();
 
     ImGui::PopStyleVar(3);
     ImGui::PopStyleColor(2);

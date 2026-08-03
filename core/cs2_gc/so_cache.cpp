@@ -2,8 +2,6 @@
 
 #include <cstring>
 
-#include "core/log.hpp"
-
 namespace sam::cs2_gc {
 
 namespace {
@@ -14,8 +12,8 @@ constexpr std::uint32_t kAttrPaintSeed = 7;
 constexpr std::uint32_t kAttrPaintWear = 8;
 constexpr std::uint32_t kAttrKillEaterValue = 80;
 constexpr std::uint32_t kAttrCustomName = 111;
-constexpr std::uint32_t kAttrStickerId = 113;  // sticker slot 0 id (sticker/graffiti/patch kit)
-constexpr std::uint32_t kAttrMusicId = 166;    // music kit id
+constexpr std::uint32_t kAttrStickerId = 113;
+constexpr std::uint32_t kAttrMusicId = 166;
 constexpr std::uint32_t kAttrCasketItemCount = 270;
 constexpr std::uint32_t kAttrCasketIdLow = 272;
 constexpr std::uint32_t kAttrCasketIdHigh = 273;
@@ -73,7 +71,7 @@ EconItem parse_econ_item(const ::CSOEconItem& it) {
     if (const std::string* ps = attr_bytes(it, kAttrPaintSeed)) e.paint_seed = static_cast<int>(f32le(*ps));
     if (const std::string* pw = attr_bytes(it, kAttrPaintWear)) e.paint_wear = f32le(*pw);
     if (attr_bytes(it, kAttrKillEaterValue)) e.stattrak = true;
-    // Sticker/music ids are raw u32 (unlike the float-encoded paint attrs above).
+
     if (const std::string* m = attr_bytes(it, kAttrMusicId)) e.music_id = static_cast<int>(u32le(*m));
     if (const std::string* s = attr_bytes(it, kAttrStickerId)) e.sticker_kit_id = static_cast<int>(u32le(*s));
 
@@ -84,18 +82,6 @@ EconItem parse_econ_item(const ::CSOEconItem& it) {
             e.casket_item_count = static_cast<int>(u32le(*c));
     }
 
-    // TEMP charm-discovery: log any attribute we don't decode yet so a charm-owning
-    // account reveals the keychain attribute id and value. Remove once kAttrKeychainId is set.
-    for (const auto& a : it.attribute()) {
-        const std::uint32_t ad = a.def_index();
-        const bool known = ad == kAttrPaintIndex || ad == kAttrPaintSeed || ad == kAttrPaintWear ||
-                           ad == kAttrKillEaterValue || ad == kAttrCustomName || ad == kAttrStickerId ||
-                           ad == kAttrMusicId || ad == kAttrCasketItemCount || ad == kAttrCasketIdLow ||
-                           ad == kAttrCasketIdHigh;
-        if (!known && a.has_value_bytes())
-            SAM_LOG_INFO("gc: def_index={} undecoded attr {}={} ({} bytes)", e.def_index, ad,
-                         u32le(a.value_bytes()), a.value_bytes().size());
-    }
     return e;
 }
 

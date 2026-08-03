@@ -38,7 +38,4 @@ struct MafileLoadResult {
 MafileLoadResult load_mafile(const std::filesystem::path& path,
                              const crypto::SecureString& password);
 
-// Throws MafileEncrypted if the blob is in the encrypted layout.
-MafileLoadResult parse_mafile_json(std::string_view json_text);
-
 }  // namespace sam::sda

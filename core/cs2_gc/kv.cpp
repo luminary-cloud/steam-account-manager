@@ -37,7 +37,6 @@ struct Parser {
         }
     }
 
-    // Reads one token. Sets `brace` to '{' or '}' when the token is a brace.
     bool next(std::string& out, char& brace) {
         skip_ws();
         brace = 0;
@@ -78,7 +77,7 @@ struct Parser {
             char brace = 0;
             if (!next(key, brace)) return;
             if (brace == '}') return;
-            if (brace == '{') continue;  // stray brace without a key
+            if (brace == '{') continue;
 
             std::string value;
             char brace2 = 0;
@@ -113,10 +112,7 @@ bool parse_kv(const std::string& text, KvNode& root) {
     root = KvNode{};
     const char* begin = text.data();
     const char* end = text.data() + text.size();
-    // Valve's localization files (csgo_english.txt) ship with a UTF-8 BOM. The BOM
-    // bytes are > ' ', so skip_ws() won't drop them; left in, the first key reads as
-    // a bareword and "lang" becomes its value, so find("lang") fails and no strings
-    // load. items_game.txt has no BOM, which is why names half-resolved.
+
     if (end - begin >= 3 && static_cast<unsigned char>(begin[0]) == 0xEF &&
         static_cast<unsigned char>(begin[1]) == 0xBB && static_cast<unsigned char>(begin[2]) == 0xBF)
         begin += 3;

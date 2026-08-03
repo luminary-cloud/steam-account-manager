@@ -12,6 +12,7 @@
 #include <imgui.h>
 
 #include "app/app_paths.hpp"
+#include "app/cleaner_runner.hpp"
 #include "app/gamesense_loader.hpp"
 #include "app/luminary_loader.hpp"
 #include "app/job_pump.hpp"
@@ -19,7 +20,6 @@
 #include "core/hwid/hwid_gen.hpp"
 #include "core/launch/cs2_autostart.hpp"
 #include "core/launch/steam_launcher.hpp"
-#include "core/steam_login/session.hpp"
 #include "core/strings.hpp"
 #include "core/profile/edit.hpp"
 #include "core/sda/totp.hpp"
@@ -27,6 +27,7 @@
 #include "platform/file_dialog.hpp"
 #include "ui/screens/accounts_list_view.hpp"
 #include "ui/screens/add_account_screen.hpp"
+#include "ui/screens/settings_screen.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
 #include "ui/widgets/account_card.hpp"
@@ -41,46 +42,47 @@ constexpr float kCardMinWidth = 360.0F;
 constexpr float kGap = 14.0F;
 constexpr float kGridInset = 10.0F;
 
-// Seconds of headroom on the token's expiry. A launch shuts Steam down and restarts it, so a
-// token that only just validates here is dead by the time Steam presents it. Matches the
-// autopull's kTokenExpiryMargin.
-constexpr std::int64_t kCmTokenExpiryMargin = 300;
-
-bool cm_token_valid(const core::Account& a) {
-    if (a.cm_refresh_token.empty()) return false;
-    // A revoked token keeps a valid `exp` for months, so only a real sign-in attempt can
-    // tell us it's dead; verify_cm_token_signin_async records that verdict here.
-    if (a.cm_status == core::NfaTokenStatus::Revoked) return false;
-    const std::int64_t exp = a.cm_refresh_token_expires != 0
-        ? a.cm_refresh_token_expires
-        : steam_login::jwt_expiry(a.cm_refresh_token);
-    if (exp != 0 && exp - kCmTokenExpiryMargin <=
-            std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count())
-        return false;
-    return steam_login::jwt_audience(a.cm_refresh_token).find("client") != std::string::npos;
-}
-
 void do_launch(app::AppState& state, core::Account& a, bool use_token) {
+
+    const bool safe = state.settings.safe_mode;
+    const core::LoginMethod method = core::effective_login_method(a.login_method, safe);
+
     std::filesystem::path loader;
-    if (a.login_method == core::LoginMethod::LaunchCs2Gamesense) {
+    if (method == core::LoginMethod::LaunchCs2Gamesense) {
         if (auto p = app::gamesense_loader_path()) loader = *p;
     }
     std::filesystem::path lum_loader;
-    if (a.login_method == core::LoginMethod::LaunchCs2Luminary) {
+    if (method == core::LoginMethod::LaunchCs2Luminary) {
         if (auto p = app::luminary_loader_path()) lum_loader = *p;
     }
-    // Before re-injecting for an NFA account, adopt any rotated token Steam left from a
-    // prior sign-in, so we never launch with a token that's already been superseded.
+
     if (a.is_nfa) {
         state.capture_rotated_token_now(a.id, core::to_lower(a.login));
     }
-    auto result = sam::launch::launch_account(
-        a, state.settings.cs2_video.launch_options,
-        state.settings.disable_cloud_on_login, state.settings.disable_news_on_login,
-        state.settings.disable_workshop_on_login,
-        state.settings.remember_password_on_login, loader, lum_loader,
-        state.settings.hwid.component_mask, use_token);
+    sam::launch::LaunchOptions opts;
+    opts.cs2_launch_options            = state.settings.cs2_video.launch_options;
+    opts.disable_cloud_on_login        = state.settings.disable_cloud_on_login;
+    opts.disable_news_on_login         = state.settings.disable_news_on_login;
+    opts.login_invisible               = state.settings.login_invisible;
+    opts.disable_remote_play_on_login  = state.settings.disable_remote_play_on_login;
+    opts.disable_workshop_on_login     = state.settings.disable_workshop_on_login;
+    opts.remember_password             = state.settings.remember_password_on_login;
+    opts.gamesense_loader              = loader;
+    opts.luminary_loader               = lum_loader;
+    opts.hwid_component_mask           = state.settings.hwid.component_mask;
+    opts.use_token                     = use_token;
+    opts.safe_mode                     = safe;
+
+    if (!safe && state.settings.cleaner.enabled && state.settings.cleaner.run_before_launch &&
+        !state.cleaner_busy.load()) {
+        const app::Settings snapshot = state.settings;
+        opts.after_steam_down = [snapshot] {
+            app::cleaner_runner::run_blocking(snapshot, true,
+                                              false);
+        };
+    }
+
+    auto result = sam::launch::launch_account(a, opts);
     if (result.status != sam::launch::LaunchStatus::Ok) {
         state.launch_error = result.message;
         ImGui::OpenPopup("Launch failed");
@@ -106,11 +108,7 @@ void do_launch(app::AppState& state, core::Account& a, bool use_token) {
     a.last_login_unix = now_seconds();
     state.vault_dirty = true;
     state.save_vault_if_dirty();
-    // After sign-in Steam rotates the refresh token in its ConnectCache, so read it back to
-    // keep the stored token current (a stale one drops to the login form). The two token
-    // kinds live in different fields, so each has its own watcher: an NFA account's login
-    // token is refresh_token, while a use_token account signs in with cm_refresh_token.
-    // Both also treat "Steam never signed in" as the token being dead.
+
     if (a.is_nfa) {
         state.capture_rotated_token_async(a.id, a.steam_id_64, core::to_lower(a.login));
     } else if (use_token) {
@@ -119,8 +117,8 @@ void do_launch(app::AppState& state, core::Account& a, bool use_token) {
     if (state.settings.cs2_video.mode != app::CS2ConfigMode::None) {
         state.apply_cs2_video_config(a);
     }
-    if (a.login_method != core::LoginMethod::Normal && !result.first_login_deferred) {
-        sam::launch::cs2_autostart::start_async(a.login_method, a.steam_id_64,
+    if (method != core::LoginMethod::Normal && !result.first_login_deferred) {
+        sam::launch::cs2_autostart::start_async(method, a.steam_id_64,
                                                 std::move(loader), std::move(lum_loader));
     }
 }
@@ -131,20 +129,20 @@ void handle_card_action(app::AppState& state,
     switch (act) {
         case widgets::CardAction::Launch: {
             state.flush_pending_save();
-            if (state.settings.hwid.always_spoof && !a.hwid_excluded && !a.hwid.has_value()) {
+            if (!state.settings.safe_mode && state.settings.hwid.always_spoof &&
+                !a.hwid_excluded && !a.hwid.has_value()) {
                 a.hwid = core::hwid::generate_profile();
                 state.vault_dirty = true;
                 state.save_vault_if_dirty();
             }
+
             const bool use_token =
                 !a.is_nfa &&
-                state.settings.sign_in_method == app::SignInMethod::TokenInject;
+                state.effective_sign_in_method(a.id) == app::SignInMethod::TokenInject;
 
-            // Fresh user intent: allow the self-heal retry again, even if a previous launch
-            // of this account already burned its one attempt.
             state.cm_relaunch_attempted.erase(a.id);
 
-            if (use_token && !cm_token_valid(a)) {
+            if (use_token && !app::cm_token_valid(a)) {
                 if (a.password.empty()) {
                     state.launch_error =
                         "Token injection needs a stored password to mint the login "
@@ -190,11 +188,9 @@ void handle_card_action(app::AppState& state,
             state.account_edit_requested = true;
             break;
         case widgets::CardAction::Refresh:
-            // Per-account "refresh everything", not cache-gated: Steam Web API + (full-access)
-            // GCPD, external funds, and an own-session GC pull (cooldown + ranks/medals). The GC
-            // pull also serves as the NFA/cached token validation.
+
             state.refresh_single_account(a.id);
-            if (!a.is_nfa) state.refresh_spend(a.id, /*quiet=*/true);
+            if (!a.is_nfa) state.refresh_spend(a.id, true);
             state.queue_gc_validate(a.id);
             break;
         case widgets::CardAction::Remove:
@@ -221,7 +217,6 @@ void draw_grid_body(app::AppState& state,
     const float card_w = (avail - kGap * static_cast<float>(columns - 1)) /
                          static_cast<float>(columns);
 
-    // Fixed card height lets the clipper virtualize: only on-screen rows get built.
     const int rows = (static_cast<int>(visible.size()) + columns - 1) / columns;
     const float row_pitch =
         widgets::kAccountCardHeight + ImGui::GetStyle().ItemSpacing.y;
@@ -250,9 +245,6 @@ void draw_grid_body(app::AppState& state,
     ImGui::Unindent(kGridInset);
 }
 
-// Owned here, not in the per-card context menu: that menu is nested under
-// PushID(account), so a modal there would get an unstable ID scope. The context menu
-// signals via state.persona_change_requested + selected_account_id.
 void draw_change_username_modal(app::AppState& state) {
     static std::array<char, 128> name_buf{};
     static bool busy = false;
@@ -349,8 +341,7 @@ void draw_change_username_modal(app::AppState& state) {
                             state.vault_dirty = true;
                             state.save_vault_if_dirty();
                         }
-                        // Skip if the modal switched accounts, so a stale result
-                        // doesn't show on a different account.
+
                         if (state.selected_account_id != snapshot.id) return;
                         busy = false;
                         if (res.ok) {
@@ -394,7 +385,8 @@ void draw_accounts(app::AppState& state) {
                     "Click here to add one in Settings.";
         t.is_warning = true;
         t.on_click_action = widgets::ToastClickAction::Settings;
-        t.expires_at_unix = 0;  // persist until the user dismisses it
+        t.settings_category = static_cast<int>(SettingsCategory::NetworkData);
+        t.expires_at_unix = 0;
         state.toasts.push(std::move(t));
         state.warned_missing_api_key = true;
     }
@@ -412,21 +404,19 @@ void draw_accounts(app::AppState& state) {
     }
     ImGui::SameLine();
     {
-        // No time cooldown: the refresh is cache-gated, so a repeat click just re-checks and
-        // no-ops ("up to date"). Only a missing API key disables it.
+
         const bool no_api_key = state.settings.web_api_key.empty();
         ImGui::BeginDisabled(no_api_key);
         if (action_button("Refresh all")) {
-            state.refresh_account_data(/*force=*/false, /*announce=*/true);
+            state.refresh_account_data(false, true);
         }
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             if (no_api_key) {
                 set_tooltip("Add a Steam Web API key in Settings to enable batch refresh.");
             } else {
-                set_tooltip("Refresh Steam data + GCPD (full-access) and the CS2 competitive "
-                                  "cooldown (NFA/cached, over the GC). Skips accounts still "
-                                  "within the cache window.");
+                set_tooltip("Refreshes Steam data, GCPD and the CS2 cooldown. "
+                            "Skips anything still cached.");
             }
         }
 
@@ -439,27 +429,24 @@ void draw_accounts(app::AppState& state) {
     }
     ImGui::SameLine();
     {
-        // "Refresh GC": batch-pull full-access profiles + per-account NFA own-session logins.
-        // The batch (gc_autopull) is stoppable; the validate sweep runs to completion.
+
         const bool validate_busy =
             state.gc_validate.active && !state.gc_validate.feed_refresh_all;
         if (state.gc_autopull.active) {
             if (action_button("Stop GC pull")) state.cancel_gc_autopull();
         } else {
             ImGui::BeginDisabled(!state.settings.cs2_gc.enabled);
-            if (action_button("Refresh GC")) state.refresh_gc_all(/*announce=*/true);
+            if (action_button("Refresh GC")) state.refresh_gc_all(true);
             ImGui::EndDisabled();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
                 if (!state.settings.cs2_gc.enabled)
                     set_tooltip("Enable the CS2 Game Coordinator in Settings to use this.");
                 else
-                    set_tooltip("Pull CS2 GC data (level, medals, ranks, cooldown) for every "
-                                "account: one puller queries full-access accounts by Steam ID, "
-                                "NFA/cached each sign in. Skips accounts within the cache window.");
+                    set_tooltip("Pulls level, medals, ranks and cooldown for every account. "
+                                "Skips anything still cached.");
             }
         }
-        // Combined progress across the batch pull and any standalone NFA validate sweep. A
-        // feed sweep's progress shows under "Refresh all" instead, so it's excluded here.
+
         const int gc_done = state.gc_autopull.received +
                             (validate_busy ? state.gc_validate.done : 0);
         const int gc_total = state.gc_autopull.total +
@@ -474,13 +461,12 @@ void draw_accounts(app::AppState& state) {
         const bool busy = state.spend_bulk_running.load(std::memory_order_acquire);
         ImGui::BeginDisabled(busy);
         if (action_button("Refresh spent")) {
-            state.refresh_all_spend(/*only_missing=*/false);
+            state.refresh_all_spend(false);
         }
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-            set_tooltip("Sign in to each full-access account and read total external funds "
-                        "(TotalSpend) from Steam Support. One sign-in per account. Skips "
-                        "accounts within the cache window.");
+            set_tooltip("Reads total external funds from Steam Support. "
+                        "One sign-in per account.");
         }
         const int sp_total = state.spend_total.load(std::memory_order_relaxed);
         const int sp_done  = state.spend_done.load(std::memory_order_relaxed);
@@ -519,11 +505,9 @@ void draw_accounts(app::AppState& state) {
             "CS2 XP\0"
             "Spend ($)\0"
             "Cooldown soon\0";
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
-        if (ImGui::Combo("##sort", &state.settings.accounts_sort, sort_labels)) {
+        if (styled_combo("##sort", &state.settings.accounts_sort, sort_labels)) {
             state.save_settings();
         }
-        ImGui::PopStyleVar();
         ImGui::SameLine();
         ImGui::TextDisabled("|");
         ImGui::SameLine();
@@ -595,7 +579,11 @@ void draw_accounts(app::AppState& state) {
         draw_grid_body(state, visible);
     }
 
-    // Run here, not inside the per-card ImGui popup: a Win32 modal can't open from there.
+    if (state.settings.safe_mode) {
+        state.gamesense_pick_request.reset();
+        state.luminary_pick_request.reset();
+    }
+
     if (state.gamesense_pick_request.has_value()) {
         const std::string acc_id = *state.gamesense_pick_request;
         state.gamesense_pick_request.reset();

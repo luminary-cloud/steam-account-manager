@@ -21,7 +21,6 @@ namespace sam::ui::widgets {
 void draw_account_context_menu(app::AppState& state, const core::Account& a) {
     const auto secs = std::chrono::seconds(state.settings.clipboard_clear_seconds);
 
-    // Inapplicable items are hidden, not greyed out.
     if (!a.login.empty() && ImGui::MenuItem("Copy login")) {
         platform::clipboard::set_text(a.login);
     }
@@ -59,25 +58,19 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         if (!code.empty()) platform::clipboard::set_text(code);
     }
 
-    // Copies the cached link instantly; on a cache miss/expiry copy_trade_link
-    // scrapes it in the background and copies when ready. Hidden only for token-
-    // only (NFA) accounts with nothing cached, which can't scrape one.
     const bool has_trade_link = a.trade_url.has_value() && !a.trade_url->empty();
-    const bool can_fetch_trade = has_sid && !a.is_nfa &&
+    const bool can_fetch_trade = has_sid &&
                                  (!a.refresh_token.empty() || !a.password.empty());
     if ((has_trade_link || can_fetch_trade) && ImGui::MenuItem("Copy trade link")) {
         state.copy_trade_link(a.id);
     }
 
-    // Needs a web-capable refresh token (or a saved password to mint one), so
-    // it's hidden for token-only (NFA) accounts.
     const bool can_browser = has_sid && !a.is_nfa &&
                              (!a.refresh_token.empty() || !a.password.empty());
     if (can_browser && ImGui::MenuItem("Open in browser (signed in)")) {
         state.open_account_in_browser(a);
     }
 
-    // Video config + Change username both need a SteamID.
     if (has_sid) {
         ImGui::Separator();
 
@@ -85,11 +78,20 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         if (cs2_mode != app::CS2ConfigMode::None) {
             const char* cfg_label = "Add video config";
             bool cfg_ready = false;
-            if (cs2_mode == app::CS2ConfigMode::VideoTxt) {
-                cfg_ready = std::filesystem::exists(app::cs2_video_template_path());
-            } else {  // Folder730
-                cfg_label = "Apply 730 folder";
-                cfg_ready = std::filesystem::is_directory(app::cs2_730_template_dir());
+            switch (cs2_mode) {
+                case app::CS2ConfigMode::VideoTxt:
+                    cfg_ready = std::filesystem::exists(app::cs2_video_template_path());
+                    break;
+                case app::CS2ConfigMode::Folder730:
+                    cfg_label = "Apply 730 folder";
+                    cfg_ready = std::filesystem::is_directory(app::cs2_730_template_dir());
+                    break;
+                case app::CS2ConfigMode::UserdataFolder:
+                    cfg_label = "Apply game folders";
+                    cfg_ready = std::filesystem::is_directory(app::userdata_template_dir());
+                    break;
+                case app::CS2ConfigMode::None:
+                    break;
             }
             if (cfg_ready && ImGui::MenuItem(cfg_label)) {
                 state.apply_cs2_video_config(a);
@@ -107,14 +109,10 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         state.notes_edit_requested = true;
     }
 
-    // NFA/cached: validate the token + pull its CS2 data over the GC on demand.
     if (a.is_nfa && a.steam_id_64 != 0 && ImGui::MenuItem("Validate token / refresh GC")) {
         state.queue_gc_validate(a.id);
     }
 
-
-    // No scrape source, so this is hand-set for every account. Marking claimed
-    // stores the next weekly reset; the marker auto-clears once it passes.
     ImGui::Separator();
     if (ImGui::BeginMenu("Weekly XP drop")) {
         auto set_drop = [&](std::int64_t reset_unix) {
@@ -135,7 +133,7 @@ void draw_account_context_menu(app::AppState& state, const core::Account& a) {
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("HWID spoofer")) {
+    if (!state.settings.safe_mode && ImGui::BeginMenu("HWID spoofer")) {
         const bool enabled = a.hwid.has_value();
         const bool always  = state.settings.hwid.always_spoof;
 

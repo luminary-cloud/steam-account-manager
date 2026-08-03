@@ -35,8 +35,6 @@ std::vector<std::uint8_t> read_font_file(const std::filesystem::path& path) {
     return bytes;
 }
 
-// Cached for program lifetime and shared via FontDataOwnedByAtlas=false, so a large
-// file like msyh.ttc is read once, not per size.
 std::vector<std::uint8_t>& cached_font_bytes(const std::filesystem::path& path) {
     static std::map<std::string, std::vector<std::uint8_t>> cache;
     const std::string key = path.string();
@@ -68,31 +66,28 @@ ImFont* add_font_from_disk(ImFontAtlas* atlas, const std::filesystem::path& path
 
 const ImWchar* extended_glyph_ranges() {
     static const ImWchar ranges[] = {
-        0x0020, 0x00FF,  // Basic Latin + Latin-1 Supplement
-        0x2000, 0x206F,  // General Punctuation
-        0x2070, 0x209F,  // Superscripts and Subscripts
-        0x20A0, 0x20CF,  // Currency Symbols
-        0x2100, 0x214F,  // Letterlike Symbols
-        0x2190, 0x21FF,  // Arrows
-        0x2200, 0x22FF,  // Mathematical Operators
-        0x2300, 0x23FF,  // Misc Technical
-        0x25A0, 0x25FF,  // Geometric Shapes
-        0x2600, 0x26FF,  // Misc Symbols
-        0x2700, 0x27BF,  // Dingbats
-        0xE000, 0xF8FF,  // Private Use Area (reserved for future icon fonts)
+        0x0020, 0x00FF,
+        0x2000, 0x206F,
+        0x2070, 0x209F,
+        0x20A0, 0x20CF,
+        0x2100, 0x214F,
+        0x2190, 0x21FF,
+        0x2200, 0x22FF,
+        0x2300, 0x23FF,
+        0x25A0, 0x25FF,
+        0x2600, 0x26FF,
+        0x2700, 0x27BF,
+        0xE000, 0xF8FF,
         0,
     };
     return &ranges[0];
 }
 
-// Merge fonts for scripts Segoe UI lacks so non-Latin names render instead of '?'.
-// Null ranges: the dynamic atlas loads glyphs on demand and ignores ranges.
-// Order matters: first font with a glyph wins, so Segoe UI keeps the Latin set.
 void merge_fallback_fonts(ImFontAtlas* atlas, float pixel_size) {
-    add_font_from_disk(atlas, windows_font_path("msyh.ttc"),     pixel_size, nullptr, true, 0);  // CJK + JP kana
-    add_font_from_disk(atlas, windows_font_path("malgun.ttf"),   pixel_size, nullptr, true, 0);  // Korean
-    add_font_from_disk(atlas, windows_font_path("seguisym.ttf"), pixel_size, nullptr, true, 0);  // symbols, dingbats
-    add_font_from_disk(atlas, windows_font_path("cambria.ttc"),  pixel_size, nullptr, true, 1);  // Cambria Math: fancy letters
+    add_font_from_disk(atlas, windows_font_path("msyh.ttc"),     pixel_size, nullptr, true, 0);
+    add_font_from_disk(atlas, windows_font_path("malgun.ttf"),   pixel_size, nullptr, true, 0);
+    add_font_from_disk(atlas, windows_font_path("seguisym.ttf"), pixel_size, nullptr, true, 0);
+    add_font_from_disk(atlas, windows_font_path("cambria.ttc"),  pixel_size, nullptr, true, 1);
 }
 
 }  // namespace
@@ -107,9 +102,9 @@ void load(float scale) {
 
     const ImWchar* ranges = extended_glyph_ranges();
     static const ImWchar badge_ranges[] = {
-        0x0020, 0x0020,   // space
-        0x002C, 0x002E,   // , - .
-        0x0030, 0x0039,   // 0-9
+        0x0020, 0x0020,
+        0x002C, 0x002E,
+        0x0030, 0x0039,
         0,
     };
 

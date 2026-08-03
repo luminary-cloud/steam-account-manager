@@ -3,6 +3,7 @@
 #include <cwctype>
 
 #include <windows.h>
+#include <shellapi.h>
 #include <tlhelp32.h>
 
 namespace sam::platform::process {
@@ -77,6 +78,37 @@ std::optional<std::uint32_t> launch(const std::filesystem::path& exe,
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     return pid;
+}
+
+bool is_elevated() {
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return false;
+
+    TOKEN_ELEVATION elevation{};
+    DWORD returned = 0;
+    const BOOL ok = GetTokenInformation(token, TokenElevation, &elevation,
+                                        sizeof(elevation), &returned);
+    CloseHandle(token);
+    return ok && elevation.TokenIsElevated != 0;
+}
+
+bool relaunch_elevated(const std::wstring& args) {
+    wchar_t exe[MAX_PATH];
+    const DWORD n = GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return false;
+
+    SHELLEXECUTEINFOW sei{};
+    sei.cbSize = sizeof(sei);
+
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
+    sei.lpVerb = L"runas";
+    sei.lpFile = exe;
+    sei.lpParameters = args.empty() ? nullptr : args.c_str();
+    sei.nShow = SW_SHOWNORMAL;
+
+    if (!ShellExecuteExW(&sei)) return false;
+    if (sei.hProcess) CloseHandle(sei.hProcess);
+    return true;
 }
 
 }  // namespace sam::platform::process

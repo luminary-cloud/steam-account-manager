@@ -24,6 +24,7 @@
     <Filter Include="core\hwid"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000043}</UniqueIdentifier></Filter>
     <Filter Include="core\hwid\gen"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000044}</UniqueIdentifier></Filter>
     <Filter Include="core\launch"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000000b}</UniqueIdentifier></Filter>
+    <Filter Include="core\cleaner"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000045}</UniqueIdentifier></Filter>
     <Filter Include="core\steam_local"><UniqueIdentifier>{1a000000-0000-0000-0000-000000000014}</UniqueIdentifier></Filter>
     <Filter Include="platform"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000000c}</UniqueIdentifier></Filter>
     <Filter Include="ui"><UniqueIdentifier>{1a000000-0000-0000-0000-00000000000d}</UniqueIdentifier></Filter>
@@ -51,6 +52,7 @@
     <ClCompile Include="app\luminary_loader.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\job_pump.cpp"><Filter>app</Filter></ClCompile>
     <ClCompile Include="app\conf_poller.cpp"><Filter>app</Filter></ClCompile>
+    <ClCompile Include="app\cleaner_runner.cpp"><Filter>app</Filter></ClCompile>
 
     <ClCompile Include="core\time_aligner.cpp"><Filter>core</Filter></ClCompile>
     <ClCompile Include="core\log.cpp"><Filter>core</Filter></ClCompile>
@@ -81,6 +83,7 @@
     <ClCompile Include="core\steam_cm\ws_transport.cpp"><Filter>core\steam_cm</Filter></ClCompile>
     <ClCompile Include="core\steam_cm\cm_server_list.cpp"><Filter>core\steam_cm</Filter></ClCompile>
     <ClCompile Include="core\steam_cm\cm_session.cpp"><Filter>core\steam_cm</Filter></ClCompile>
+    <ClCompile Include="core\steam_cm\web_token.cpp"><Filter>core\steam_cm</Filter></ClCompile>
     <ClCompile Include="core\cs2_gc\gc_message.cpp"><Filter>core\cs2_gc</Filter></ClCompile>
     <ClCompile Include="core\cs2_gc\so_cache.cpp"><Filter>core\cs2_gc</Filter></ClCompile>
     <ClCompile Include="core\cs2_gc\gc_session.cpp"><Filter>core\cs2_gc</Filter></ClCompile>
@@ -130,6 +133,14 @@
     <ClCompile Include="core\launch\hwid_inject.cpp"><Filter>core\launch</Filter></ClCompile>
     <ClCompile Include="core\launch\first_login_reapply.cpp"><Filter>core\launch</Filter></ClCompile>
     <ClCompile Include="core\launch\launch_gen.cpp"><Filter>core\launch</Filter></ClCompile>
+    <ClCompile Include="core\cleaner\vdf_tree.cpp"><Filter>core\cleaner</Filter></ClCompile>
+    <ClCompile Include="core\cleaner\steam_scan.cpp"><Filter>core\cleaner</Filter></ClCompile>
+    <ClCompile Include="core\cleaner\preserve.cpp"><Filter>core\cleaner</Filter></ClCompile>
+    <ClCompile Include="core\cleaner\crash_dumps.cpp"><Filter>core\cleaner</Filter></ClCompile>
+    <ClCompile Include="core\cleaner\targets.cpp"><Filter>core\cleaner</Filter></ClCompile>
+    <ClCompile Include="core\cleaner\profiles.cpp"><Filter>core\cleaner</Filter></ClCompile>
+    <ClCompile Include="core\cleaner\plan.cpp"><Filter>core\cleaner</Filter></ClCompile>
+    <ClCompile Include="core\cleaner\execute.cpp"><Filter>core\cleaner</Filter></ClCompile>
 
     <ClCompile Include="core\hwid\hwid_profile.cpp"><Filter>core\hwid</Filter></ClCompile>
     <ClCompile Include="core\hwid\hwid_gen.cpp"><Filter>core\hwid</Filter></ClCompile>
@@ -138,6 +149,7 @@
     <ClCompile Include="core\hwid\hwid_reader.cpp"><Filter>core\hwid</Filter></ClCompile>
 
     <ClCompile Include="core\steam_local\loginusers.cpp"><Filter>core\steam_local</Filter></ClCompile>
+    <ClCompile Include="core\steam_local\vdf_file.cpp"><Filter>core\steam_local</Filter></ClCompile>
     <ClCompile Include="core\steam_local\login_prefs.cpp"><Filter>core\steam_local</Filter></ClCompile>
     <ClCompile Include="core\steam_local\connect_cache.cpp"><Filter>core\steam_local</Filter></ClCompile>
 
@@ -191,6 +203,7 @@
     <ClCompile Include="ui\screens\confirmations_modals.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\settings_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\settings_sections.cpp"><Filter>ui\screens</Filter></ClCompile>
+    <ClCompile Include="ui\screens\settings_cleaner.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\trade_offers_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\cs2_screen.cpp"><Filter>ui\screens</Filter></ClCompile>
     <ClCompile Include="ui\screens\trade_offers_modals.cpp"><Filter>ui\screens</Filter></ClCompile>
@@ -348,6 +361,7 @@
     <ClInclude Include="app\luminary_loader.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\job_pump.hpp"><Filter>app</Filter></ClInclude>
     <ClInclude Include="app\conf_poller.hpp"><Filter>app</Filter></ClInclude>
+    <ClInclude Include="app\cleaner_runner.hpp"><Filter>app</Filter></ClInclude>
 
     <ClInclude Include="core\version.hpp"><Filter>core</Filter></ClInclude>
     <ClInclude Include="core\time_aligner.hpp"><Filter>core</Filter></ClInclude>
@@ -382,6 +396,7 @@
     <ClInclude Include="core\steam_cm\ws_transport.hpp"><Filter>core\steam_cm</Filter></ClInclude>
     <ClInclude Include="core\steam_cm\cm_server_list.hpp"><Filter>core\steam_cm</Filter></ClInclude>
     <ClInclude Include="core\steam_cm\cm_session.hpp"><Filter>core\steam_cm</Filter></ClInclude>
+    <ClInclude Include="core\steam_cm\web_token.hpp"><Filter>core\steam_cm</Filter></ClInclude>
     <ClInclude Include="core\cs2_gc\gc_emsg.hpp"><Filter>core\cs2_gc</Filter></ClInclude>
     <ClInclude Include="core\cs2_gc\gc_message.hpp"><Filter>core\cs2_gc</Filter></ClInclude>
     <ClInclude Include="core\cs2_gc\so_cache.hpp"><Filter>core\cs2_gc</Filter></ClInclude>
@@ -435,6 +450,15 @@
     <ClInclude Include="core\launch\login_driver.hpp"><Filter>core\launch</Filter></ClInclude>
     <ClInclude Include="core\launch\cs2_autostart.hpp"><Filter>core\launch</Filter></ClInclude>
     <ClInclude Include="core\launch\code_clipboard.hpp"><Filter>core\launch</Filter></ClInclude>
+    <ClInclude Include="core\cleaner\operation.hpp"><Filter>core\cleaner</Filter></ClInclude>
+    <ClInclude Include="core\cleaner\vdf_tree.hpp"><Filter>core\cleaner</Filter></ClInclude>
+    <ClInclude Include="core\cleaner\steam_scan.hpp"><Filter>core\cleaner</Filter></ClInclude>
+    <ClInclude Include="core\cleaner\preserve.hpp"><Filter>core\cleaner</Filter></ClInclude>
+    <ClInclude Include="core\cleaner\crash_dumps.hpp"><Filter>core\cleaner</Filter></ClInclude>
+    <ClInclude Include="core\cleaner\targets.hpp"><Filter>core\cleaner</Filter></ClInclude>
+    <ClInclude Include="core\cleaner\profiles.hpp"><Filter>core\cleaner</Filter></ClInclude>
+    <ClInclude Include="core\cleaner\plan.hpp"><Filter>core\cleaner</Filter></ClInclude>
+    <ClInclude Include="core\cleaner\execute.hpp"><Filter>core\cleaner</Filter></ClInclude>
     <ClInclude Include="core\launch\token_launcher.hpp"><Filter>core\launch</Filter></ClInclude>
     <ClInclude Include="core\launch\hwid_inject.hpp"><Filter>core\launch</Filter></ClInclude>
     <ClInclude Include="core\launch\first_login_reapply.hpp"><Filter>core\launch</Filter></ClInclude>
@@ -451,6 +475,7 @@
     <ClInclude Include="core\hwid\gen\hwid_dll_bytes.hpp"><Filter>core\hwid\gen</Filter></ClInclude>
 
     <ClInclude Include="core\steam_local\loginusers.hpp"><Filter>core\steam_local</Filter></ClInclude>
+    <ClInclude Include="core\steam_local\vdf_file.hpp"><Filter>core\steam_local</Filter></ClInclude>
     <ClInclude Include="core\steam_local\login_prefs.hpp"><Filter>core\steam_local</Filter></ClInclude>
     <ClInclude Include="core\steam_local\connect_cache.hpp"><Filter>core\steam_local</Filter></ClInclude>
     <ClInclude Include="core\steam_local\crc32.hpp"><Filter>core\steam_local</Filter></ClInclude>

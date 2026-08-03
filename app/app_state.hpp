@@ -21,6 +21,7 @@
 #include "app/vault_registry.hpp"
 #include "app/vault_saver.hpp"
 #include "core/account_store/account.hpp"
+#include "core/cleaner/execute.hpp"
 #include "core/crypto/secure_string.hpp"
 #include "core/notifications/notification_store.hpp"
 #include "core/sda/conf_audit.hpp"
@@ -61,7 +62,7 @@ struct Job {
 
 // State for the CS2 GC auto-pull orchestrator: ONE "puller" account signs in, connects to
 // the Game Coordinator, then requests every eligible account's public profile (medals,
-// level/XP) by account_id -- one login instead of one-per-account. Mutated only on the UI
+// level/XP) by account_id: one login instead of one-per-account. Mutated only on the UI
 // thread (tick + marshaled client callbacks), so it needs no locking.
 struct GcAutoPull {
     enum class Phase { Idle, SigningIn, Connecting, Pulling };
@@ -87,7 +88,7 @@ struct GcAutoPull {
 
 // Per-account GC connect that validates an NFA/cached token (via the CM logon result) and
 // pulls that account's OWN CS2 profile (ranks/medals/level/cooldown/vac). Processes a queue
-// one account at a time -- staggered + TTL-gated so it never trips Steam's rate limiter.
+// one account at a time, staggered and TTL-gated so it never trips Steam's rate limiter.
 // tick_gc_validate() advances it each frame.
 struct GcValidate {
     bool active = false;
@@ -119,6 +120,11 @@ struct GcValidate {
 std::string cs2_client_token(const core::Account& a);
 
 struct AppState {
+    // Whether this process actually got an elevated token, which is not the same as
+    // settings.run_as_admin: the user may have declined the UAC prompt, or a scheduled task
+    // may have started us elevated with the setting off. Admin-gated UI keys off this one.
+    // Set once by win_main; never changes for the life of the process.
+    bool is_elevated = false;
     bool unlocked = false;
     crypto::SecureString master_password;
     core::Vault vault;
@@ -155,13 +161,19 @@ struct AppState {
     bool account_edit_requested = false;
     // Requests a gamesense loader file pick (the per-card popup can't host the
     // Win32 dialog); Accounts runs the dialog at a stable scope. Value is the
-    // account id to switch to "CS2 + gamesense", empty = only (re)install the
-    // loader, nullopt = no pick pending.
+    // account id to switch to "CS2 + gamesense" once the loader is installed,
+    // nullopt = no pick pending. Replacing an already-installed loader is done
+    // from Settings instead (draw_gamesense_section).
     std::optional<std::string> gamesense_pick_request;
     // Same as above, but for the luminary loader.
     std::optional<std::string> luminary_pick_request;
     // Logins currently revealed in privacy_mode.
     std::unordered_set<std::string> revealed_logins;
+    // Per-account, session-only override of settings.sign_in_method, set from the Login
+    // caret menu. Absent = follow the global setting. Never persisted; cleared by
+    // clear_session_secrets() so an override can't leak across a vault switch onto
+    // another vault's account ids.
+    std::unordered_map<std::string, SignInMethod> sign_in_override;
 
     // Multi-select on Accounts. Cleared by clear_session_secrets() on lock and by
     // rail_nav when leaving the screen with selection_mode off.
@@ -200,6 +212,17 @@ struct AppState {
 
     core::hwid::HwidProfile real_hardware;
     std::string last_hwid_account_id;
+
+    // Tracer cleaner. A run closes Steam and deletes without a backup, so only one can be in
+    // flight and the Launch buttons grey out while one is: a launch racing an async clean
+    // would have its freshly injected token wiped out from under it.
+    std::atomic<bool> cleaner_busy{false};
+    // Armed by bind_vault_session() when Settings::cleaner.run_on_unlock is set, consumed once
+    // by the frame loop (which owns the toast + busy flag).
+    bool cleaner_unlock_pending = false;
+    // Settings-screen state: the last previewed plan and the last run's outcome.
+    std::optional<cleaner::Plan> cleaner_preview;
+    std::optional<cleaner::CleanResult> cleaner_last;
 
     // Nav-rail badge count. Not polled in the background; reflects the most recent
     // observed state. `loaded` distinguishes "0 known" from "never queried".
@@ -295,6 +318,9 @@ struct AppState {
     ~AppState();
 
     core::Account* find_account(const std::string& id);
+    // The sign-in method a launch of this account will actually use: the session
+    // override if one is set, otherwise settings.sign_in_method.
+    SignInMethod effective_sign_in_method(const std::string& account_id) const;
     void save_vault_if_dirty();
     void flush_pending_save();
     // Settings are per-vault, but split across two files rather than two structs:
@@ -317,7 +343,8 @@ struct AppState {
     // Spawns the GitHub release check if check_updates_on_launch; result lands in
     // update_result under update_mutex.
     void start_update_check();
-    // Drops per-session secrets that must not survive a re-lock (revealed_logins).
+    // Drops per-session state that must not survive a re-lock (revealed_logins,
+    // selection, sign_in_override).
     void clear_session_secrets();
 
     // Zero the SteamGuard secrets and session id in the decrypted vault before
@@ -338,7 +365,7 @@ struct AppState {
     void toggle_selected(const std::string& id);
     bool is_selected(const std::string& id) const;
     // `force` refreshes every account regardless of the cache TTLs. `announce` shows an "all
-    // up to date" toast when nothing was stale -- the manual button passes true; startup/auto/
+    // up to date" toast when nothing was stale; the manual button passes true; startup/auto/
     // headless pass false so a no-op heartbeat stays silent.
     void refresh_account_data(bool force = false, bool announce = false);
     // `allow_gcpd` gates the (heavy) GCPD scrape independently of settings.gcpd_enabled;
@@ -357,7 +384,7 @@ struct AppState {
     void auto_refresh_all();
 
     // "Refresh GC": pull CS2 GC profile data (level/XP, medals, ranks, cooldown) for every
-    // account -- one puller batch-pulls full-access foreign profiles, NFA/cached each get their
+    // account: one puller batch-pulls full-access foreign profiles, NFA/cached each get their
     // own-session login. Both TTL-gated. `announce` shows an "up to date" toast when nothing is
     // stale (manual button); startup/auto pass false.
     void refresh_gc_all(bool announce = false);
@@ -393,11 +420,14 @@ struct AppState {
     void tally_spend_progress();
 
     // Registers/updates/removes the single logon Scheduled Task to match
-    // settings.logon_action (+ start_minimized for OpenApp). Idempotent.
-    void sync_logon_task() const;
+    // settings.logon_action (+ start_minimized for OpenApp), at a run level matching
+    // settings.run_as_admin. Idempotent. False if Task Scheduler refused, so the caller
+    // can surface it instead of failing silently.
+    bool sync_logon_task() const;
 
-    // Copies cs2_video_template_path() into `a`'s CS2 config folder and toasts the
-    // result. Failures toast a warning rather than throw.
+    // Copies whichever template settings.cs2_video.mode selects (a cs2_video.txt, a whole
+    // 730 folder, or every game folder of a picked userdata/<id>) into `a`'s userdata and
+    // toasts the result. The two folder modes copy on a worker; failures toast a warning.
     void apply_cs2_video_config(const core::Account& a);
 
     // Signs the default browser in to `a` and opens its profile in a private
@@ -451,8 +481,8 @@ struct AppState {
 
     // The cm_refresh_token counterpart of capture_rotated_token_async, for a full-access
     // token-injection launch. Waits for Steam to sign in, then either adopts the rotated
-    // ConnectCache token into cm_refresh_token (cm_status = Valid), or -- if Steam never
-    // signs in, which is how a revoked-but-unexpired token presents -- marks cm_status
+    // ConnectCache token into cm_refresh_token (cm_status = Valid), or, if Steam never
+    // signs in (which is how a revoked-but-unexpired token presents), marks cm_status
     // Revoked and re-mints + relaunches once via pending_token_launch.
     void verify_cm_token_signin_async(std::string account_id,
                                       std::uint64_t steam_id_64,
@@ -522,5 +552,10 @@ struct AppState {
 // now-active vault's folder and loads/prunes them. Call once, right after a vault
 // is unlocked (auto-unlock, manual unlock/create, or the picker).
 void bind_vault_session(AppState& state);
+
+// Whether a token-injection launch could sign this account in right now off its stored
+// cm_refresh_token: present, not known-revoked, not about to expire, client audience.
+// False means the token has to be (re)minted from the password first.
+bool cm_token_valid(const core::Account& a);
 
 }  // namespace sam::app

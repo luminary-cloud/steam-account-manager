@@ -23,7 +23,7 @@ using clock = std::chrono::steady_clock;
 
 namespace {
 std::string handshake_drop_reason(int logoff_eresult) {
-    if (logoff_eresult == 6)  // LoggedInElsewhere
+    if (logoff_eresult == 6)
         return "this account is signed in elsewhere. An hourboost (or the Steam client) is holding "
                "the CS2 session; stop it for this account, then reconnect.";
     if (logoff_eresult != 0)
@@ -31,7 +31,6 @@ std::string handshake_drop_reason(int logoff_eresult) {
     return "connection dropped during the CS2 handshake";
 }
 
-// Lowercase hex of a byte blob, for logging raw GC payloads we can decode by hand.
 std::string hex_dump(const std::string& data) {
     static const char kHex[] = "0123456789abcdef";
     std::string hex;
@@ -43,10 +42,6 @@ std::string hex_dump(const std::string& data) {
     return hex;
 }
 
-// The recurring-mission templates are Valve binary KeyValues: 0x01 = string field
-// (key\0value\0), 0x02 = int field (key\0 + 4 raw bytes), 0x00/0x0b open/close blocks. We
-// only need a few string fields for the account's mission, so pull each by its
-// "\x01<key>\0" tag searched forward from the mission's "\x00<id>\0" block marker.
 std::string field_after(const std::string& blob, std::size_t from, const std::string& key) {
     const auto p = blob.find(key, from);
     if (p == std::string::npos) return {};
@@ -92,10 +87,6 @@ std::string title_case(std::string s) {
     return s;
 }
 
-// CS2 quest expression -> a human label like the in-game card ("Round Wins", "Kills"). The
-// expression may be compound, e.g. "act_kill_human && !![weapon ak47|weapon awp|...]" for kills
-// restricted to a weapon set; keep only the leading act_* token so the card reads "Kills"
-// instead of dumping the weapon list.
 std::string action_label(const std::string& expr) {
     const std::string base = expr.substr(0, expr.find_first_of(" \t&|!["));
     if (base == "act_win_round") return "Round Wins";
@@ -118,12 +109,8 @@ std::string map_label(std::string m) {
 bool GcSession::launch(std::string& error) {
     dropped_ = false;
 
-    // Steam pushes the playing-session state right after logon; proceed the moment it
-    // arrives instead of always burning the full window.
     wait_until([this] { return cm_.playing_state_seen(); }, 1500);
 
-    // If the account is already playing CS2 elsewhere (e.g. an hourbooster), take
-    // over the game session the way the Steam client's "start anyway" prompt does.
     if (cm_.playing_blocked()) {
         SAM_LOG_INFO("gc: account is playing elsewhere, taking over the game session");
         cm_.kick_playing_session();
@@ -145,8 +132,6 @@ bool GcSession::launch(std::string& error) {
         return false;
     }
 
-    // Let games_played propagate, then start the hello loop. The GC harmlessly ignores
-    // a hello that lands a touch early, so a short settle beats a fixed 2s wait.
     pump_for(300);
 
     const auto start = clock::now();
@@ -172,13 +157,10 @@ bool GcSession::launch(std::string& error) {
     }
     SAM_LOG_INFO("gc: welcome after {} hello(s), {} ms", hello_count,
                  std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - start).count());
-    // Pull the account's XP/level for the weekly-drop progress bar (best-effort). The
-    // recurring (weekly) mission progress arrives via the SO cache; request its schedule
-    // too so the GC sends the schema and any fresh mission state.
+
     request_players_profile();
     request_mission_schedule();
-    // Nudge the GC to (re)send MatchmakingGC2ClientHello so we capture the live competitive
-    // cooldown. It usually arrives unsolicited at connect; this makes it reliable.
+
     CMsgGCCStrike15_v2_MatchmakingClient2GCHello mm_hello;
     send_gc(GcMsg::MatchmakingClient2GCHello, mm_hello);
     wait_until([this] { return player_xp_.valid && own_penalty_.seen; }, 3000);
@@ -218,12 +200,8 @@ void GcSession::request_mission_schedule() {
 MissionInfo GcSession::current_mission() const {
     MissionInfo out;
     const std::string& tpl = current_period_templates_;
-    if (tpl.size() < 2 || tpl[0] != '\0') return out;  // need at least one mission block
+    if (tpl.size() < 2 || tpl[0] != '\0') return out;
 
-    // Pick the mission: the account's mission-SO id when the SO belongs to THIS period and its
-    // id is in the template, else the first mission the template lists (the week's default for
-    // an account whose current-period SO hasn't arrived yet). Gating on the period stops a
-    // stale older-week SO from selecting last week's mission after the Wednesday reset.
     std::size_t start = std::string::npos;
     std::uint32_t mission_id = 0;
     if (recurring_mission_.valid && recurring_mission_.period == current_period_) {
@@ -237,7 +215,7 @@ MissionInfo GcSession::current_mission() const {
         }
     }
     if (start == std::string::npos) {
-        const auto e = tpl.find('\0', 1);  // first block: leading 0x00 then the id string
+        const auto e = tpl.find('\0', 1);
         if (e == std::string::npos) return out;
         mission_id = static_cast<std::uint32_t>(std::strtoul(tpl.substr(1, e - 1).c_str(), nullptr, 10));
         start = 0;
@@ -256,8 +234,7 @@ MissionInfo GcSession::current_mission() const {
     out.valid = true;
     out.target = list_max(field("points"));
     out.xp = list_sum(field("xp_expr"));
-    // Progress counts only when the account's mission SO is this exact mission for the
-    // active period; otherwise nothing has been earned this week yet.
+
     out.progress = (recurring_mission_.valid && recurring_mission_.mission_id == mission_id &&
                     recurring_mission_.period == current_period_)
                        ? recurring_mission_.progress
@@ -272,22 +249,16 @@ MissionInfo GcSession::current_mission() const {
 }
 
 void GcSession::on_unknown_so(int type_id, const std::string& data) {
-    // Discovery aid: hex-dump small unmodeled SO blobs (logged once per type) so their
-    // protobuf fields can be decoded by hand -- the recurring-mission SO type id is
-    // undocumented and shape-matching alone is ambiguous (several SO types carry the
-    // account id in field 1).
+
     if (logged_so_types_.insert(type_id).second)
         SAM_LOG_DEBUG("gc: unhandled SO type_id={} ({} bytes) hex={}", type_id, data.size(),
                       hex_dump(data));
-    // Recurring (weekly) mission: a CSOAccountRecurringMission for THIS account with all of
-    // mission_id/period/progress present. Requiring progress rules out look-alike SO types
-    // whose field 1 merely happens to equal the account id (e.g. type 3, mission_id=2).
+
     CSOAccountRecurringMission rm;
     if (rm.ParseFromString(data) && rm.has_account_id() &&
         rm.account_id() == static_cast<std::uint32_t>(cm_.steam_id() & 0xffffffffULL) &&
         rm.has_mission_id() && rm.has_period() && rm.has_progress() && rm.mission_id() != 0) {
-        // An account can hold mission SOs from several periods; keep the most recent so a
-        // stale older-week mission doesn't mask the current one.
+
         if (!recurring_mission_.valid || rm.period() >= recurring_mission_.period) {
             recurring_mission_.valid = true;
             recurring_mission_.mission_id = rm.mission_id();
@@ -445,13 +416,11 @@ void GcSession::on_gc_message(std::uint32_t gc_emsg, const std::string& body) {
             return;
         }
         case GcMsg::MatchmakingGC2ClientHello: {
-            // The GC pushes this unsolicited at connect (and in reply to our
-            // MatchmakingClient2GCHello). For the OWN account it authoritatively carries the
-            // live competitive cooldown -- the one thing an NFA account can't scrape from GCPD.
+
             CMsgGCCStrike15_v2_MatchmakingGC2ClientHello h;
             if (!h.ParseFromString(body)) return;
             const auto own = static_cast<std::uint32_t>(cm_.steam_id() & 0xffffffffULL);
-            if (h.account_id() != own) return;  // only ever trust our own hello
+            if (h.account_id() != own) return;
             const auto now = static_cast<std::int64_t>(std::time(nullptr));
             own_penalty_.seen = true;
             own_penalty_.expires =
@@ -461,8 +430,7 @@ void GcSession::on_gc_message(std::uint32_t gc_emsg, const std::string& body) {
         case GcMsg::PlayersProfile: {
             CMsgGCCStrike15_v2_PlayersProfile p;
             if (!p.ParseFromString(body)) return;
-            // A reply carries one profile per requested account; route each by its own
-            // account_id (batch requests interleave, so order isn't reliable).
+
             const auto own = static_cast<std::uint32_t>(cm_.steam_id() & 0xffffffffULL);
             for (const auto& a : p.account_profiles()) {
                 ProfileResult r;
@@ -475,8 +443,7 @@ void GcSession::on_gc_message(std::uint32_t gc_emsg, const std::string& body) {
                     r.medal_defidx.assign(a.medals().display_items_defidx().begin(),
                                           a.medals().display_items_defidx().end());
                 }
-                // Competitive standing. `rankings` carries one entry per mode keyed by
-                // rank_type_id (11 = Premier CS Rating, 7 = Wingman); verified live.
+
                 for (const auto& rk : a.rankings()) {
                     if (rk.rank_type_id() == 11) {
                         r.premier_rating = static_cast<int>(rk.rank_id());
@@ -486,9 +453,7 @@ void GcSession::on_gc_message(std::uint32_t gc_emsg, const std::string& body) {
                         r.wingman_wins = static_cast<int>(rk.wins());
                     }
                 }
-                // The session's own profile also feeds player_xp() -- launch()'s wait and the
-                // live screen read it -- and bumps so_seq_ to re-post a snapshot. Foreign
-                // profiles only queue, so a puller never churns snapshots for other accounts.
+
                 if (r.account_id == own) {
                     player_xp_.level = r.level;
                     player_xp_.cur_xp = r.cur_xp;
@@ -496,9 +461,7 @@ void GcSession::on_gc_message(std::uint32_t gc_emsg, const std::string& body) {
                     player_xp_.featured_medal_defidx = r.featured_medal_defidx;
                     player_xp_.medal_defidx = r.medal_defidx;
                     player_xp_.valid = true;
-                    // Attach the cooldown captured from our own GC hello so it rides the same
-                    // snapshot the client applies. Only set when the hello arrived, so a foreign
-                    // pull (which never sees a penalty) leaves the value at -1 = untouched.
+
                     if (own_penalty_.seen) {
                         r.cooldown_expires_unix = own_penalty_.expires;
                         r.cooldown_reason =
@@ -513,8 +476,7 @@ void GcSession::on_gc_message(std::uint32_t gc_emsg, const std::string& body) {
         case GcMsg::RecurringMissionSchema: {
             CMsgRecurringMissionSchema s;
             if (!s.ParseFromString(body)) return;
-            // Keep the template blob for the period that contains "now" -- the active week,
-            // whose template defines the current mission's name/target/xp.
+
             const auto now = static_cast<std::uint32_t>(std::time(nullptr));
             constexpr std::uint32_t kWeek = 7 * 24 * 3600;
             for (const auto& m : s.missions())
@@ -522,7 +484,7 @@ void GcSession::on_gc_message(std::uint32_t gc_emsg, const std::string& body) {
                     m.mission_templates_size() > 0) {
                     current_period_ = m.period();
                     current_period_templates_ = m.mission_templates(0);
-                    ++so_seq_;  // a fresh template may complete the mission card
+                    ++so_seq_;
                 }
             SAM_LOG_INFO("gc: recurring mission schema, active period={} ({} bytes)",
                          current_period_, current_period_templates_.size());

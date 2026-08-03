@@ -45,8 +45,6 @@ bool iequal(std::string_view a, std::string_view b) {
     return true;
 }
 
-// Steam's casing for these keys varies across versions, so match case-insensitively
-// but create with the canonical casing if absent.
 VdfNode& find_or_add_block(VdfNode& parent, std::string_view key) {
     for (auto& c : parent.children) {
         if (c.is_block && iequal(c.key, key)) return c;
@@ -95,7 +93,6 @@ DeployResult apply_launch_options(std::uint64_t steam_id_64, const std::string& 
         return out;
     }
 
-    // userdata folders are named by the SteamID3 account number (lower 32 bits).
     const auto account_id = static_cast<std::uint32_t>(steam_id_64 & 0xFFFFFFFFull);
     const fs::path path = *steam / L"userdata" / std::to_wstring(account_id) /
                           L"config" / L"localconfig.vdf";
@@ -115,7 +112,6 @@ DeployResult apply_launch_options(std::uint64_t steam_id_64, const std::string& 
 
     VdfNode root = steam_local::parse_vdf(text);
 
-    // UserLocalConfigStore > Software > Valve > Steam > Apps > 730 > LaunchOptions
     VdfNode& store = find_or_add_block(root, "UserLocalConfigStore");
     VdfNode& software = find_or_add_block(store, "Software");
     VdfNode& valve = find_or_add_block(software, "Valve");
@@ -125,8 +121,7 @@ DeployResult apply_launch_options(std::uint64_t steam_id_64, const std::string& 
     upsert_scalar_ci(app730, "LaunchOptions", options);
 
     std::string serialized;
-    // localconfig.vdf wraps everything in UserLocalConfigStore; write each root
-    // child at depth 0 (matches Steam's layout).
+
     for (const auto& c : root.children) steam_local::serialize_node(c, serialized, 0);
 
     fs::path bak = path;

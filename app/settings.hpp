@@ -24,11 +24,14 @@ enum class SignInMethod : std::uint8_t {
     TokenInject = 1,  // inject a client-scoped JWT into Steam's ConnectCache (no login window)
 };
 
-// What's copied into the launched account's CS2 (appid 730) config on login.
+// What's copied into the launched account's userdata on login. The first three modes
+// only ever touch CS2 (appid 730); UserdataFolder covers every game in a picked
+// userdata/<id> folder.
 enum class CS2ConfigMode : std::uint8_t {
     None = 0,
     VideoTxt = 1,
     Folder730 = 2,
+    UserdataFolder = 3,
 };
 
 // What the logon Scheduled Task does, if anything. Only one task ever exists, so
@@ -37,6 +40,14 @@ enum class LogonAction : std::uint8_t {
     None = 0,
     BackgroundRefresh = 1,  // headless --startup: refresh, notify, exit
     OpenApp = 2,            // launch the full GUI (optionally --minimized)
+};
+
+// Which bundle of cleanup targets a cleaner run uses. Index into
+// cleaner::built_in_profiles(); each is a superset of the one before it.
+enum class CleanerProfile : std::uint8_t {
+    QuickClean = 0,    // caches, logs, crash dumps, nothing account-specific
+    AccountReset = 1,  // + saved logins, ConnectCache tokens, autologin registry
+    FullWipe = 2,      // + every non-preserved account's userdata folder
 };
 
 // A saved destination trade link. Name is an optional user label; empty shows the URL.
@@ -70,9 +81,15 @@ struct Settings {
     int  auto_refresh_minutes = 10;   // heartbeat interval
     // GLOBAL: read by init_vaults() to decide whether to auto-open, before any
     // vault exists to read it from. Caches the master password via DPAPI (current
-    // Windows user). Disabling deletes the cached blob -- but only the active
+    // Windows user). Disabling deletes the cached blob, but only the active
     // vault's, while the flag itself stops every vault auto-opening.
     bool remember_master_password = false;
+    // GLOBAL: read by wWinMain (via run_as_admin_hint) before any vault exists. The
+    // manifest is asInvoker, so elevation is opt-in: when on, the app relaunches itself
+    // through the shell's "runas" verb at startup. Only three things actually need it --
+    // the logon task, writes into a Steam folder the user can't write, and touching a
+    // Steam that is itself elevated. Default on, matching the pre-setting behaviour.
+    bool run_as_admin = true;
     // GLOBAL: only one logon task ever exists, so it can't differ per vault.
     // Task Scheduler logon task (highest privileges, since requireAdministrator).
     // BackgroundRefresh relaunches with --startup to refresh and exit (implies
@@ -83,6 +100,13 @@ struct Settings {
     // --minimized so the window opens minimized to the taskbar. Manual launches
     // always open normally.
     bool start_minimized = false;
+    // Hides and disables every ban-risk feature: the HWID Spoofer and Cleaner settings tabs,
+    // the Gamesense/Luminary sections, the per-account and per-group HWID menus, and the
+    // loader-backed login methods all disappear; no launch injects the spoofer or runs a
+    // loader, and no cleaner trigger fires (gated in cleaner_runner). Nothing is erased:
+    // stored HWID profiles, login_method values, installed loaders and the cleaner config all
+    // survive, so turning it off restores the previous state.
+    bool safe_mode = false;
     // Renders logins as "<hidden>". Per-account reveals live in
     // AppState::revealed_logins, cleared on lock via clear_session_secrets().
     bool privacy_mode = false;
@@ -95,10 +119,14 @@ struct Settings {
     // toggle is on; never re-enabled. See core/steam_local/login_prefs.
     bool disable_cloud_on_login = false;
     bool disable_news_on_login = false;
+    bool disable_remote_play_on_login = false;
+    // Signs the launched account in as Invisible (ePersonaState 7), written in the same
+    // window so switching accounts never flashes it online.
+    bool login_invisible = false;
     // When on, every launched account has its subscribed CS2 workshop maps blocked from
-    // downloading: the shared appworkshop_730.acf is stripped of that account's not-yet-
-    // installed items and locked read-only during the Steam-down window. Subscriptions are
-    // kept; turning it off unlocks the file on the next launch. See cs2_config/workshop_block.
+    // downloading: each entry in that account's own 730_subscriptions.vdf is marked
+    // disabled_locally during the Steam-down window. Subscriptions are kept; turning it off
+    // restores them on the next launch. See cs2_config/workshop_block.
     bool disable_workshop_on_login = false;
     // Whether the password-login driver ticks Steam's "Remember me" box. Off makes Steam
     // forget the session after sign-in (no saved login). Token (NFA) logins ignore this;
@@ -169,7 +197,7 @@ struct Settings {
         bool hide_current_code = false;
         bool global_hotkey_enabled = false;
         // Raw Win32 MOD_*/VK constants. Defaults filled by load_vault_settings() on
-        // a vault's first open (as literals -- the macros live in <windows.h>).
+        // a vault's first open (as literals, since the macros live in <windows.h>).
         std::uint32_t global_hotkey_mods = 0;
         std::uint32_t global_hotkey_vk   = 0;
     } sda;
@@ -226,11 +254,13 @@ struct Settings {
 
     struct CS2VideoConfig {
         // VideoTxt copies cs2_video_template_path(); Folder730 copies the snapshot
-        // under cs2_730_template_dir(). The *_label fields are import paths shown
-        // in Settings for reference only.
+        // under cs2_730_template_dir(); UserdataFolder copies the one under
+        // userdata_template_dir(). The *_label fields are import paths shown in
+        // Settings for reference only.
         CS2ConfigMode mode = CS2ConfigMode::None;
-        std::string source_label;         // imported video.txt path
-        std::string folder_source_label;  // imported 730 folder path
+        std::string source_label;           // imported video.txt path
+        std::string folder_source_label;    // imported 730 folder path
+        std::string userdata_source_label;  // imported userdata/<id> folder path
         // Written into appid 730's LaunchOptions in the launched account's
         // localconfig.vdf, during the Steam-down window so Steam can't clobber it.
         // Empty = leave Steam's existing launch options alone.
@@ -260,6 +290,28 @@ struct Settings {
         bool always_spoof = false;
         std::uint32_t component_mask = 0x3FFu;
     } hwid;
+
+    // Steam tracer cleaner. Deletes the residue Steam leaves on this PC: caches and, from
+    // AccountReset up, saved logins and ConnectCache tokens. There is no backup and no undo,
+    // so everything here is off by default.
+    struct CleanerToggles {
+        bool enabled = false;
+        CleanerProfile profile = CleanerProfile::QuickClean;
+
+        // Automatic triggers. "Run now" in Settings works whatever these say.
+        // Before a launch the clean lands in the window where Steam is already down and
+        // before the sign-in writes, so it can't race them. The other two shut Steam down
+        // themselves, which signs out whoever is currently on it.
+        bool run_before_launch = false;
+        bool run_on_unlock = false;
+        bool run_on_exit = false;
+
+        // SteamID64s spared by every run: saved login, userdata, registry subtree, cached
+        // avatar and ConnectCache token all survive. Strict: nothing is preserved that
+        // isn't listed here, including the account being launched. May name accounts that
+        // aren't in this vault (Steam logins found on the PC), so it isn't a subset of it.
+        std::vector<std::uint64_t> preserved_steam_ids;
+    } cleaner;
 };
 
 }  // namespace sam::app

@@ -25,7 +25,7 @@ std::uint32_t read_u32(const std::string& s, std::size_t off) {
 }  // namespace
 
 void build_gc_client(::CMsgGCClient& out, std::uint32_t gc_emsg, const std::string& gc_body) {
-    ::CMsgProtoBufHeader gc_header;  // empty: the GC routes by msgtype, not jobid
+    ::CMsgProtoBufHeader gc_header;
     const std::string header_bytes = gc_header.SerializeAsString();
     const std::uint32_t msgtype = gc_emsg | kGcProtoMask;
 

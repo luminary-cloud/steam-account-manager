@@ -120,8 +120,7 @@ void draw_rail_nav(app::AppState& state) {
                 state.current_screen = entry.screen;
                 if (entry.screen == app::Screen::AddAccount)
                     state.selected_account_id.clear();
-                // Drop the checked set when leaving Accounts with selection mode
-                // off, so a stale selection doesn't carry back.
+
                 if (entry.screen != app::Screen::Accounts &&
                     !state.selection_mode) {
                     state.selected_account_ids.clear();
@@ -134,8 +133,6 @@ void draw_rail_nav(app::AppState& state) {
     draw_section("Workspace", kWorkspaceItems);
     draw_section("Manage", kManageItems);
 
-    // "Switch vault" is an action (relaunch), not a screen, so it's drawn outside
-    // the NavEntry sections. Only meaningful when more than one vault exists.
     if (state.vault_registry.vaults.size() > 1) {
         ImGui::SetCursorPosX(kSidebarPaddingX);
         if (sidebar_item("Switch vault", false,
@@ -213,9 +210,7 @@ void draw_rail_nav(app::AppState& state) {
 
 void request_vault_switch(app::AppState& state, const std::string& id) {
     if (id.empty() || id == sam::platform::active_vault_id()) return;
-    // Record the target and ask win_main to relaunch on the way out. The actual
-    // relaunch happens after full teardown so the new instance doesn't race this
-    // one's (possibly slow) shutdown for the single-instance mutex.
+
     sam::platform::write_pending_vault(id);
     state.relaunch_switch = true;
     if (state.main_hwnd) PostMessageW(state.main_hwnd, WM_CLOSE, 0, 0);

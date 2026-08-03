@@ -15,7 +15,6 @@ enum HwidComponent : std::uint32_t {
     kMonitor     = 1u << 7,
     kStorage     = 1u << 8,
     kSoundCard   = 1u << 9,
-    kAll         = 0x3FFu,
 };
 
 }  // namespace sam::hwid

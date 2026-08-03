@@ -12,8 +12,6 @@ namespace sam::platform::file_dialog {
 
 namespace {
 
-// COINIT_DISABLE_OLE1DDE matches what the Windows file-dialog samples use and
-// avoids the legacy DDE broadcast that file dialogs would otherwise fire.
 struct ComScope {
     HRESULT hr = E_FAIL;
     ComScope() {
@@ -50,7 +48,6 @@ bool item_to_path(IShellItem* item, std::filesystem::path& out) {
 Result run_dialog(IFileDialog* dlg, const Options& opts) {
     Result r;
 
-    // Filter strings are backed by the caller's Options, so pass pointers directly.
     std::vector<COMDLG_FILTERSPEC> com_filters;
     if (!opts.filters.empty()) {
         com_filters.reserve(opts.filters.size());
@@ -75,7 +72,7 @@ Result run_dialog(IFileDialog* dlg, const Options& opts) {
 
     HRESULT hr = dlg->Show(opts.parent);
     if (FAILED(hr)) {
-        return r;  // cancelled or failed
+        return r;
     }
 
     if (opts.allow_multiselect) {

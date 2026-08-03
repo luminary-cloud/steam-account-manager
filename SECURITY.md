@@ -40,11 +40,22 @@ Only the latest release on the [Releases](../../releases) page receives fixes.
   DPAPI so the vault opens without a prompt. This trades protection for convenience:
   anyone signed in as the same Windows user on that machine can then open the vault
   without knowing the master password. Leave it off if that is not acceptable.
-- **Administrator elevation.** The app runs elevated because the Steam registry
-  login flow and per-account `userdata` writes require it.
+- **Administrator elevation.** On by default, and can be turned off in
+  Settings > General. Three things need it: the Windows-logon task, writing into a
+  Steam folder your account has no write access to, and controlling a Steam that is
+  itself running elevated. Everything else (sign-in, Steam Guard, confirmations,
+  trades, the CS2 tools) works without it. Steam's own settings live under
+  `HKEY_CURRENT_USER`, so no part of the login flow needs elevation.
 - **No code signing.** Release binaries are unsigned, so Windows SmartScreen warns
   on first run. Verify the SHA-256 published with each release if you want to
   confirm the download.
+- **The tracer cleaner deletes permanently.** Nothing it removes is backed up and
+  there is no undo, so the keep list in Settings > Cleaner is the only thing standing
+  between an account and a wipe: anything not ticked there is signed out of this PC,
+  and under Full Wipe loses its `userdata` folder (cloud saves, game settings, CS2
+  configs, controller bindings, screenshots). It is off by default, every trigger is
+  opt-in, and Preview shows the exact list before you commit. It only touches Steam's
+  own files and `HKEY_CURRENT_USER`, never the vault.
 
 This tool ships no cheats, scripts, or game modifications. The optional "launch CS2
 with an external loader" method only runs a loader executable that you supply and

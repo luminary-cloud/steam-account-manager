@@ -67,7 +67,7 @@ std::vector<std::uint8_t> protect(std::span<const std::uint8_t> plaintext,
     }
 
     DATA_BLOB out{};
-    // No description: CryptUnprotectData ignores it on read, so Steam can decrypt.
+
     if (!::CryptProtectData(&in, nullptr, pent, nullptr, nullptr,
                             CRYPTPROTECT_UI_FORBIDDEN, &out)) {
         throw DpapiError("CryptProtectData (entropy) failed");

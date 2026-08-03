@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <string_view>
 
 #include "core/steam_auth/gen/steammessages_base.pb.h"
 #include "core/steam_cm/ws_transport.hpp"
@@ -36,6 +37,18 @@ public:
     bool send(std::uint32_t emsg, const google::protobuf::MessageLite& body);
     bool send_raw(std::uint32_t emsg, const std::string& body);
 
+    // Sends a unified message (service method) over this logged-on session, e.g.
+    // "Authentication.GenerateAccessTokenForApp#1". `jobid` must be non-zero and unique for
+    // the session; the CM echoes it back in the reply's jobid_target. The reply arrives as
+    // EMsg::ServiceMethodResponse through pump()'s handler, carrying the result in
+    // header.eresult(); match it on jobid_target and parse the body as the method's
+    // Response message.
+    bool send_service_method(std::string_view target_job_name,
+                             const google::protobuf::MessageLite& body, std::uint64_t jobid);
+
+    // A jobid that is unique within this session, for send_service_method.
+    std::uint64_t next_jobid() { return ++next_jobid_; }
+
     // Receives and dispatches for up to timeout_ms, expanding Multis and sending a
     // heartbeat when due. Returns false once the connection drops.
     bool pump(int timeout_ms, const Handler& handler);
@@ -58,6 +71,8 @@ public:
     void kick_playing_session();
 
 private:
+    bool send_with_header(std::uint32_t emsg, ::CMsgProtoBufHeader& header,
+                          const std::string& body);
     void process_frame(const std::uint8_t* data, std::size_t len, const Handler& handler);
     void process_message(std::uint32_t emsg, const ::CMsgProtoBufHeader& header,
                          const std::string& body, const Handler& handler);
@@ -77,6 +92,7 @@ private:
     bool playing_blocked_ = false;
     bool playing_state_seen_ = false;
     std::uint32_t playing_app_ = 0;
+    std::uint64_t next_jobid_ = 0;
     std::chrono::steady_clock::time_point last_heartbeat_{};
 };
 

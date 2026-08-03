@@ -9,7 +9,10 @@
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+        <!-- Elevation is opt-in at runtime via the global run_as_admin setting, which
+             relaunches this exe through the shell's "runas" verb. Keep in lockstep with
+             <UACExecutionLevel> in the vcxproj: mt.exe errors if the two disagree. -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
       </requestedPrivileges>
     </security>
   </trustInfo>

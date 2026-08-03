@@ -49,7 +49,6 @@ void draw_title_bar(app::AppState& state) {
         ImGui::PopFont();
     }
 
-    // `slot` counts in from the right edge: 1 = close, 2 = maximize, 3 = minimize.
     auto button = [&](const char* id, int slot, ImU32 hover_col, bool& hovered) {
         const float x1 = full_w - kCaptionBtnWidth * static_cast<float>(slot - 1);
         const float x0 = x1 - kCaptionBtnWidth;

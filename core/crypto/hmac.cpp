@@ -33,9 +33,4 @@ std::array<std::uint8_t, 20> hmac_sha1(std::span<const std::uint8_t> key,
     return run<20>(MBEDTLS_MD_SHA1, key, data);
 }
 
-std::array<std::uint8_t, 32> hmac_sha256(std::span<const std::uint8_t> key,
-                                          std::span<const std::uint8_t> data) {
-    return run<32>(MBEDTLS_MD_SHA256, key, data);
-}
-
 }  // namespace sam::crypto

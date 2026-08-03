@@ -39,6 +39,17 @@ inline std::int64_t next_weekly_reset(std::int64_t from_unix) {
     return reset;
 }
 
+// "YYYY-MM-DD" (UTC), or empty for a non-positive timestamp.
+std::string format_date(std::int64_t unix_seconds);
+
+// Coarse "5m ago" / "3d ago", falling back to format_date past 30 days.
+// "never" for a zero/unset timestamp.
+std::string format_relative(std::int64_t unix_seconds);
+
+// UTF-8-safe clip to max_w with a trailing "...". Returns the input unchanged when
+// it already fits, so callers can compare to detect truncation.
+std::string truncate_to_width(const std::string& text, float max_w);
+
 void open_url(const std::string& url);
 
 // Opens a folder (or file) in Explorer / the shell default.
@@ -67,6 +78,12 @@ void end_styled_modal();
 bool begin_styled_combo(const char* label, const char* preview_value,
                         ImGuiComboFlags flags = 0);
 void end_styled_combo();
+
+// ImGui::Combo with the same inner padding. It only overrides the popup's *horizontal*
+// padding itself and takes the vertical one from the theme's WindowPadding, which is 0
+// here, leaving the first/last entry flush against the rounded popup border.
+bool styled_combo(const char* label, int* current_item,
+                  const char* items_separated_by_zeros);
 
 bool begin_styled_popup(const char* str_id, ImGuiWindowFlags flags = 0);
 void end_styled_popup();

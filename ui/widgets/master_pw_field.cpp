@@ -14,8 +14,6 @@ namespace sam::ui::widgets {
 
 namespace {
 
-// Keyed by label. Not a function-local static so reset_password_visibility()
-// can clear it.
 std::unordered_map<std::string, bool> g_visible_map;
 
 int score(const std::string& s) {
@@ -37,8 +35,7 @@ int score(const std::string& s) {
 
 bool draw_password_field(const char* label, std::string& password,
                           bool show_strength, float width) {
-    // Scope by `label` so two password fields on one screen don't collide on
-    // the bare "show"/"hide" toggle id.
+
     ImGui::PushID(label);
 
     if (width > 0.0F) ImGui::SetNextItemWidth(width);

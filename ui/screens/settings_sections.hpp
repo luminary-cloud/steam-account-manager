@@ -14,6 +14,8 @@ void draw_proxy_section(app::AppState& state);
 void draw_confirmations_section(app::AppState& state);
 void draw_authenticator_section(app::AppState& state);
 void draw_cs2_config_section(app::AppState& state);
+// settings_cleaner.cpp: the whole Cleaner tab, including its own modals.
+void draw_cleaner_section(app::AppState& state);
 void draw_gamesense_section(app::AppState& state);
 void draw_luminary_section(app::AppState& state);
 void draw_storage_section(app::AppState& state);

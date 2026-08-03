@@ -16,7 +16,6 @@ namespace {
 
 using Microsoft::WRL::ComPtr;
 
-// RAII for BSTR returned from UIA.
 struct BstrHolder {
     BSTR b = nullptr;
     ~BstrHolder() { if (b) SysFreeString(b); }
@@ -41,8 +40,7 @@ Session::Session() {
     if (SUCCEEDED(hr)) {
         com_owned_ = true;
     } else if (hr == RPC_E_CHANGED_MODE) {
-        // COM already initialised on this thread with a different apartment;
-        // UIA calls still work, we just don't own teardown.
+
         com_owned_ = false;
     } else {
         SAM_LOG_ERROR("uia: CoInitializeEx failed: 0x{:08x}",
@@ -82,7 +80,7 @@ std::optional<Session::Element> Session::from_hwnd(HWND hwnd) {
     if (FAILED(root_->ElementFromHandle(hwnd, &e)) || !e) {
         return std::nullopt;
     }
-    return Element(root_, e);   // Element takes ownership of the ref
+    return Element(root_, e);
 }
 
 Session::Element::Element(IUIAutomation* automation, IUIAutomationElement* raw) noexcept
@@ -234,6 +232,38 @@ Session::Element::children_by_control_type(int ct) const {
     return out;
 }
 
+std::vector<Session::Element>
+Session::Element::descendants_by_control_type(int ct) const {
+    std::vector<Element> out;
+    if (!raw_ || !automation_) return out;
+
+    VARIANT v;
+    VariantInit(&v);
+    v.vt = VT_I4;
+    v.lVal = ct;
+
+    ComPtr<IUIAutomationCondition> cond;
+    HRESULT hr = automation_->CreatePropertyCondition(
+        UIA_ControlTypePropertyId, v, &cond);
+    VariantClear(&v);
+    if (FAILED(hr) || !cond) return out;
+
+    ComPtr<IUIAutomationElementArray> arr;
+    if (FAILED(raw_->FindAll(TreeScope_Descendants, cond.Get(), &arr)) || !arr) {
+        return out;
+    }
+    int n = 0;
+    if (FAILED(arr->get_Length(&n))) return out;
+    out.reserve(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        IUIAutomationElement* e = nullptr;
+        if (SUCCEEDED(arr->GetElement(i, &e)) && e) {
+            out.emplace_back(automation_, e);
+        }
+    }
+    return out;
+}
+
 std::optional<Session::Element>
 Session::Element::first_child_by_control_type(int ct) const {
     if (!raw_ || !automation_) return std::nullopt;
@@ -266,7 +296,6 @@ bool Session::Element::set_value(std::wstring_view text) {
         return false;
     }
 
-    // SysAllocStringLen takes a length (no terminator required in src).
     BSTR b = SysAllocStringLen(text.data(),
                                 static_cast<UINT>(text.size()));
     if (!b) return false;
@@ -282,6 +311,15 @@ bool Session::Element::invoke() {
         UIA_InvokePatternId, IID_PPV_ARGS(&ip));
     if (FAILED(hr) || !ip) return false;
     return SUCCEEDED(ip->Invoke());
+}
+
+bool Session::Element::do_default_action() {
+    if (!raw_) return false;
+    ComPtr<IUIAutomationLegacyIAccessiblePattern> lp;
+    HRESULT hr = raw_->GetCurrentPatternAs(
+        UIA_LegacyIAccessiblePatternId, IID_PPV_ARGS(&lp));
+    if (FAILED(hr) || !lp) return false;
+    return SUCCEEDED(lp->DoDefaultAction());
 }
 
 std::optional<bool> Session::Element::toggle_state() const {

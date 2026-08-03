@@ -28,8 +28,6 @@ ImU32 rgba_to_col(std::uint32_t rgba) {
                     (rgba >> 8) & 0xFF, rgba & 0xFF);
 }
 
-// A vault's icon: the custom image if it has one and it's decoded, else a colored
-// disc with the first letter of the name. Draws centered in [center] with radius r.
 void draw_vault_badge(const app::VaultInfo& v, ImVec2 center, float r) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     if (!v.icon_file.empty()) {
@@ -51,12 +49,10 @@ void draw_vault_badge(const app::VaultInfo& v, ImVec2 center, float r) {
                 IM_COL32(245, 245, 245, 255), initial);
 }
 
-// Opens the chosen vault: silently if it has a usable cache, otherwise routes to
-// the unlock screen (which now targets the active vault).
 void select_vault(app::AppState& state, const std::string& id) {
     sam::platform::set_active_vault_id(id);
     if (!try_cached_unlock(state)) {
-        state.needs_vault_pick = false;  // fall through to draw_unlock
+        state.needs_vault_pick = false;
     }
 }
 
@@ -77,7 +73,6 @@ void draw_vault_picker(app::AppState& state) {
     ImGui::PopStyleColor();
     ImGui::Dummy(ImVec2(0, 12));
 
-    // Stable display order.
     std::vector<const app::VaultInfo*> items;
     items.reserve(state.vault_registry.vaults.size());
     for (const auto& v : state.vault_registry.vaults) items.push_back(&v);
@@ -90,10 +85,10 @@ void draw_vault_picker(app::AppState& state) {
     const float avail = ImGui::GetContentRegionAvail().x;
     int per_row = std::max(1, static_cast<int>((avail + gap) / (card_w + gap)));
 
-    std::string pick;                 // vault id chosen this frame
+    std::string pick;
     bool open_new = false;
 
-    const int total = static_cast<int>(items.size()) + 1;  // +1 for the "New vault" card
+    const int total = static_cast<int>(items.size()) + 1;
     for (int i = 0; i < total; ++i) {
         if (i % per_row != 0) ImGui::SameLine(0, gap);
         ImGui::PushID(i);
@@ -140,7 +135,6 @@ void draw_vault_picker(app::AppState& state) {
     if (!pick.empty()) select_vault(state, pick);
     if (open_new) ImGui::OpenPopup("New vault");
 
-    // ---- New vault modal ----
     static std::string new_name, new_pw, new_pw_confirm, new_error;
     if (begin_styled_modal("New vault")) {
         ImGui::TextUnformatted("Name");

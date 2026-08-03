@@ -9,15 +9,17 @@ namespace sam::ui::screens {
 // tab via AppState::pending_settings_category.
 enum class SettingsCategory {
     General = 0,
-    SecurityPrivacy,
     Appearance,
     Notifications,
     SteamGuard,
     LaunchSteam,
-    NetworkData,
     Cs2,
-    HwidSpoofer,
+    NetworkData,
     Vaults,
+    SecurityPrivacy,
+    // Safe mode hides these two, so they sit last.
+    Cleaner,
+    HwidSpoofer,
 };
 
 void draw_settings(app::AppState& state);

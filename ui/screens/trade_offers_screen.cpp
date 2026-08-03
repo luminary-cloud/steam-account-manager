@@ -49,7 +49,6 @@ std::string account_label(app::AppState& state, const core::Account& a) {
                                       : a.web.persona_name;
 }
 
-// NFA token-injection accounts get AccessDenied on community endpoints, so they can't trade.
 bool account_can_trade(const core::Account& a) {
     return !a.is_nfa && a.steam_id_64 != 0 && !a.refresh_token.empty();
 }
@@ -95,7 +94,6 @@ bool tokens_changed(const core::Account& before, const core::Account& after) {
            before.session_id != after.session_id;
 }
 
-// expires_at == 0 keeps the toast sticky; otherwise it is an absolute unix expiry.
 void push_toast_at(app::AppState& state, const std::string& id, const std::string& msg,
                    const std::string& account_id, bool warning, std::int64_t expires_at) {
     ui::widgets::ToastItem t;
@@ -171,7 +169,7 @@ void submit_account_refresh(app::AppState& state, const core::Account& seed) {
     const auto snapshot = seed;
     app::job_pump::submit([&state, snapshot]() mutable {
         core::Account creds = snapshot;
-        auto result = trade::get_trade_offers(creds, /*active_only=*/true);
+        auto result = trade::get_trade_offers(creds, true);
 
         if (!result.ok && result.needs_relogin) {
             const auto cd = state.relogin_cooldown_seconds(creds.id);
@@ -342,7 +340,7 @@ void submit_send(app::AppState& state, const core::Account& acc, trade::TradeUrl
             if (outcome == trade::TradeAuditOutcome::NeedsConfirmation) e.detail = conf_note;
             e.source = trade::TradeAuditSource::UserSingle;
             state.trade_audit.record(std::move(e));
-            // Clear cooldown so the next refresh shows the new outgoing offer immediately.
+
             {
                 std::lock_guard lk(g_mtx);
                 g_states[aid].last_refresh_unix = 0;
@@ -360,7 +358,6 @@ namespace trade = core::trade;
 
 using namespace trade_offers_detail;
 
-// kind: 'a' accept, 'd' decline, 'c' cancel.
 void submit_action(app::AppState& state, const core::Account& acc,
                    const trade::TradeOffer& offer, char kind) {
     const std::string aid = acc.id;
@@ -401,7 +398,6 @@ void submit_action(app::AppState& state, const core::Account& acc,
             }
         }
 
-        // ensure_web_session may have re-minted the cookie/token; persist it.
         apply_refreshed_tokens(state, cap_acc);
 
         {
@@ -547,14 +543,11 @@ void draw_offer_grid(app::AppState& state, core::Account& a,
     }
 }
 
-// Still cancellable; terminal states (accepted/declined/canceled/expired/escrow) are hidden.
 bool is_outgoing_actionable(trade::TradeOfferState s) {
     return s == trade::TradeOfferState::Active ||
            s == trade::TradeOfferState::CreatedNeedsConfirmation;
 }
 
-// False (account hidden) unless it has actionable offers, is refreshing, or has an error.
-// Uses find() so the draw loop never inserts entries for never-refreshed accounts.
 bool snapshot_for_draw(const std::string& aid, DrawSnap& out) {
     std::lock_guard lk(g_mtx);
     const auto it = g_states.find(aid);

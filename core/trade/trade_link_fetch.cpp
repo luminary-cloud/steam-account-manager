@@ -45,13 +45,11 @@ std::string host_of(const std::string& url) {
 
 std::string resolve_location(const std::string& base, const std::string& loc) {
     if (loc.rfind("http://", 0) == 0 || loc.rfind("https://", 0) == 0) return loc;
-    if (loc.rfind("//", 0) == 0) return "https:" + loc;             // protocol-relative
-    if (!loc.empty() && loc.front() == '/') return origin_of(base) + loc;  // host-relative
+    if (loc.rfind("//", 0) == 0) return "https:" + loc;
+    if (!loc.empty() && loc.front() == '/') return origin_of(base) + loc;
     return loc;
 }
 
-// Only follow redirects that stay within Steam's web domains, so the session
-// cookie can never be replayed to an unrelated host.
 bool is_steam_host(const std::string& host) {
     auto ends_with = [&](const char* suf) {
         const std::string s(suf);
@@ -61,10 +59,6 @@ bool is_steam_host(const std::string& host) {
     return ends_with("steampowered.com") || ends_with("steamcommunity.com");
 }
 
-// Pulls the 8-char trade token out of the privacy page. The page embeds the full
-// trade URL in an input (id="trade_offer_access_url"), with '&' HTML-escaped to
-// "&amp;" but "token=" itself intact; anchor on that input so we don't pick up an
-// unrelated token= elsewhere on the page.
 std::string extract_token(const std::string& body) {
     const std::size_t anchor = body.find("trade_offer_access_url");
     const std::size_t from = anchor == std::string::npos ? 0 : anchor;
@@ -79,7 +73,7 @@ std::string extract_token(const std::string& body) {
         if (!ok) break;
         tok.push_back(c);
     }
-    if (tok.size() < 6 || tok.size() > 32) return {};  // tokens are ~8 chars
+    if (tok.size() < 6 || tok.size() > 32) return {};
     return tok;
 }
 
@@ -97,10 +91,6 @@ std::string fetch_trade_link(const core::Account& a, std::string* err) {
         return fail("no session");
     }
 
-    // /profiles/<id>/tradeoffers/privacy 302-redirects to the canonical profile
-    // URL (e.g. /id/<vanity>/...). WinHTTP's auto-redirect drops our manually-set
-    // Cookie header, so follow the chain ourselves with a per-call jar, replaying
-    // the session cookies on each hop and staying within Steam's domains.
     std::map<std::string, std::string> jar{
         {"sessionid", a.session_id},
         {"steamLoginSecure",
@@ -117,7 +107,7 @@ std::string fetch_trade_link(const core::Account& a, std::string* err) {
         http::Request req;
         req.method = http::Method::Get;
         req.url = url;
-        req.follow_redirects = false;  // we follow manually to keep the cookies
+        req.follow_redirects = false;
         req.user_agent = kUserAgent;
         req.headers["Accept-Language"] = "en-US,en;q=0.9";
         req.headers["Accept"] =
@@ -144,7 +134,7 @@ std::string fetch_trade_link(const core::Account& a, std::string* err) {
         }
 
         const bool is_redirect = resp.status >= 300 && resp.status < 400;
-        if (!is_redirect) break;  // 200 (page or login), or an error status
+        if (!is_redirect) break;
 
         const auto it = resp.headers.find("location");
         if (it == resp.headers.end() || it->second.empty()) break;
@@ -164,7 +154,7 @@ std::string fetch_trade_link(const core::Account& a, std::string* err) {
     }
 
     const std::string token = extract_token(resp.body);
-    if (token.empty()) return fail("not signed in");  // landed on the login page
+    if (token.empty()) return fail("not signed in");
 
     const auto id32 = static_cast<std::uint32_t>(a.steam_id_64 & 0xFFFFFFFFull);
     return "https://steamcommunity.com/tradeoffer/new/?partner=" +

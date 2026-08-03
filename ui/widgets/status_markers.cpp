@@ -30,7 +30,7 @@ void draw_marker(ImDrawList* dl, ImVec2 center, MarkerKind kind, std::size_t cou
     dl->AddCircle(center, r, IM_COL32(0, 0, 0, 120), 18, 1.0F);
 
     if (kind == MarkerKind::WeeklyDrop) {
-        // The default font has no checkmark glyph, so stroke one in.
+
         dl->AddLine(ImVec2(center.x - 3.0F, center.y + 0.2F),
                     ImVec2(center.x - 0.8F, center.y + 2.6F), IM_COL32_WHITE, 1.7F);
         dl->AddLine(ImVec2(center.x - 0.8F, center.y + 2.6F),

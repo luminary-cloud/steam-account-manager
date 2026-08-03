@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace sam::cs2_config {
 
@@ -29,5 +30,21 @@ DeployResult deploy_730_folder(std::uint64_t steam_id_64,
 // chosen folder survives the original being moved or deleted.
 DeployResult import_730_template(const std::filesystem::path& src,
                                  const std::filesystem::path& dst);
+
+// Snapshots the game folders of a picked userdata/<id> folder into the app's data
+// dir: clears `dst`, then copies each appid-named (all-digit) subfolder of `src`
+// into it. Everything else (config/, ugc/) is deliberately skipped:
+// config/localconfig.vdf holds the *target* account's CS2 launch options and login
+// prefs, which the launcher writes itself, so a foreign copy must not land on it.
+// Every top-level entry left in `dst` is therefore an appid, which is what Settings
+// lists back to the user.
+DeployResult import_userdata_template(const std::filesystem::path& src,
+                                      const std::filesystem::path& dst);
+
+// Copies each appid folder under `template_dir` into <Steam>/userdata/<accountid>/
+// for `steam_id_64`. Same merge semantics as deploy_730_folder: template files
+// overwrite matching destination files, other existing files are left untouched.
+DeployResult deploy_userdata_folder(std::uint64_t steam_id_64,
+                                    const std::filesystem::path& template_dir);
 
 }  // namespace sam::cs2_config

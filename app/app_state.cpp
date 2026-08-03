@@ -29,8 +29,7 @@
 namespace sam::app {
 
 namespace detail {
-// password/tokens are SecureString and self-wipe; the SteamGuard secrets and
-// session id are plain std::string, so wipe them before their storage is freed.
+
 void scrub_account_secrets(core::Account& a) {
     const auto wipe = [](std::string& s) {
         if (!s.empty()) crypto::zero_buffer(&s[0], s.size());
@@ -92,8 +91,6 @@ bool ban_event_is_cooldown(core::BanEventKind k) {
            k == core::BanEventKind::CooldownEnded;
 }
 
-// One-shot balloon for a manual refresh. Suppressed while the main window is
-// focused (the in-app toast covers that).
 void push_native_notification(AppState& state, const std::string& message, bool warning) {
     if (!state.settings.notifications.enabled ||
         !state.settings.notifications.surface_windows_notification) {
@@ -105,7 +102,6 @@ void push_native_notification(AppState& state, const std::string& message, bool 
     }
 }
 
-// Records batch events so they coalesce into one balloon.
 void note_session_event(AppState& state, const core::Account& a,
                         const std::vector<core::BanEvent>& events) {
     if (events.empty()) return;
@@ -116,7 +112,6 @@ void note_session_event(AppState& state, const core::Account& a,
     state.session_event_count += static_cast<int>(events.size());
 }
 
-// Shows the accumulated batch events as one balloon, then clears the accumulator.
 void flush_native_notification(AppState& state) {
     if (!state.settings.notifications.enabled ||
         !state.settings.notifications.surface_windows_notification) {
@@ -147,6 +142,11 @@ core::Account* AppState::find_account(const std::string& id) {
     return nullptr;
 }
 
+SignInMethod AppState::effective_sign_in_method(const std::string& account_id) const {
+    const auto it = sign_in_override.find(account_id);
+    return it != sign_in_override.end() ? it->second : settings.sign_in_method;
+}
+
 void AppState::apply_gc_snapshot_cache(const std::string& account_id,
                                        const cs2_gc::Snapshot& snap) {
     core::Account* acc = find_account(account_id);
@@ -158,9 +158,7 @@ void AppState::apply_gc_snapshot_cache(const std::string& account_id,
     if (snap.progress.valid) {
         acc->cs2.cs2_player_level = snap.progress.level;
         acc->cs2.cs2_player_xp = snap.progress.xp_in_level;
-        // Prime inference matches the GCPD path: non-Prime CS2 accounts can't earn
-        // XP, so level > 1 (or level 1 with any XP) means Prime. The GC snapshot
-        // carries no explicit prime flag.
+
         acc->cs2.prime_status =
             snap.progress.level > 1 || snap.progress.xp_in_level > 0;
     }
@@ -170,9 +168,6 @@ void AppState::apply_gc_snapshot_cache(const std::string& account_id,
     for (const auto& m : snap.medals)
         acc->cs2.medals.push_back({static_cast<std::uint32_t>(m.id), m.name, m.icon_url});
 
-    // Competitive standing from the GC. Only ever *set* -- a foreign pull omits modes
-    // the account never played (rank -1), so absence must not clear a value scraped
-    // elsewhere.
     const auto& rk = snap.ranks;
     if (rk.premier_rating >= 0) {
         acc->cs2.premier_rating = rk.premier_rating;
@@ -182,10 +177,7 @@ void AppState::apply_gc_snapshot_cache(const std::string& account_id,
         acc->cs2.wingman_rank = rk.wingman_rank;
         acc->cs2.wingman_wins = rk.wingman_wins;
     }
-    // Competitive cooldown from the account's OWN GC hello (an own-session pull only). -1 =
-    // unknown (foreign batch pulls never carry it), so leave whatever was scraped elsewhere;
-    // 0 authoritatively clears an expired cooldown. This replaces the old hand-set value for
-    // NFA/cached accounts, which have no GCPD scrape to read it from.
+
     if (rk.cooldown_expires_unix >= 0) {
         acc->cs2.cooldown_expires_unix = rk.cooldown_expires_unix;
         acc->cs2.cooldown_reason = rk.cooldown_expires_unix > 0 ? rk.cooldown_reason : "";
@@ -204,7 +196,7 @@ void AppState::save_vault_if_dirty() {
 }
 
 void AppState::flush_pending_save() {
-    // Schedule a still-dirty vault so it gets flushed.
+
     if (vault_dirty && !master_password.empty()) {
         vault_saver.start(vault_path());
         vault_saver.schedule(vault, master_password);
@@ -248,8 +240,6 @@ void AppState::sync_proxy_policy() {
 
 namespace {
 
-// settings.json holds no vault secrets, so the DACL stays inherited
-// (restrict_acl=false), exactly as the old plain-ofstream write left it.
 void write_json_atomic(const std::filesystem::path& path, const nlohmann::json& j) {
     std::error_code ec;
     std::filesystem::create_directories(path.parent_path(), ec);
@@ -259,15 +249,12 @@ void write_json_atomic(const std::filesystem::path& path, const nlohmann::json& 
             path,
             std::span<const std::uint8_t>(
                 reinterpret_cast<const std::uint8_t*>(s.data()), s.size()),
-            /*restrict_acl=*/false);
+            false);
     } catch (const std::exception& ex) {
         SAM_LOG_ERROR("settings: writing {} failed: {}", path.string(), ex.what());
     }
 }
 
-// Null json when the file is absent or unparseable. Unparseable is logged loudly:
-// the caller falls back to defaults and the next save overwrites, so a silent
-// return here would quietly discard the user's whole configuration.
 nlohmann::json read_json_file(const std::filesystem::path& path) {
     std::ifstream in(path);
     if (!in) return nullptr;
@@ -290,27 +277,19 @@ void AppState::save_settings() {
 }
 
 void AppState::save_global_settings() {
-    // Read-modify-write, not truncate: the global file *is* the pre-split
-    // settings.json, and its now-stale per-vault keys are the seed template that
-    // load_vault_settings() copies into each vault on first open. Dropping them
-    // would break seeding for every vault created from here on -- so however dead
-    // they look, leave them alone.
+
     nlohmann::json j = read_json_file(settings_path());
     if (!j.is_object()) j = nlohmann::json::object();
 
     j["remember_master_password"] = settings.remember_master_password;
+    j["run_as_admin"]            = settings.run_as_admin;
     j["logon_action"]            = static_cast<int>(settings.logon_action);
     j["start_minimized"]         = settings.start_minimized;
-    // Downgrade-safe: older builds key off this bool for the headless logon refresh.
+
     j["start_with_windows"]      = (settings.logon_action == LogonAction::BackgroundRefresh);
     j["check_updates_on_launch"]  = settings.check_updates_on_launch;
     j["version_check_skip_until"] = settings.version_check_skip_until;
 
-    // Startup hints, not the source of truth. Both settings are per-vault, but both
-    // have to take effect before a vault is picked: streamproof keeps the picker
-    // (which shows vault names) out of screen captures, and the proxy keeps
-    // start_update_check()'s GitHub call off the user's real IP. Written by
-    // whichever vault saved last; bind_vault_session() re-applies the real values.
     j["streamproof_hint"]  = settings.streamproof;
     j["proxy_mode_hint"]   = static_cast<int>(settings.proxy_mode);
     j["single_proxy_hint"] = settings.single_proxy;
@@ -319,9 +298,7 @@ void AppState::save_global_settings() {
 }
 
 void AppState::save_vault_settings() {
-    // No vault bound yet (picker on screen). Every save_settings() call site sits
-    // behind `if (state.unlocked)`, so this is belt-and-braces; the global half
-    // above still lands.
+
     if (platform::active_vault_id().empty()) return;
 
     nlohmann::json j;
@@ -335,10 +312,13 @@ void AppState::save_vault_settings() {
     j["auto_refresh_enabled"]    = settings.auto_refresh_enabled;
     j["auto_refresh_minutes"]    = settings.auto_refresh_minutes;
     j["steam_cache_hours"]       = settings.steam_cache_hours;
+    j["safe_mode"]               = settings.safe_mode;
     j["privacy_mode"]            = settings.privacy_mode;
     j["streamproof"]             = settings.streamproof;
     j["disable_cloud_on_login"]  = settings.disable_cloud_on_login;
     j["disable_news_on_login"]   = settings.disable_news_on_login;
+    j["disable_remote_play_on_login"] = settings.disable_remote_play_on_login;
+    j["login_invisible"]         = settings.login_invisible;
     j["disable_workshop_on_login"] = settings.disable_workshop_on_login;
     j["remember_password_on_login"] = settings.remember_password_on_login;
     j["sign_in_method"]          = static_cast<int>(settings.sign_in_method);
@@ -432,11 +412,12 @@ void AppState::save_vault_settings() {
     qf["only_prime"]    = settings.quick_filters.only_prime;
 
     auto& vj = j["cs2_video"];
-    vj["mode"]                = static_cast<int>(settings.cs2_video.mode);
-    vj["source_label"]        = settings.cs2_video.source_label;
-    vj["folder_source_label"] = settings.cs2_video.folder_source_label;
-    vj["launch_options"]      = settings.cs2_video.launch_options;
-    // Downgrade-safe: older builds key off this bool for video.txt mode.
+    vj["mode"]                  = static_cast<int>(settings.cs2_video.mode);
+    vj["source_label"]          = settings.cs2_video.source_label;
+    vj["folder_source_label"]   = settings.cs2_video.folder_source_label;
+    vj["userdata_source_label"] = settings.cs2_video.userdata_source_label;
+    vj["launch_options"]        = settings.cs2_video.launch_options;
+
     vj["auto_apply_on_login"] = (settings.cs2_video.mode == CS2ConfigMode::VideoTxt);
 
     auto& gj = j["cs2_gc"];
@@ -453,11 +434,19 @@ void AppState::save_vault_settings() {
     hj["always_spoof"]   = settings.hwid.always_spoof;
     hj["component_mask"] = settings.hwid.component_mask;
 
+    auto& clj = j["cleaner"];
+    clj["enabled"]             = settings.cleaner.enabled;
+    clj["profile"]             = static_cast<int>(settings.cleaner.profile);
+    clj["run_before_launch"]   = settings.cleaner.run_before_launch;
+    clj["run_on_unlock"]       = settings.cleaner.run_on_unlock;
+    clj["run_on_exit"]         = settings.cleaner.run_on_exit;
+    clj["preserved_steam_ids"] = settings.cleaner.preserved_steam_ids;
+
     write_json_atomic(vault_settings_path(), j);
 }
 
 void AppState::load_settings() {
-    // A reload is lock-equivalent: privacy_mode reveals must not survive it.
+
     clear_session_secrets();
 
     nlohmann::json j = read_json_file(settings_path());
@@ -470,20 +459,19 @@ void AppState::load_settings() {
     };
 
     get("remember_master_password", settings.remember_master_password);
+    get("run_as_admin",             settings.run_as_admin);
     if (j.contains("logon_action")) {
         int v = j["logon_action"].get<int>();
         if (v < 0 || v > 2) v = 0;
         settings.logon_action = static_cast<LogonAction>(v);
     } else if (j.contains("start_with_windows") && j["start_with_windows"].get<bool>()) {
-        // Migrate the legacy on/off bool (only ever meant the headless refresh).
+
         settings.logon_action = LogonAction::BackgroundRefresh;
     }
     get("start_minimized",          settings.start_minimized);
     get("check_updates_on_launch",  settings.check_updates_on_launch);
     get("version_check_skip_until", settings.version_check_skip_until);
 
-    // The pre-vault hints (see save_global_settings). Fall back to the pre-split
-    // key so the first launch after upgrading still applies the user's value.
     get("streamproof",      settings.streamproof);
     get("streamproof_hint", settings.streamproof);
     get("single_proxy",      settings.single_proxy);
@@ -499,20 +487,12 @@ void AppState::load_settings() {
 void AppState::load_vault_settings() {
     if (platform::active_vault_id().empty()) return;
 
-    // First open of this vault: seed from the pre-split settings.json, which still
-    // carries every per-vault key (save_global_settings only ever merges into it).
-    // Reading it through this same parser means the legacy migrations below apply
-    // to the seed for free -- including for a vault created years from now.
     std::error_code ec;
     const bool seeding = !std::filesystem::exists(vault_settings_path(), ec);
     nlohmann::json j = read_json_file(seeding ? settings_path() : vault_settings_path());
-    // A corrupt vault file would otherwise fall through to struct defaults, and the
-    // next save would overwrite it with them. Fall back to the seed template, so a
-    // bad file costs the user their divergence from it rather than everything.
+
     if (!j.is_object() && !seeding) j = read_json_file(settings_path());
-    // Fresh install: nothing to read on either side. Carry on with an empty object
-    // rather than returning -- the struct defaults stand, but the hotkey fill and
-    // the side effects below still have to run.
+
     if (!j.is_object()) j = nlohmann::json::object();
 
     auto get = [&](const char* key, auto& dst) {
@@ -539,10 +519,13 @@ void AppState::load_vault_settings() {
     settings.auto_refresh_minutes = std::clamp(settings.auto_refresh_minutes, 10, 720);
     get("steam_cache_hours",       settings.steam_cache_hours);
     settings.steam_cache_hours = std::clamp(settings.steam_cache_hours, 1, 24);
+    get("safe_mode",               settings.safe_mode);
     get("privacy_mode",            settings.privacy_mode);
     get("streamproof",             settings.streamproof);
     get("disable_cloud_on_login",  settings.disable_cloud_on_login);
     get("disable_news_on_login",   settings.disable_news_on_login);
+    get("disable_remote_play_on_login", settings.disable_remote_play_on_login);
+    get("login_invisible",         settings.login_invisible);
     get("disable_workshop_on_login", settings.disable_workshop_on_login);
     get("remember_password_on_login", settings.remember_password_on_login);
     if (j.contains("sign_in_method")) {
@@ -661,8 +644,7 @@ void AppState::load_vault_settings() {
             }
         };
         get_t("default_destination_trade_url", settings.trade.default_destination_trade_url);
-        // Accept both the legacy form (array of URL strings) and the current form
-        // (array of {url, name} objects); legacy files migrate on the next save.
+
         if (tj.contains("saved_trade_urls") && tj["saved_trade_urls"].is_array()) {
             settings.trade.saved_trade_urls.clear();
             for (const auto& e : tj["saved_trade_urls"]) {
@@ -704,16 +686,17 @@ void AppState::load_vault_settings() {
                 dst = vj[key].get<std::remove_reference_t<decltype(dst)>>();
             }
         };
-        get_v("source_label",        settings.cs2_video.source_label);
-        get_v("folder_source_label", settings.cs2_video.folder_source_label);
-        get_v("launch_options",      settings.cs2_video.launch_options);
+        get_v("source_label",          settings.cs2_video.source_label);
+        get_v("folder_source_label",   settings.cs2_video.folder_source_label);
+        get_v("userdata_source_label", settings.cs2_video.userdata_source_label);
+        get_v("launch_options",        settings.cs2_video.launch_options);
 
         if (vj.contains("mode")) {
             int m = vj["mode"].get<int>();
-            if (m < 0 || m > 2) m = 0;
+            if (m < 0 || m > 3) m = 0;
             settings.cs2_video.mode = static_cast<CS2ConfigMode>(m);
         } else {
-            // Migrate from the legacy on/off bool.
+
             const bool legacy = vj.contains("auto_apply_on_login") &&
                                 vj["auto_apply_on_login"].get<bool>();
             settings.cs2_video.mode =
@@ -750,51 +733,79 @@ void AppState::load_vault_settings() {
         get_h("component_mask", settings.hwid.component_mask);
     }
 
-    // First launch for this vault: pick a default chord. Raw Win32 constants, since
-    // this file can't include <windows.h> (MOD_CONTROL|MOD_SHIFT, 'G').
+    if (j.contains("cleaner")) {
+        auto& clj = j["cleaner"];
+        auto get_c = [&](const char* key, auto& dst) {
+            if (clj.contains(key)) {
+                dst = clj[key].get<std::remove_reference_t<decltype(dst)>>();
+            }
+        };
+        get_c("enabled",             settings.cleaner.enabled);
+        get_c("run_before_launch",   settings.cleaner.run_before_launch);
+        get_c("run_on_unlock",       settings.cleaner.run_on_unlock);
+        get_c("run_on_exit",         settings.cleaner.run_on_exit);
+        get_c("preserved_steam_ids", settings.cleaner.preserved_steam_ids);
+        if (clj.contains("profile")) {
+            int p = clj["profile"].get<int>();
+
+            if (p < 0 || p > 2) p = 0;
+            settings.cleaner.profile = static_cast<CleanerProfile>(p);
+        }
+    }
+
     if (settings.sda.global_hotkey_mods == 0 && settings.sda.global_hotkey_vk == 0) {
         settings.sda.global_hotkey_mods = 0x0002u | 0x0004u;
         settings.sda.global_hotkey_vk   = 0x47u;
     }
 
     apply_vault_settings_side_effects();
-    // Materialize the seed now, so a vault the user never edits still gets a file
-    // and stops re-reading the (frozen) template on every open.
+
     if (seeding) save_vault_settings();
 }
 
-// The settings that are applied once rather than read per-frame, and so have to be
-// re-pushed when a vault's values replace the defaults the picker ran with.
 void AppState::apply_vault_settings_side_effects() {
     sync_proxy_policy();
-    // win_main's message loop re-registers the chord on the next tick.
+
     needs_hotkey_reregister = true;
     if (main_hwnd) platform::set_capture_excluded(main_hwnd, settings.streamproof);
 }
 
-void AppState::sync_logon_task() const {
+bool AppState::sync_logon_task() const {
+
+    const bool highest = settings.run_as_admin;
+    if (highest && !is_elevated) {
+
+        return settings.logon_action == LogonAction::None ||
+               platform::startup_task::is_run_at_logon_enabled();
+    }
+
+    bool ok = true;
     switch (settings.logon_action) {
         case LogonAction::BackgroundRefresh:
-            platform::startup_task::set_run_at_logon(true, L"--startup", false);
+            ok = platform::startup_task::set_run_at_logon(true, L"--startup", false, highest);
             break;
         case LogonAction::OpenApp:
-            platform::startup_task::set_run_at_logon(
-                true, settings.start_minimized ? L"--minimized" : L"", true);
+            ok = platform::startup_task::set_run_at_logon(
+                true, settings.start_minimized ? L"--minimized" : L"", true, highest);
             break;
         case LogonAction::None:
         default:
             if (platform::startup_task::is_run_at_logon_enabled()) {
-                platform::startup_task::set_run_at_logon(false);
+                ok = platform::startup_task::set_run_at_logon(false);
             }
             break;
     }
+    if (!ok) SAM_LOG_ERROR("startup: logon task sync failed (highest={})", highest);
+    return ok;
 }
 
 void AppState::clear_session_secrets() {
-    cs2_screen.reset();  // stops the CS2 GC worker and drops its session
+    cs2_screen.reset();
     revealed_logins.clear();
     selection_mode = false;
     selected_account_ids.clear();
+
+    sign_in_override.clear();
 }
 
 void AppState::lock_vault() {
@@ -812,8 +823,7 @@ void AppState::scrub_vault_secrets() {
 }
 
 void bind_vault_session(AppState& state) {
-    // First: the prunes below read retention windows out of settings, so they'd use
-    // struct defaults if this ran after them.
+
     state.load_vault_settings();
 
     const auto now_s = std::chrono::duration_cast<std::chrono::seconds>(
@@ -829,11 +839,15 @@ void bind_vault_session(AppState& state) {
     state.trade_audit.set_path(trade_audit_path());
     state.trade_audit.load();
     state.trade_audit.prune_older_than(90, now_s);
-    // Stamp the "last opened" time for the picker's ordering/recency display.
+
     if (auto* v = state.vault_registry.find(platform::active_vault_id())) {
         v->last_opened_unix = now_s;
         save_registry(state.vault_registry);
     }
+
+    state.cleaner_unlock_pending = !state.headless && !state.settings.safe_mode &&
+                                   state.settings.cleaner.enabled &&
+                                   state.settings.cleaner.run_on_unlock;
 }
 
 void AppState::remove_accounts(std::unordered_set<std::string> ids) {

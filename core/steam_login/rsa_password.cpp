@@ -45,7 +45,6 @@ std::vector<std::uint8_t> hex_to_bytes(const std::string& hex) {
 std::optional<RsaKey> fetch_rsa_key(const std::string& username) {
     if (username.empty()) return std::nullopt;
 
-    // POST + ?account_name= query + empty body returns HTTP 405; use the GET/JSON form.
     http::Request req;
     req.method = http::Method::Get;
     req.url = "https://api.steampowered.com/IAuthenticationService/"

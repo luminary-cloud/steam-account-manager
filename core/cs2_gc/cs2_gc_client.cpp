@@ -21,8 +21,6 @@ namespace sam::cs2_gc {
 
 namespace {
 
-// CS2 profile level/XP -> the display progress (level + XP into the current level).
-// player_cur_xp is offset by a known base; 5000 XP per level.
 PlayerProgress make_progress(const PlayerXp& xp) {
     PlayerProgress p;
     if (!xp.valid) return p;
@@ -37,9 +35,6 @@ PlayerProgress make_progress(const PlayerXp& xp) {
     return p;
 }
 
-// Resolve a profile's displayed medal/coin def_indices to name + icon. resolve() reports
-// collectibles as non-storable but still fills name/icon/border, so a def_index-only
-// EconItem reuses the inventory resolution path.
 std::vector<DisplayItem> resolve_medals(const ItemSchema& schema,
                                         const std::vector<std::uint32_t>& defidx) {
     std::vector<DisplayItem> out;
@@ -117,21 +112,9 @@ void Cs2GcClient::pull_profiles(std::vector<std::uint32_t> account_ids) {
 void Cs2GcClient::post_snapshot(GcSession& gc) {
     Snapshot snap;
 
-    // Weekly-drop candidates live in the inventory SO cache but are also listed in the
-    // personal store. Keep them out of the inventory grid (they belong in the drop
-    // section). While the drop is still claimable, hide every candidate. Once the balance
-    // hits 0 the GC leaves the (now stale) candidate ids in the store, so fall back to the
-    // recorded pick for this generation: show the kept items, hide the rest. With no
-    // record for this generation (e.g. claimed in the Steam client) show them all rather
-    // than risk hiding an owned item.
     const PersonalStore& ps = gc.personal_store();
     const bool reward_pending = ps.loaded && ps.redeemable_balance > 0 && !ps.items.empty();
-    // Hide every personal-store candidate from the inventory grid. While the drop is
-    // claimable they are the offers (shown in the drop section); after a claim the items[]
-    // list keeps the UN-claimed offers (still real in cache) plus faux markers for the
-    // claimed ones, while the actual picks are separate owned items NOT in items[]. So
-    // hiding items[] leaves exactly the owned items (this week's picks included) and drops
-    // the un-claimed offers. (items[] = offers; the picks leave the list once owned.)
+
     std::unordered_set<std::uint64_t> hide_from_inv;
     if (ps.loaded) hide_from_inv.insert(ps.items.begin(), ps.items.end());
 
@@ -144,9 +127,9 @@ void Cs2GcClient::post_snapshot(GcSession& gc) {
             d.name = it.custom_name.empty() ? "Storage Unit" : it.custom_name;
             snap.units.push_back(std::move(d));
         } else if (it.casket_id == 0) {
-            if (hide_from_inv.count(id) != 0) continue;  // shown in the weekly-drop section
+            if (hide_from_inv.count(id) != 0) continue;
             const ResolvedItem r = schema_->resolve(it);
-            if (!r.storable) continue;  // hide medals/coins/badges and base/default items
+            if (!r.storable) continue;
             DisplayItem d;
             d.id = id;
             d.name = r.name;
@@ -168,7 +151,7 @@ void Cs2GcClient::post_snapshot(GcSession& gc) {
     if (reward_pending)
         for (std::uint64_t rid : ps.items) {
             const auto it = gc.inventory().find(rid);
-            if (it == gc.inventory().end()) continue;  // not in cache; can't resolve a tile
+            if (it == gc.inventory().end()) continue;
             const ResolvedItem r = schema_->resolve(it->second);
             DisplayItem d;
             d.id = rid;
@@ -177,9 +160,7 @@ void Cs2GcClient::post_snapshot(GcSession& gc) {
             d.border_rgb = r.border_rgb;
             snap.reward.items.push_back(std::move(d));
         }
-    // Cache the picked names for the drop card's "Picked:" line. have_record ties the names to
-    // the store generation they were claimed for, so a record from a past week won't attach to
-    // a freshly generated store (the screen decides "claimed this week" from generation_time).
+
     const bool have_record = redeemed_gen_time_ == ps.generation_time && !redeemed_names_.empty();
     if (have_record) snap.reward.claimed_names = redeemed_names_;
 
@@ -198,7 +179,7 @@ void Cs2GcClient::post_snapshot(GcSession& gc) {
     }
 
     if (cb_.on_snapshot) cb_.on_snapshot(std::move(snap));
-    last_so_seq_ = gc.so_seq();  // this snapshot reflects the SO cache up to here
+    last_so_seq_ = gc.so_seq();
 }
 
 void Cs2GcClient::run() {
@@ -227,17 +208,13 @@ void Cs2GcClient::run() {
             }
         }
         cm_ptr->disconnect();
-        // Retry "signed in elsewhere" (the take-over gets another go) and genuine
-        // connection drops, but not a clean welcome timeout (we already waited).
+
         const bool retryable = cm_ptr->last_logoff_eresult() == 6 || (gc_ptr && gc_ptr->dropped());
         if (!retryable || attempt == kMaxAttempts) break;
         for (int i = 0; i < 6 && !stop_.load(); ++i)
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
-    // Report the CM logon outcome so callers can validate the account's token. cm_ptr is
-    // the last attempt's session; its logon_eresult is 1 (OK) when established, a rejection
-    // code when Steam refused, or 0 when no CM responded (transient).
     if (cb_.on_logon && cm_ptr) cb_.on_logon(cm_ptr->logon_eresult());
 
     if (stop_.load()) return;
@@ -249,9 +226,7 @@ void Cs2GcClient::run() {
     steam_cm::CmSession& cm = *cm_ptr;
     GcSession& gc = *gc_ptr;
     schema_ = ItemSchema::shared(gc.item_schema_version(), gc.items_game_url());
-    // Seed the recorded weekly-drop pick from the vault so a reconnect keeps the un-picked
-    // candidates out of the inventory grid (guarded by generation, so a stale seed for a
-    // past week is ignored once the GC sends a newer store).
+
     redeemed_gen_time_ = creds_.claimed_generation;
     redeemed_names_ = creds_.claimed_names;
     post_snapshot(gc);
@@ -276,8 +251,7 @@ void Cs2GcClient::run() {
                 if (cb_.on_error) cb_.on_error("Connection to Steam was lost");
                 break;
             }
-            // The GC keeps the SO cache live (buys, trades, post-claim destroys); push a
-            // fresh snapshot whenever it changed so the UI tracks it without a reconnect.
+
             if (gc.so_seq() != last_so_seq_) post_snapshot(gc);
             continue;
         }
@@ -346,8 +320,7 @@ void Cs2GcClient::run() {
                 break;
             }
             case Op::ClaimReward: {
-                // Resolve the picked names now, while the offers are still real cache items
-                // (after redeeming, a claimed offer leaves the store as a faux id).
+
                 std::vector<std::string> names;
                 names.reserve(cmd.items.size());
                 for (std::uint64_t id : cmd.items) {
@@ -372,13 +345,9 @@ void Cs2GcClient::run() {
                 post_snapshot(gc);
                 break;
             case Op::PullProfiles: {
-                // Request each account's public profile over this one GC session, pacing the
-                // requests so we never trip a GC throttle, then wait a short tail for late
-                // replies. One login replaces the old login-per-account sweep. The GC rate-limits
-                // profile requests to ~1 per 1.5s, so anything faster gets silently dropped after
-                // a short burst -- pace just over that.
-                constexpr int kPaceMs = 1600;         // GC limit is 1 SteamID / ~1.5s
-                constexpr int kTailTimeoutMs = 6000;  // grace for stragglers after the last send
+
+                constexpr int kPaceMs = 1600;
+                constexpr int kTailTimeoutMs = 6000;
                 const int requested = static_cast<int>(cmd.items.size());
                 int received = 0;
                 std::unordered_set<std::uint32_t> pending;
@@ -387,7 +356,7 @@ void Cs2GcClient::run() {
 
                 auto absorb = [&] {
                     for (ProfileResult& r : gc.take_profiles()) {
-                        if (pending.erase(r.account_id) == 0) continue;  // dup / unrequested
+                        if (pending.erase(r.account_id) == 0) continue;
                         ++received;
                         if (!cb_.on_profile) continue;
                         PlayerXp xp;
@@ -430,9 +399,7 @@ void Cs2GcClient::run() {
                     if (!gc.pump(200)) { dropped = true; break; }
                     absorb();
                 }
-                // on_profiles_done ends the sweep with whatever arrived; a dropped connection
-                // is reported by the main loop's next pump (and leaves unreplied accounts'
-                // caches untouched).
+
                 if (cb_.on_profiles_done) cb_.on_profiles_done(received, requested);
                 break;
             }
@@ -445,9 +412,6 @@ void Cs2GcClient::run() {
 
 namespace {
 
-// Joins retired clients off the UI thread. A discarded client may be mid-connect,
-// blocked in a network call that only unwinds after its (now-shortened) timeout;
-// destroying it inline would freeze the render thread for that long.
 class ClientReaper {
 public:
     ~ClientReaper() { drain(); }
@@ -476,11 +440,11 @@ private:
             {
                 std::unique_lock lk(mtx_);
                 cv_.wait(lk, [this] { return quit_ || !pending_.empty(); });
-                if (pending_.empty()) return;  // quit_ with nothing left
+                if (pending_.empty()) return;
                 c = std::move(pending_.front());
                 pending_.pop_front();
             }
-            c.reset();  // joins the worker thread here, never on the caller's thread
+            c.reset();
         }
     }
 

@@ -23,6 +23,7 @@
 
 #include "app/app_paths.hpp"
 #include "app/app_state.hpp"
+#include "app/cleaner_runner.hpp"
 #include "app/conf_poller.hpp"
 #include "app/job_pump.hpp"
 #include "app/resource.h"
@@ -40,12 +41,14 @@
 #include "platform/fs.hpp"
 #include "platform/global_hotkey.hpp"
 #include "platform/paths.hpp"
+#include "platform/process.hpp"
 #include "platform/single_instance.hpp"
 #include "platform/tray_icon.hpp"
 #include "platform/window_affinity.hpp"
 #include "ui/fonts.hpp"
 #include "ui/icons.hpp"
 #include "ui/main_window.hpp"
+#include "ui/screens/settings_screen.hpp"
 #include "ui/theme.hpp"
 #include "ui/util.hpp"
 #include "ui/widgets/avatar_cache.hpp"
@@ -54,8 +57,6 @@
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-// Not in the public SDK. An elevated window must allow this through the UIPI
-// filter for normal-integrity Explorer to deliver a drag-drop payload.
 #ifndef WM_COPYGLOBALDATA
 #define WM_COPYGLOBALDATA 0x0049
 #endif
@@ -73,20 +74,13 @@ IDXGISwapChain*         g_swap_chain = nullptr;
 ID3D11RenderTargetView* g_rtv = nullptr;
 UINT                    g_resize_w = 0;
 UINT                    g_resize_h = 0;
-// Set when Present reports occlusion/minimized; the loop throttles instead of
-// spinning at full speed while hidden in the tray.
+
 bool                    g_occluded = false;
 
-// Set after AppState is constructed (WM_DROPFILES routing), cleared before it
-// is destroyed.
 sam::app::AppState* g_state = nullptr;
 
-// wnd_proc must not forward to the ImGui Win32 handler before this is true; the
-// headless --startup run never inits ImGui at all.
 bool g_imgui_ready = false;
 
-// Posted to the primary instance when a --startup launch arrives while open, so
-// it refreshes in place instead of opening a second window.
 constexpr UINT WM_APP_STARTUP_REFRESH = WM_APP + 1;
 
 void create_render_target() {
@@ -145,7 +139,6 @@ void destroy_device() {
     if (g_device)     { g_device->Release();     g_device = nullptr; }
 }
 
-// `ext_lower` includes the leading dot and must be lowercase.
 bool has_extension(const std::wstring& path, std::wstring_view ext_lower) {
     if (path.size() < ext_lower.size()) return false;
     for (std::size_t i = 0; i < ext_lower.size(); ++i) {
@@ -164,7 +157,6 @@ DropKind classify_path(const std::wstring& path) {
     return DropKind::Skip;
 }
 
-// Non-recursive: yields each *.maFile / *.dat child.
 void scan_directory(const std::wstring& dir_w,
                     std::vector<std::string>& out_mafiles,
                     std::vector<std::string>& out_info_dat) {
@@ -220,7 +212,7 @@ void handle_dropped_files(HDROP hdrop) {
                                               mafiles.begin(), mafiles.end());
         g_state->pending_info_dat_drops.insert(g_state->pending_info_dat_drops.end(),
                                                 info_dat.begin(), info_dat.end());
-        // Focus the dominant queue's tab; mafile wins on tie.
+
         if (!mafiles.empty() && mafiles.size() >= info_dat.size()) {
             g_state->pending_mafile_focus = true;
         } else if (!info_dat.empty()) {
@@ -242,8 +234,7 @@ LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
 
         case WM_NCCALCSIZE:
-            // Collapse the standard frame so the client covers the whole window;
-            // when maximized, inset by the DPI-aware frame so content isn't clipped.
+
             if (wp == TRUE) {
                 auto* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lp);
                 if (IsZoomed(hwnd)) {
@@ -262,8 +253,7 @@ LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             break;
 
         case WM_NCHITTEST: {
-            // Resize borders + caption are non-client so Windows drives
-            // drag/snap/maximize; the title-bar button block stays client for ImGui.
+
             POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             RECT wr;
             GetWindowRect(hwnd, &wr);
@@ -299,7 +289,7 @@ LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         case WM_GETMINMAXINFO: {
-            // A frameless window would otherwise shrink to nothing.
+
             auto* mmi = reinterpret_cast<MINMAXINFO*>(lp);
             const float scale = static_cast<float>(GetDpiForWindow(hwnd)) / 96.0F;
             mmi->ptMinTrackSize.x = static_cast<LONG>(640 * scale);
@@ -312,7 +302,7 @@ LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
 
         case WM_SYSCOMMAND:
-            // Block Alt opening the system menu.
+
             if ((wp & 0xFFF0) == SC_KEYMENU) return 0;
             break;
 
@@ -365,18 +355,13 @@ LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
-// Relaunch this exe with --switch. Called as the last step of a "switch vault"
-// shutdown; the child's SingleInstance(--switch) waits for our mutex to release
-// (which happens microseconds later, as wWinMain returns).
 void relaunch_self_switch() {
     wchar_t exe[MAX_PATH];
     if (!GetModuleFileNameW(nullptr, exe, MAX_PATH)) return;
     std::wstring cmd = std::wstring(L"\"") + exe + L"\" --switch";
     std::vector<wchar_t> cmdbuf(cmd.begin(), cmd.end());
     cmdbuf.push_back(L'\0');
-    // The child's FIRST ShowWindow honours the launcher's STARTUPINFO show state
-    // over its own argument, so pin it to a normal window (a zero STARTUPINFO reads
-    // as SW_HIDE and can leave the window minimized).
+
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESHOWWINDOW;
@@ -389,8 +374,6 @@ void relaunch_self_switch() {
     }
 }
 
-// True once the Web API phase finished and (with GCPD on) the staggered
-// per-account pass too.
 bool startup_refresh_complete(const sam::app::AppState& state) {
     if (!state.refresh_web_phase_done.load(std::memory_order_relaxed)) return false;
     if (!state.settings.gcpd_enabled) return true;
@@ -399,19 +382,15 @@ bool startup_refresh_complete(const sam::app::AppState& state) {
     return state.refresh_all_done.load(std::memory_order_relaxed) >= total;
 }
 
-// Headless logon run (scheduled task, --startup): refresh with the window hidden,
-// raise a balloon for any new ban/cooldown, then exit. No D3D or ImGui. Tears
-// down `hwnd` itself.
 int run_startup_refresh(HINSTANCE inst, HWND hwnd) {
     sam::time_aligner::start();
     sam::app::job_pump::start_workers(4);
 
     sam::app::AppState state;
-    state.headless = true;  // no ImGui and no per-frame GC ticks in this path
+    state.headless = true;
     state.load_settings();
-    // Resolve the vault to refresh (the auto-open vault, or the single vault). If
-    // there are several with none designated, there's nothing to auto-open.
-    const sam::app::VaultResolution vault_res = sam::app::init_vaults(state, /*gui=*/false);
+
+    const sam::app::VaultResolution vault_res = sam::app::init_vaults(state, false);
     state.main_hwnd = hwnd;
     g_state = &state;
     sam::platform::tray_icon::set_owner(hwnd, IDI_APP_ICON);
@@ -474,7 +453,6 @@ int run_startup_refresh(HINSTANCE inst, HWND hwnd) {
             Sleep(50);
         }
 
-        // Give a fired balloon a moment on screen before the icon is removed.
         if (state.balloon_shown.load(std::memory_order_relaxed)) {
             Sleep(8000);
         }
@@ -500,17 +478,21 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     sam::platform::dpi::enable_per_monitor_v2();
 
     const bool startup_mode = cmd_line && wcsstr(cmd_line, L"--startup") != nullptr;
-    // Only the OpenApp logon task passes --minimized, so manual launches still open
-    // normally.
+
     const bool start_minimized = cmd_line && wcsstr(cmd_line, L"--minimized") != nullptr;
-    // A "switch vault" relaunch: wait for the outgoing instance's mutex to free
-    // rather than bouncing off it and just raising the (closing) old window.
+
     const bool switch_mode = cmd_line && wcsstr(cmd_line, L"--switch") != nullptr;
+
+    bool uac_declined = false;
+    if (!startup_mode && !sam::platform::process::is_elevated() &&
+        sam::app::run_as_admin_hint()) {
+        if (sam::platform::process::relaunch_elevated(cmd_line ? cmd_line : L"")) return 0;
+        uac_declined = true;
+    }
 
     sam::platform::SingleInstance one(L"luminary-sam-mutex-v1", switch_mode);
     if (!one.is_primary()) {
-        // A --startup launch while already open just asks the running instance to
-        // refresh; no second window.
+
         if (startup_mode) {
             if (HWND existing = FindWindowW(kWindowClass, nullptr)) {
                 PostMessageW(existing, WM_APP_STARTUP_REFRESH, 0, 0);
@@ -522,9 +504,9 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     }
 
     sam::app::ensure_data_dirs();
-    // Drop a relocated-away old data folder before opening the log in the new one.
+
     sam::platform::cleanup_relocated_old_dir();
-    // Fold any older flat layout into the grouped cache/resources/tools subfolders.
+
     sam::platform::migrate_data_layout();
     sam::log::init(sam::app::log_dir());
     SAM_LOG_INFO("starting up");
@@ -548,15 +530,10 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         return run_startup_refresh(inst, hwnd);
     }
 
-    // GUI session owns the browser scratch: clear any profile left behind by a
-    // previous run (its browser may have kept it locked at that shutdown). Not done
-    // in the --startup path, which can run alongside a live GUI instance.
     sam::platform::sweep_browser_cache();
 
     DragAcceptFiles(hwnd, TRUE);
 
-    // App runs elevated, so UIPI blocks drop messages from normal-integrity
-    // Explorer; opt the drag-drop messages through so maFile/info.dat drops work.
     ChangeWindowMessageFilterEx(hwnd, WM_DROPFILES, MSGFLT_ALLOW, nullptr);
     ChangeWindowMessageFilterEx(hwnd, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
     ChangeWindowMessageFilterEx(hwnd, WM_COPYGLOBALDATA, MSGFLT_ALLOW, nullptr);
@@ -568,17 +545,12 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         return 1;
     }
 
-    // Frame collapsed in WM_NCCALCSIZE; a thin DWM extension keeps the system drop
-    // shadow and rounded corners.
     const MARGINS frame_margins{0, 0, 1, 0};
     DwmExtendFrameIntoClientArea(hwnd, &frame_margins);
 
-    // Force a non-client recompute so the collapsed frame takes effect before show.
     SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
                  SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 
-    // Cloak then show: DWM plays the open animation off-screen during heavy init;
-    // uncloak after the first frame so there's no flash.
     BOOL cloak = TRUE;
     DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &cloak, sizeof(cloak));
     if (start_minimized) {
@@ -609,35 +581,40 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     sam::app::job_pump::start_workers(4);
 
     sam::app::AppState state;
+    state.is_elevated = sam::platform::process::is_elevated();
     state.load_settings();
-    // Resolve which vault this session opens (migrating a legacy single vault on
-    // first run). Sets the active vault id that all vault-scoped paths key off.
-    const sam::app::VaultResolution vault_res = sam::app::init_vaults(state, /*gui=*/true);
-    // Keep the logon task in lockstep with the current mode: re-register when on
-    // (also repairs a moved exe path), remove an orphaned task when off.
+
+    const sam::app::VaultResolution vault_res = sam::app::init_vaults(state, true);
+
+    if (uac_declined) {
+        SAM_LOG_WARN("elevation: UAC declined; running unelevated");
+        sam::ui::widgets::ToastItem t;
+        t.id = "uac-declined";
+        t.message = "Running without administrator. The Windows-logon task is unavailable, "
+                    "and launching an account may fail if Steam's folder isn't writable. "
+                    "Click here to change this in Settings.";
+        t.is_warning = true;
+        t.on_click_action = sam::ui::widgets::ToastClickAction::Settings;
+        t.settings_category = static_cast<int>(sam::ui::screens::SettingsCategory::General);
+        t.expires_at_unix = 0;
+        state.toasts.push(std::move(t));
+    }
+
     state.sync_logon_task();
     if (state.settings.streamproof) {
         sam::platform::set_capture_excluded(hwnd, true);
     }
     state.start_update_check();
-    // Settings (bar the few globals loaded above), notifications and audit logs are
-    // per-vault; they're bound to the active vault's folder by bind_vault_session()
-    // once a vault is actually unlocked (below, or from the unlock/create/picker
-    // flows). Until then the rest of `settings` holds struct defaults.
+
     state.main_hwnd = hwnd;
     g_state = &state;
     state.real_hardware = sam::core::hwid::read_real_hardware();
     sam::app::conf_poller::start(state);
 
-    // With several vaults and none set to auto-open, route the locked view to the
-    // vault picker instead of the unlock screen.
     if (vault_res == sam::app::VaultResolution::ShowPicker) {
         state.needs_vault_pick = true;
     }
 
-    // Auto-unlock with the cached DPAPI-wrapped password if opted in. On failure
-    // fall through to the Unlock screen and wipe the cache so it stops failing.
-    // Skipped when the picker is showing (no active vault chosen yet).
     const bool may_auto_unlock =
         vault_res == sam::app::VaultResolution::OpenDirect ||
         vault_res == sam::app::VaultResolution::AutoUnlock;
@@ -661,9 +638,9 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
                 state.current_screen = sam::app::Screen::Accounts;
                 sam::app::bind_vault_session(state);
                 if (state.settings.refresh_on_launch) state.refresh_account_data();
-                // One-time fill of external funds for accounts missing a figure.
+
                 if (state.settings.info.show_external_funds) {
-                    state.refresh_all_spend(/*only_missing=*/true);
+                    state.refresh_all_spend(true);
                 }
                 SAM_LOG_INFO("auto-unlock: vault opened via DPAPI cache");
             } catch (const std::exception& ex) {
@@ -696,8 +673,6 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         }
         if (quit) break;
 
-        // Minimized/occluded: Present stops blocking on vsync, so cap the loop
-        // instead of burning a core. Wakes on any message, still drains jobs ~10x/sec.
         if (g_occluded || IsIconic(hwnd)) {
             MsgWaitForMultipleObjects(0, nullptr, FALSE, 100, QS_ALLINPUT);
         }
@@ -736,22 +711,24 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
 
         sam::app::job_pump::drain(state);
 
-        // Advance the CS2 GC sweeps every frame.
+        if (state.cleaner_unlock_pending) {
+            state.cleaner_unlock_pending = false;
+            sam::app::cleaner_runner::run_async(state,
+                                                sam::app::cleaner_runner::Trigger::Unlock);
+        }
+
         state.tick_gc_autopull();
         state.tick_gc_validate();
-        // Startup auto-puller (once, after unlock so vault credentials are available): mirror
-        // the Refresh all + Refresh GC buttons, cache-gated and silent. Opt-in via the existing
-        // auto_pull_on_startup setting. Each path self-skips accounts within their cache window.
+
         if (state.unlocked && !state.gc_startup_pull_done) {
             state.gc_startup_pull_done = true;
-            state.gc_validate_startup_done = true;  // subsumed by the unified pass below
+            state.gc_validate_startup_done = true;
             if (state.settings.cs2_gc.auto_pull_on_startup) {
-                state.refresh_account_data(/*force=*/false, /*announce=*/false);
-                state.refresh_gc_all(/*announce=*/false);
+                state.refresh_account_data(false, false);
+                state.refresh_gc_all(false);
             }
         }
 
-        // Periodic auto-refresh (Steam Web API + GC/validate) while the app is open.
         if (state.unlocked && state.settings.auto_refresh_enabled) {
             static auto last_auto_refresh = std::chrono::steady_clock::now();
             const auto interval =
@@ -787,7 +764,6 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         const HRESULT pr = g_swap_chain->Present(1, 0);
         g_occluded = (pr == DXGI_STATUS_OCCLUDED);
 
-        // Uncloak after the first frame so the window appears already painted.
         if (!window_shown) {
             BOOL uncloak = FALSE;
             DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &uncloak, sizeof(uncloak));
@@ -795,25 +771,23 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
         }
     }
 
-    // Abort in-flight HTTP so the threads joined below return immediately instead
-    // of blocking on a WinHTTP timeout.
     sam::http::cancel_all();
 
-    // Join any retired CS2 GC clients while AppState is still alive, so their worker
-    // callbacks never touch a destroyed state.
     sam::cs2_gc::reap_all();
 
-    // Flush the debounced vault save before tearing down the worker so the last
-    // edit isn't lost.
     state.flush_pending_save();
+
+    if (!state.relaunch_switch && !state.cleaner_busy.load() && !state.settings.safe_mode &&
+        state.settings.cleaner.enabled && state.settings.cleaner.run_on_exit) {
+        SAM_LOG_INFO("cleaner: exit run starting");
+        sam::app::cleaner_runner::run_blocking(state.settings, false,
+                                               false);
+    }
+
     state.scrub_vault_secrets();
     const bool relaunch_switch = state.relaunch_switch;
     g_state = nullptr;
 
-    // Wipe the browser profile + login page so scratch doesn't accumulate. Best-
-    // effort: if the external browser is still open it holds the lock, and the
-    // next-launch sweep clears it. Also runs before a "switch vault" relaunch, so
-    // the incoming vault's session starts clean.
     sam::platform::sweep_browser_cache();
 
     SAM_LOG_INFO("shutting down");
@@ -833,8 +807,6 @@ int APIENTRY wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd_line, int) {
     DestroyWindow(hwnd);
     UnregisterClassW(kWindowClass, inst);
 
-    // Last thing before we return (and `one` releases the single-instance mutex):
-    // spawn the replacement for a "switch vault" so it can take the mutex at once.
     if (relaunch_switch) relaunch_self_switch();
 
     sam::log::shutdown();

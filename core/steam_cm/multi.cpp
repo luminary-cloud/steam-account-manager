@@ -10,28 +10,26 @@ namespace sam::steam_cm {
 
 namespace {
 
-// Inflates a gzip stream whose decompressed size is already known. puff handles
-// the raw DEFLATE body, so we parse and skip the gzip header and trailer here.
 bool gunzip(const std::string& in, std::uint32_t out_size, std::string& out) {
-    if (in.size() < 18) return false;  // 10-byte header + 8-byte trailer minimum
+    if (in.size() < 18) return false;
     const auto* p = reinterpret_cast<const unsigned char*>(in.data());
     if (p[0] != 0x1f || p[1] != 0x8b || p[2] != 8) return false;
     const unsigned char flags = p[3];
     std::size_t off = 10;
-    if (flags & 0x04) {  // FEXTRA
+    if (flags & 0x04) {
         if (off + 2 > in.size()) return false;
         const std::size_t xlen = static_cast<std::size_t>(p[off]) | (static_cast<std::size_t>(p[off + 1]) << 8);
         off += 2 + xlen;
     }
-    if (flags & 0x08) {  // FNAME
+    if (flags & 0x08) {
         while (off < in.size() && p[off] != 0) ++off;
         ++off;
     }
-    if (flags & 0x10) {  // FCOMMENT
+    if (flags & 0x10) {
         while (off < in.size() && p[off] != 0) ++off;
         ++off;
     }
-    if (flags & 0x02) off += 2;  // FHCRC
+    if (flags & 0x02) off += 2;
     if (off + 8 > in.size()) return false;
 
     out.resize(out_size);

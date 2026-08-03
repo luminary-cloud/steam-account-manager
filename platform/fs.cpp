@@ -4,10 +4,13 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 
 #include <windows.h>
 #include <aclapi.h>
 #include <sddl.h>
+
+#include "core/log.hpp"
 
 #pragma comment(lib, "advapi32.lib")
 
@@ -19,6 +22,16 @@ std::wstring tmp_path_for(const std::filesystem::path& path) {
     auto tmp = path;
     tmp += L".tmp";
     return tmp.wstring();
+}
+
+bool delete_via_share_handle(const std::filesystem::path& p) {
+    HANDLE h = CreateFileW(p.c_str(), DELETE,
+                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                           OPEN_EXISTING,
+                           FILE_FLAG_DELETE_ON_CLOSE | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    CloseHandle(h);
+    return GetFileAttributesW(p.c_str()) == INVALID_FILE_ATTRIBUTES;
 }
 
 }  // namespace
@@ -144,6 +157,105 @@ std::vector<std::uint8_t> read_binary_file(const std::filesystem::path& path) {
         f.read(reinterpret_cast<char*>(buf.data()), size);
     }
     return buf;
+}
+
+std::uintmax_t size_recursive(const std::filesystem::path& p) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::exists(p, ec)) return 0;
+    if (fs::is_regular_file(p, ec)) {
+        const auto sz = fs::file_size(p, ec);
+        return ec ? 0 : sz;
+    }
+    std::uintmax_t total = 0;
+    for (auto it = fs::recursive_directory_iterator(
+             p, fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        std::error_code inner;
+        if (it->is_regular_file(inner)) {
+            const auto sz = it->file_size(inner);
+            if (!inner) total += sz;
+        }
+    }
+    return total;
+}
+
+std::uintmax_t file_count_recursive(const std::filesystem::path& p) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::exists(p, ec)) return 0;
+    if (fs::is_regular_file(p, ec)) return 1;
+    std::uintmax_t count = 0;
+    for (auto it = fs::recursive_directory_iterator(
+             p, fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        std::error_code inner;
+        if (it->is_regular_file(inner)) ++count;
+    }
+    return count;
+}
+
+bool delete_file_forced(const std::filesystem::path& p) {
+    std::error_code probe;
+    if (!std::filesystem::exists(p, probe)) return true;
+
+    const std::wstring w = p.wstring();
+    constexpr DWORD kBlocking =
+        FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM;
+    const DWORD attrs = GetFileAttributesW(w.c_str());
+    if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & kBlocking) != 0) {
+        SetFileAttributesW(w.c_str(), attrs & ~kBlocking);
+    }
+    if (DeleteFileW(w.c_str())) return true;
+
+    const DWORD err = GetLastError();
+    if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) return true;
+    if ((err == ERROR_SHARING_VIOLATION || err == ERROR_LOCK_VIOLATION ||
+         err == ERROR_ACCESS_DENIED) &&
+        delete_via_share_handle(p)) {
+        return true;
+    }
+    SAM_LOG_WARN("fs: DeleteFileW({}) failed: {}", p.string(), err);
+    return false;
+}
+
+bool delete_directory_recursive(const std::filesystem::path& p) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::exists(p, ec)) return true;
+    if (!fs::is_directory(p, ec)) return delete_file_forced(p);
+
+    bool all_ok = true;
+    for (auto it = fs::directory_iterator(p, fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::directory_iterator(); it.increment(ec)) {
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        std::error_code inner;
+
+        if (it->is_directory(inner) && !it->is_symlink(inner)) {
+            if (!delete_directory_recursive(it->path())) all_ok = false;
+        } else if (!delete_file_forced(it->path())) {
+            all_ok = false;
+        }
+    }
+    if (!RemoveDirectoryW(p.wstring().c_str())) {
+        const DWORD err = GetLastError();
+        if (err != ERROR_FILE_NOT_FOUND && err != ERROR_PATH_NOT_FOUND) {
+            SAM_LOG_WARN("fs: RemoveDirectoryW({}) failed: {}", p.string(), err);
+            all_ok = false;
+        }
+    }
+    return all_ok;
 }
 
 }  // namespace sam::platform

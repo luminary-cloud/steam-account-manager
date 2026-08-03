@@ -45,12 +45,11 @@ std::filesystem::path vault_dir_for(const std::string& id);
 VaultRegistry load_registry();
 void save_registry(const VaultRegistry& reg);
 
-// Mutations — each persists the registry. add_vault_entry takes an explicit id so
+// Mutations, each persisting the registry. add_vault_entry takes an explicit id so
 // the caller can create the vault file first, then register it.
 void add_vault_entry(VaultRegistry& reg, std::string id, std::string name,
                      std::uint32_t color);
 void rename_vault(VaultRegistry& reg, const std::string& id, std::string name);
-void set_vault_color(VaultRegistry& reg, const std::string& id, std::uint32_t color);
 // Copies `src` into the vault folder as icon.png and records it. false + *err on failure.
 bool set_vault_icon(VaultRegistry& reg, const std::string& id,
                     const std::filesystem::path& src, std::string* err);

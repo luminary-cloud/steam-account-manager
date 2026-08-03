@@ -109,9 +109,6 @@ FinalizeResult finalize_add(const core::Account& a, const std::string& sms_code)
 
     const auto& sda = *a.sda;
 
-    // Finalize takes several round-trips: status 88 until the codes line up,
-    // then success + want_more for the next window's code. Resubmit fresh
-    // authenticator codes (the email/SMS activation code stays fixed) until done.
     bool resynced = false;
     for (int tries = 0; tries < 10; ++tries) {
         const std::int64_t when = time_aligner::aligned_now();
@@ -153,12 +150,11 @@ FinalizeResult finalize_add(const core::Account& a, const std::string& sms_code)
                      tries, out.status_code, success, want_more);
 
         if (out.status_code == 89) {
-            out.needs_retry = true;  // bad activation code
+            out.needs_retry = true;
             return out;
         }
         if (out.status_code == 88) {
-            // Codes not matching, usually clock drift. Resync once, then retry
-            // as later windows roll around.
+
             if (!resynced) {
                 resynced = true;
                 (void)time_aligner::sync_now();
@@ -175,8 +171,7 @@ FinalizeResult finalize_add(const core::Account& a, const std::string& sms_code)
             out.ok = true;
             return out;
         }
-        // Any other status (e.g. 2 "already finalized"): may already be live.
-        // Let the caller reconcile via QueryStatus.
+
         out.error = "status " + std::to_string(out.status_code);
         return out;
     }

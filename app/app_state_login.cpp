@@ -22,6 +22,25 @@
 
 namespace sam::app {
 
+namespace {
+
+constexpr std::int64_t kCmTokenExpiryMargin = 300;
+}  // namespace
+
+bool cm_token_valid(const core::Account& a) {
+    if (a.cm_refresh_token.empty()) return false;
+
+    if (a.cm_status == core::NfaTokenStatus::Revoked) return false;
+    const std::int64_t exp = a.cm_refresh_token_expires != 0
+        ? a.cm_refresh_token_expires
+        : steam_login::jwt_expiry(a.cm_refresh_token);
+    if (exp != 0 && exp - kCmTokenExpiryMargin <=
+            std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count())
+        return false;
+    return steam_login::jwt_audience(a.cm_refresh_token).find("client") != std::string::npos;
+}
+
 bool AppState::auto_relogin(const std::string& account_id,
                             core::Account& creds,
                             std::string* err) {
@@ -60,7 +79,7 @@ bool AppState::auto_relogin(const std::string& account_id,
         login,
         [&](const std::vector<steam_login::GuardKind>& allowed) {
             return steam_login::default_guard_provider(
-                relogin_sda, allowed, /*on_prompt=*/{});
+                relogin_sda, allowed, {});
         },
         [&](const std::string& s) {
             SAM_LOG_INFO("auto-relogin: {} ({})", s, creds.login);
@@ -76,9 +95,7 @@ bool AppState::auto_relogin(const std::string& account_id,
     creds.refresh_token        = std::move(result.account.refresh_token);
     creds.access_token         = std::move(result.account.access_token);
     creds.access_token_expires = result.account.access_token_expires;
-    // run_full_login ships back steam_login_secure + session_id bound to the
-    // registered community session. If settoken failed the cookie is the manual
-    // fallback, and mobileconf writes trip success=false until the next relogin.
+
     creds.steam_login_secure   = std::move(result.account.steam_login_secure);
     if (!result.account.session_id.empty()) {
         creds.session_id = std::move(result.account.session_id);
@@ -116,7 +133,7 @@ void AppState::acquire_cm_token(const std::string& account_id,
         auto result = steam_login::acquire_client_token(
             login,
             [&](const std::vector<steam_login::GuardKind>& allowed) {
-                return steam_login::default_guard_provider(sda, allowed, /*on_prompt=*/{});
+                return steam_login::default_guard_provider(sda, allowed, {});
             },
             [&](const std::string& s) {
                 SAM_LOG_INFO("cs2 client-login: {} ({})", s, creds.login);
@@ -136,8 +153,7 @@ void AppState::acquire_cm_token(const std::string& account_id,
             if (auto* acc = find_account(aid)) {
                 acc->cm_refresh_token = std::move(rt);
                 acc->cm_refresh_token_expires = exp;
-                // Freshly minted: any Revoked verdict belonged to the token we just
-                // replaced, and this one is unproven until a sign-in says otherwise.
+
                 acc->cm_status = core::NfaTokenStatus::Unknown;
                 acc->cm_last_validated_unix = 0;
                 vault_dirty = true;
@@ -149,7 +165,7 @@ void AppState::acquire_cm_token(const std::string& account_id,
 }
 
 namespace {
-// UI thread only (touches `toasts`).
+
 void push_cs2_toast(AppState& state, const std::string& aid,
                     const std::string& login,
                     const cs2_config::DeployResult& result, const char* prefix) {
@@ -175,7 +191,6 @@ void AppState::apply_cs2_video_config(const core::Account& a) {
     const auto mode = settings.cs2_video.mode;
     if (mode == CS2ConfigMode::None) return;
 
-    // By value: the Account& may be invalidated by a vault mutation before a job runs.
     const std::string aid = a.id;
     const std::string login = a.login;
     const std::uint64_t sid = a.steam_id_64;
@@ -187,26 +202,27 @@ void AppState::apply_cs2_video_config(const core::Account& a) {
         return;
     }
 
-    // Folder730 recursive copy can be large; run off the UI thread, marshal the
-    // toast back.
-    job_pump::submit([this, aid, login, sid, tdir = cs2_730_template_dir()]() {
-        const auto result = cs2_config::deploy_730_folder(sid, tdir);
-        post_ui_callback([this, aid, login, result]() {
-            push_cs2_toast(*this, aid, login, result, "CS2 730 folder");
+    const bool whole_userdata = mode == CS2ConfigMode::UserdataFolder;
+    const auto tdir = whole_userdata ? userdata_template_dir() : cs2_730_template_dir();
+    const char* prefix = whole_userdata ? "Userdata game folders" : "CS2 730 folder";
+
+    job_pump::submit([this, aid, login, sid, tdir, prefix, whole_userdata]() {
+        const auto result = whole_userdata ? cs2_config::deploy_userdata_folder(sid, tdir)
+                                           : cs2_config::deploy_730_folder(sid, tdir);
+        post_ui_callback([this, aid, login, result, prefix]() {
+            push_cs2_toast(*this, aid, login, result, prefix);
         });
     });
 }
 
 void AppState::open_account_in_browser(const core::Account& a) {
-    // NFA can't mint a web session; no SteamID = no profile. Context menu disables
-    // both, but guard again here.
+
     if (a.steam_id_64 == 0 || a.is_nfa) return;
 
     const std::string aid = a.id;
     const std::string login_name = a.login;
     const std::uint64_t sid64 = a.steam_id_64;
 
-    // Thin copy for the worker; the Account& may be invalidated before the job runs.
     core::Account creds;
     creds.steam_id_64 = a.steam_id_64;
     creds.login = a.login;
@@ -226,8 +242,6 @@ void AppState::open_account_in_browser(const core::Account& a) {
 
         if (creds.session_id.empty()) creds.session_id = crypto::random_session_id();
 
-        // finalizelogin consumes the refresh_token. Refresh the cheap access_token
-        // first; if the refresh_token is missing or rejected, full re-login.
         if (creds.refresh_token.empty()) {
             std::string err;
             auto_relogin(aid, creds, &err);
@@ -250,13 +264,11 @@ void AppState::open_account_in_browser(const core::Account& a) {
 
         std::vector<steam_login::TransferTarget> targets;
         if (!build_targets(targets)) {
-            // refresh_token may be expired; one re-login + retry.
+
             std::string err;
             if (auto_relogin(aid, creds, &err)) build_targets(targets);
         }
 
-        // Replicate Steam's per-domain transfer: each target's cookies are set in
-        // hidden frames, then the page lands on the profile.
         bool ready = false;
         if (!targets.empty()) {
             const std::string html =
@@ -276,7 +288,6 @@ void AppState::open_account_in_browser(const core::Account& a) {
             SAM_LOG_WARN("browser-login: could not mint a web session for '{}'", login_name);
         }
 
-        // Carry rotated tokens back to persist them.
         crypto::SecureString rt = creds.refresh_token;
         crypto::SecureString at = creds.access_token;
         crypto::SecureString ls = creds.steam_login_secure;

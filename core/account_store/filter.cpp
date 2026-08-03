@@ -69,15 +69,11 @@ bool has_active_cooldown(const Account& a, std::int64_t now) {
     return now <= 0 || c > now;
 }
 
-// "Claimed this week": weekly_drop_reset_unix points at the next reset while claimed,
-// and auto-clears (0) once that reset passes.
 bool drop_claimed(const Account& a, std::int64_t now) {
     const auto r = a.cs2.weekly_drop_reset_unix;
     return r != 0 && (now <= 0 || now < r);
 }
 
-// Ascending sort key for "cooldown lifts soonest": the expiry for an upcoming timed
-// cooldown, INT64_MAX for none / permanent / already-lifted (so they sort last).
 std::int64_t cooldown_sort_key(const Account& a, std::int64_t now) {
     const auto c = a.cs2.cooldown_expires_unix;
     if (c == 0 || c == kCooldownNever) return INT64_MAX;
@@ -115,13 +111,13 @@ int compare_for_sort(const Account& a, const Account& b, SortKey k, std::int64_t
             const bool ca = has_active_cooldown(a, now);
             const bool cb = has_active_cooldown(b, now);
             if (ca == cb) return 0;
-            return !ca ? -1 : 1;        // ready-to-play (no cooldown) first
+            return !ca ? -1 : 1;
         }
         case SortKey::DropUnclaimedFirst: {
             const bool da = drop_claimed(a, now);
             const bool db = drop_claimed(b, now);
             if (da == db) return 0;
-            return !da ? -1 : 1;        // not-yet-claimed first
+            return !da ? -1 : 1;
         }
         case SortKey::TotalSpendDesc:
             if (a.funds.total_spend_usd_cents == b.funds.total_spend_usd_cents) return 0;
@@ -130,7 +126,7 @@ int compare_for_sort(const Account& a, const Account& b, SortKey k, std::int64_t
             const auto ka = cooldown_sort_key(a, now);
             const auto kb = cooldown_sort_key(b, now);
             if (ka == kb) return 0;
-            return ka < kb ? -1 : 1;    // cooldown lifting soonest first
+            return ka < kb ? -1 : 1;
         }
     }
     return 0;
@@ -147,8 +143,7 @@ std::vector<std::size_t> apply_filter(const std::vector<Account>& accounts,
         if (passes(accounts[i], filter, q_lower)) out.push_back(i);
     }
     std::stable_sort(out.begin(), out.end(), [&](std::size_t a, std::size_t b) {
-        // Auto-flag: accounts whose token was found revoked float to the top, above the
-        // chosen sort, so a dead NFA/cached token is impossible to miss.
+
         const bool ra = accounts[a].nfa_status == NfaTokenStatus::Revoked;
         const bool rb = accounts[b].nfa_status == NfaTokenStatus::Revoked;
         if (ra != rb) return ra;

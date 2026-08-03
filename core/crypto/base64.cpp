@@ -18,7 +18,7 @@ std::array<std::int8_t, 256> build_decode_table() {
     for (std::int8_t i = 0; i < 64; ++i) {
         t[static_cast<std::uint8_t>(kStdAlphabet[i])] = i;
     }
-    // URL-safe variants accepted by the same decoder.
+
     t[static_cast<std::uint8_t>('-')] = 62;
     t[static_cast<std::uint8_t>('_')] = 63;
     return t;

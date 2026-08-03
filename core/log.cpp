@@ -28,7 +28,7 @@ void init(const std::filesystem::path& log_dir) {
         auto dist = std::make_shared<spdlog::sinks::dist_sink_mt>();
         dist->add_sink(std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
             (log_dir / "sam.log").string(),
-            1024 * 1024 * 4,  // 4 MB per file
+            1024 * 1024 * 4,
             6));
         dist->add_sink(std::make_shared<spdlog::sinks::msvc_sink_mt>());
 

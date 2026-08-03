@@ -28,7 +28,7 @@ std::string js_string_escape(const std::string& in) {
         switch (c) {
             case '\\': out += "\\\\"; break;
             case '\'': out += "\\'";  break;
-            case '<':  out += "\\x3c"; break;  // avoid closing the <script>
+            case '<':  out += "\\x3c"; break;
             case '>':  out += "\\x3e"; break;
             case '\n': out += "\\n";  break;
             case '\r': out += "\\r";  break;
@@ -65,8 +65,6 @@ std::string build_login_html(const std::vector<TransferTarget>& targets,
         html += "</form>\n";
     }
 
-    // Navigate on a short timer: the cross-origin iframe loads aren't readable,
-    // but it's ample for the settoken POSTs to set their cookies.
     html += "<script>\n";
     html += "var N=" + std::to_string(targets.size()) + ";\n";
     html += "for(var i=0;i<N;i++){try{document.getElementById('f'+i).submit();}catch(e){}}\n";

@@ -23,13 +23,10 @@ namespace {
 
 using steady_clock = std::chrono::steady_clock;
 
-// Per-phase ceilings so a hung sign-in or connect can't stall the sweep. The puller pulls
-// every profile over one session, paced ~1.6s apart to stay under the GC's profile-request
-// rate limit (see kPaceMs in cs2_gc_client.cpp).
 constexpr auto kSigninTimeout = std::chrono::seconds(45);
-constexpr auto kConnectTimeout = std::chrono::seconds(90);  // matches GcSession::launch's deadline
-constexpr std::int64_t kTokenExpiryMargin = 300;  // re-mint a client token this early
-constexpr int kMaxPullerAttempts = 3;  // distinct accounts to try as the puller before giving up
+constexpr auto kConnectTimeout = std::chrono::seconds(90);
+constexpr std::int64_t kTokenExpiryMargin = 300;
+constexpr int kMaxPullerAttempts = 3;
 
 std::int64_t now_unix() {
     return std::chrono::duration_cast<std::chrono::seconds>(
@@ -37,7 +34,6 @@ std::int64_t now_unix() {
         .count();
 }
 
-// Unix expiry of the client-audience token cs2_client_token() would use, or 0 if unknown.
 std::int64_t client_token_expiry(const core::Account& a) {
     if (!a.cm_refresh_token.empty() &&
         steam_login::jwt_audience(a.cm_refresh_token).find("client") != std::string::npos)
@@ -49,15 +45,12 @@ std::int64_t client_token_expiry(const core::Account& a) {
     return 0;
 }
 
-// True when the account has no usable client token, or its token expires within the margin
-// (so the GC connect would be rejected) -- i.e. a sign-in is needed before connecting.
 bool needs_signin(const core::Account& a, std::int64_t now) {
     if (cs2_client_token(a).empty()) return true;
     const std::int64_t exp = client_token_expiry(a);
     return exp > 0 && exp <= now + kTokenExpiryMargin;
 }
 
-// True when `a` is the account currently signed in to the Steam client on this machine.
 bool is_active_steam_user(const core::Account& a) {
     const auto au = platform::registry::read_active_user();
     return au && *au != 0 &&
@@ -68,32 +61,22 @@ bool is_manually_connected(const AppState& st, const std::string& aid) {
     return st.cs2_screen && st.cs2_screen->client && st.cs2_screen->account_id == aid;
 }
 
-// Forward declarations for the puller state machine (mutually recursive on failure).
 void start_puller(AppState& st, GcAutoPull& g, steady_clock::time_point now);
 void advance_puller(AppState& st, GcAutoPull& g, steady_clock::time_point now);
 void begin_connect(AppState& st, GcAutoPull& g);
 void end_autopull(GcAutoPull& g, std::string status);
 
-// Per-account validate sweep (mutually recursive when advancing to the next account).
 void begin_validate(AppState& st);
 void advance_validate(AppState& st);
 void end_validate(AppState& st, std::string status);
 constexpr auto kValidateTimeout = std::chrono::seconds(90);
-// Gap between per-account validate connections so a large NFA queue never trips Steam's
-// CM-logon rate limiter (which would otherwise false-flag good tokens as revoked).
+
 constexpr auto kValidateStagger = std::chrono::seconds(15);
 
-// Accounts eligible to BE the puller, best first. Full-access accounts are preferred:
-// they are password-backed and re-mintable, so pulling through them carries none of the
-// rotation/rate-limit risk of a shared NFA/cached token. Order: full-access with a ready
-// client token -> full-access that can sign in -> NFA/cached with a ready token (last
-// resort). Never the live Steam account (the puller announces games_played and would fight
-// the running client) nor an account already connected on the manual screen. Those two can
-// still be pull TARGETS.
 std::vector<std::string> build_puller_candidates(const AppState& st, std::int64_t now) {
-    std::vector<std::string> full_ready;   // full-access, client token ready
-    std::vector<std::string> full_signin;  // full-access, can sign in with a password
-    std::vector<std::string> nfa_ready;    // NFA/cached, token ready (last resort)
+    std::vector<std::string> full_ready;
+    std::vector<std::string> full_signin;
+    std::vector<std::string> nfa_ready;
     for (const auto& a : st.vault.accounts) {
         if (a.steam_id_64 == 0) continue;
         if (is_active_steam_user(a)) continue;
@@ -112,8 +95,6 @@ std::vector<std::string> build_puller_candidates(const AppState& st, std::int64_
     return out;
 }
 
-// Open the GC via the current puller and wire the batch callbacks. All callbacks run on the
-// client worker thread, so each marshals onto the UI thread and re-checks gc_autopull.active.
 void begin_connect(AppState& st, GcAutoPull& g) {
     core::Account* a = st.find_account(g.puller_id);
     if (a == nullptr) {
@@ -147,7 +128,7 @@ void begin_connect(AppState& st, GcAutoPull& g) {
             GcAutoPull& g = stp->gc_autopull;
             if (!g.active) return;
             auto it = g.targets.find(pp.account_id);
-            if (it == g.targets.end()) return;  // not a target (or already applied)
+            if (it == g.targets.end()) return;
             cs2_gc::Snapshot snap;
             snap.progress = pp.progress;
             snap.medals = std::move(pp.medals);
@@ -171,18 +152,16 @@ void begin_connect(AppState& st, GcAutoPull& g) {
             GcAutoPull& g = stp->gc_autopull;
             if (!g.active) return;
             SAM_LOG_WARN("gc-autopull: puller error: {}", err);
-            g.batch_done = true;  // Pulling ends; Connecting falls back to the next candidate
+            g.batch_done = true;
         });
     };
     g.client = std::make_unique<cs2_gc::Cs2GcClient>(std::move(creds), std::move(cb));
 }
 
-// Start the candidate at puller_idx: sign it in first if its client token is missing/stale,
-// otherwise connect straight away.
 void start_puller(AppState& st, GcAutoPull& g, steady_clock::time_point now) {
     const std::string aid = g.puller_candidates[g.puller_idx];
     core::Account* a = st.find_account(aid);
-    if (a == nullptr) {  // vanished; skip to the next candidate
+    if (a == nullptr) {
         advance_puller(st, g, now);
         return;
     }
@@ -208,8 +187,6 @@ void start_puller(AppState& st, GcAutoPull& g, steady_clock::time_point now) {
     begin_connect(st, g);
 }
 
-// A puller failed (sign-in, connect, or early drop); retire it and try the next candidate,
-// ending the sweep once the list is exhausted or the attempt cap is hit.
 void advance_puller(AppState& st, GcAutoPull& g, steady_clock::time_point now) {
     if (g.client) cs2_gc::retire(std::move(g.client));
     g.connected = false;
@@ -225,7 +202,7 @@ void advance_puller(AppState& st, GcAutoPull& g, steady_clock::time_point now) {
 }
 
 void end_autopull(GcAutoPull& g, std::string status) {
-    if (g.client) cs2_gc::retire(std::move(g.client));  // always our own puller, never the manual client
+    if (g.client) cs2_gc::retire(std::move(g.client));
     g.active = false;
     g.phase = GcAutoPull::Phase::Idle;
     g.connected = false;
@@ -234,14 +211,10 @@ void end_autopull(GcAutoPull& g, std::string status) {
     SAM_LOG_INFO("gc-autopull: {} ({} of {} applied)", g.status, g.received, g.total);
 }
 
-// --- Per-account NFA/cached validate sweep --------------------------------------------
-
-// Connect the current queued account with its own client token: the CM logon validates the
-// token (on_logon) and, once the GC is ready, its own profile is pulled (on_profile).
 void begin_validate(AppState& st) {
     GcValidate& v = st.gc_validate;
     core::Account* a = st.find_account(v.queue[v.idx]);
-    if (a == nullptr) {  // vanished; skip to the next without recording a result
+    if (a == nullptr) {
         advance_validate(st);
         return;
     }
@@ -309,8 +282,6 @@ void begin_validate(AppState& st) {
     v.client = std::make_unique<cs2_gc::Cs2GcClient>(std::move(creds), std::move(cb));
 }
 
-// Retire the current account's client and move to the next, ending the sweep when done. The
-// next account isn't started here; tick_gc_validate starts it once kValidateStagger passes.
 void advance_validate(AppState& st) {
     GcValidate& v = st.gc_validate;
     if (v.client) cs2_gc::retire(std::move(v.client));
@@ -318,8 +289,7 @@ void advance_validate(AppState& st) {
     v.pull_issued = false;
     ++v.done;
     ++v.idx;
-    // When this sweep is the NFA half of a "Refresh all", each finished account advances the
-    // shared toolbar counter; the last account across the whole batch (GCPD + NFA) clears it.
+
     if (v.feed_refresh_all) {
         const int done = st.refresh_all_done.fetch_add(1, std::memory_order_relaxed) + 1;
         if (done >= st.refresh_all_total.load(std::memory_order_relaxed)) {
@@ -331,7 +301,7 @@ void advance_validate(AppState& st) {
         end_validate(st, "NFA validate: done");
         return;
     }
-    v.resume_at = steady_clock::now() + kValidateStagger;  // pace the next connection
+    v.resume_at = steady_clock::now() + kValidateStagger;
 }
 
 void end_validate(AppState& st, std::string status) {
@@ -367,18 +337,14 @@ void AppState::start_gc_autopull() {
     const int hours = std::clamp(settings.cs2_gc.cache_hours, 1, 24);
     const std::int64_t ttl = static_cast<std::int64_t>(hours) * 3600;
 
-    // Targets: every account with a resolved SteamID whose cache is stale. The live Steam
-    // user and the manually-connected account are included (reading a public profile is
-    // harmless and refreshes their card for free) -- they just can't be the puller.
     int skipped = 0;
     std::unordered_map<std::uint32_t, std::string> targets;
     for (const auto& a : vault.accounts) {
-        if (a.steam_id_64 == 0) continue;  // no resolved SteamID -> can't be addressed
-        // NFA/cached accounts get a richer per-account GC connect (own profile + token
-        // validation), so they are excluded from the foreign batch here.
+        if (a.steam_id_64 == 0) continue;
+
         if (a.is_nfa) continue;
         if (a.cs2.gc_last_pulled_unix != 0 && now - a.cs2.gc_last_pulled_unix < ttl) {
-            ++skipped;  // cache still fresh
+            ++skipped;
             continue;
         }
         targets[static_cast<std::uint32_t>(a.steam_id_64 & 0xffffffffULL)] = a.id;
@@ -436,7 +402,7 @@ void AppState::tick_gc_autopull() {
                 g.phase = GcAutoPull::Phase::Pulling;
                 g.phase_started = now;
                 g.status = "Pulling GC 0/" + std::to_string(g.total);
-            } else if (g.batch_done) {  // an on_error landed before "Ready"
+            } else if (g.batch_done) {
                 advance_puller(*this, g, now);
             } else if (now - g.phase_started > kConnectTimeout) {
                 SAM_LOG_WARN("gc-autopull: GC connect timed out via '{}'", g.puller_id);
@@ -444,8 +410,7 @@ void AppState::tick_gc_autopull() {
             }
             return;
         case GcAutoPull::Phase::Pulling: {
-            // Allow the batch its paced duration (~1.6s/account, the GC rate limit) plus slack
-            // before bailing.
+
             const auto limit =
                 std::chrono::seconds(30) + std::chrono::milliseconds(1600) * g.total;
             if (g.batch_done) {
@@ -479,16 +444,15 @@ std::vector<std::string> AppState::collect_nfa_validate_ids(bool force) {
 
     std::vector<std::string> queue;
     for (const auto& a : vault.accounts) {
-        if (!a.is_nfa) continue;  // NFA + cached only (full-access uses the batch autopull)
+        if (!a.is_nfa) continue;
         if (a.steam_id_64 == 0) continue;
-        if (cs2_client_token(a).empty()) continue;   // no client-audience token to connect with
-        if (is_active_steam_user(a)) continue;        // don't fight the running Steam client
+        if (cs2_client_token(a).empty()) continue;
+        if (is_active_steam_user(a)) continue;
         if (is_manually_connected(*this, a.id)) continue;
-        // Gate on the last *validation* (set on both Valid and Revoked) so a known-revoked
-        // token isn't re-checked every sweep, and a never-validated one always runs.
+
         if (!force && a.nfa_last_validated_unix != 0 &&
             now - a.nfa_last_validated_unix < ttl)
-            continue;  // validated recently
+            continue;
         queue.push_back(a.id);
     }
     return queue;
@@ -514,9 +478,7 @@ void AppState::start_gc_validate(bool force) {
 
 void AppState::start_gc_validate_feed(std::vector<std::string> ids) {
     if (ids.empty()) return;
-    // Owns the shared refresh_all counter for its accounts, so replace any in-flight sweep
-    // (e.g. a startup validate) rather than bailing -- otherwise those accounts would never
-    // feed the counter and the denominator would stick.
+
     if (gc_validate.client) cs2_gc::retire(std::move(gc_validate.client));
     gc_validate = GcValidate{};
     gc_validate.active = true;
@@ -530,14 +492,12 @@ void AppState::start_gc_validate_feed(std::vector<std::string> ids) {
 void AppState::queue_gc_validate(const std::string& account_id) {
     core::Account* a = find_account(account_id);
     if (a == nullptr || a->steam_id_64 == 0) return;
-    // Works for NFA/cached (refresh_token) and full-access (cm_refresh_token) alike -- an
-    // own-session GC pull for one account (cooldown + ranks/medals). Needs a client-audience
-    // token, and never fights a live/manual session.
+
     if (cs2_client_token(*a).empty()) return;
     if (is_active_steam_user(*a) || is_manually_connected(*this, account_id)) return;
     if (gc_validate.active) {
         for (const auto& id : gc_validate.queue)
-            if (id == account_id) return;  // already queued
+            if (id == account_id) return;
         gc_validate.queue.push_back(account_id);
         return;
     }
@@ -553,13 +513,11 @@ void AppState::tick_gc_validate() {
     if (!v.active) return;
     const auto now = steady_clock::now();
 
-    // Between accounts (no live client): start the next one once the stagger has elapsed.
     if (!v.client) {
         if (now >= v.resume_at) begin_validate(*this);
         return;
     }
 
-    // Issue the own-profile pull exactly once, after the GC reports Ready.
     if (v.connected && !v.pull_issued && v.client) {
         v.client->pull_profiles({v.current_account_id});
         v.pull_issued = true;
@@ -568,30 +526,24 @@ void AppState::tick_gc_validate() {
     const bool timed_out = now - v.phase_started > kValidateTimeout;
     if (!v.finished && !timed_out) return;
 
-    // Record the token-validity result for the current account. Only NFA/cached accounts carry
-    // an nfa_status -- a full-access account pulled here (per-account refresh) just gets its GC
-    // profile via on_profile, no token bookkeeping.
     if (auto* a = find_account(v.current_id); a != nullptr && a->is_nfa) {
         const core::NfaTokenStatus prev = a->nfa_status;
         if (v.logon_seen && v.logon_eresult == 1) {
             a->nfa_status = core::NfaTokenStatus::Valid;
             a->nfa_last_validated_unix = now_unix();
         } else if (v.logon_seen && v.logon_eresult != 0) {
-            // Steam actively rejected the logon. The sweep is one-at-a-time + TTL-gated so
-            // we never rate-limit ourselves, so a rejection means the token is genuinely bad.
+
             a->nfa_status = core::NfaTokenStatus::Revoked;
             a->nfa_last_validated_unix = now_unix();
         }
-        // else: no CM response (transient) -> leave the prior status untouched.
+
         if (a->nfa_status != prev) {
             vault_dirty = true;
             save_vault_if_dirty();
             SAM_LOG_INFO("gc-validate: '{}' -> {}", a->login,
                          a->nfa_status == core::NfaTokenStatus::Valid ? "Valid" : "Revoked");
         }
-        // Notify only when a token *transitions* into revoked (not every time an already-
-        // revoked account is re-checked); clear the flag when it validates again so a later
-        // revocation re-notifies. Shares the dead-token de-dupe set.
+
         if (a->nfa_status == core::NfaTokenStatus::Valid) {
             nfa_dead_notified.erase(a->id);
         } else if (a->nfa_status == core::NfaTokenStatus::Revoked &&
@@ -624,12 +576,10 @@ void AppState::cancel_gc_validate() {
 
 void AppState::refresh_gc_all(bool announce) {
     if (!settings.cs2_gc.enabled) return;
-    // Full-access accounts: one puller batch-pulls every stale foreign profile.
-    // NFA/cached accounts: each does its own-session login (also captures cooldown).
+
     start_gc_autopull();
-    start_gc_validate(/*force=*/false);
-    // Neither machine armed -> everything was within the cache window. Let the user know a
-    // click did something rather than appearing to no-op (manual click only).
+    start_gc_validate(false);
+
     if (announce && !gc_autopull.active && !gc_validate.active) {
         ui::widgets::ToastItem t;
         t.id = "refresh-gc-uptodate";

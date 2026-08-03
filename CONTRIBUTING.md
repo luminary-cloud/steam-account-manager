@@ -35,8 +35,9 @@ Pick **`Release | x64`** and build (F7). The binary lands at
 - The project builds at `/W4` with warnings treated as errors, so a new warning
   breaks the build. CI (`.github/workflows/build.yml`) builds the same Release x64
   config on every push and pull request.
-- Keep comments minimal and factual. Match the surrounding code; do not add
-  decorative or restating comments.
+- Comments live in headers. A `.cpp` file carries no comments at all, apart from the
+  `}  // namespace ...` markers that close a namespace. Document a function where it
+  is declared, and keep that documentation factual rather than decorative.
 
 ## Project files
 

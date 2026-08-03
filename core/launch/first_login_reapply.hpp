@@ -5,11 +5,27 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "core/account_store/account.hpp"
 #include "core/hwid/hwid_profile.hpp"
+#include "core/launch/steam_launcher.hpp"     // LaunchOptions
+#include "core/steam_local/login_prefs.hpp"   // LoginConfigPresence
 
 namespace sam::launch::first_login_reapply {
+
+// The per-account settings a first login would wipe, so they have to be re-applied after it.
+struct DeferredPrefs {
+    bool launch_options = false;
+    bool news = false;
+    bool cloud = false;
+    bool persona = false;
+    bool remote_play = false;
+
+    bool any() const {
+        return launch_options || news || cloud || persona || remote_play;
+    }
+};
 
 // A first login (no per-user config yet) is initialized from scratch by Steam, which
 // overwrites anything the launcher pre-wrote while Steam was down. Those settings are
@@ -22,10 +38,8 @@ struct Params {
     std::uint64_t steam_id_64 = 0;
     std::string login_lower;              // lowercased Steam account name
 
-    std::string cs2_launch_options;       // read only when apply_launch_options
-    bool apply_launch_options = false;
-    bool apply_news = false;
-    bool apply_cloud = false;
+    std::string cs2_launch_options;       // read only when deferred.launch_options
+    DeferredPrefs deferred;
 
     // 0: the caller already confirmed the sign-in (the login driver watches the login
     // window). Non-zero: poll the registry's ActiveUser for this many seconds first and
@@ -52,6 +66,14 @@ struct Params {
     std::optional<core::hwid::HwidProfile> hwid;  // re-injected into the relaunched steam.exe
     std::uint32_t hwid_mask = 0x3FFu;
 };
+
+// Writes every per-account setting in `opts` that the upcoming sign-in will leave alone, and
+// returns the ones a first login would wipe for the caller to defer into Params. Steam must
+// already be shut down. `log_tag` prefixes the warnings so the two sign-in paths stay
+// distinguishable in the log.
+DeferredPrefs apply_login_prefs(std::uint64_t steam_id_64, const LaunchOptions& opts,
+                                const steam_local::LoginConfigPresence& presence,
+                                std::string_view log_tag);
 
 // Blocks; call from a detached worker, never the UI thread. Must not touch UI/vault state.
 // `still_current` returns false once a newer launch supersedes this one, at which point the

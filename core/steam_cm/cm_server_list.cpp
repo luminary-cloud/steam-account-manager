@@ -15,8 +15,7 @@ std::vector<CmServer> fetch_cm_list() {
     req.method = http::Method::Get;
     req.url = "https://api.steampowered.com/ISteamDirectory/GetCMListForConnect/v1/"
               "?cmtype=websockets&format=json";
-    // Fail fast on a bad network rather than stacking 15s x retries; a discarded
-    // connect is then quick to wind down.
+
     req.timeout_seconds = 8;
     req.max_retries = 1;
 

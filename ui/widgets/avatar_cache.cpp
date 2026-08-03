@@ -125,7 +125,7 @@ ID3D11ShaderResourceView* texture_for(std::string_view url) {
 
 ID3D11ShaderResourceView* texture_for_file(std::string_view abs_path) {
     if (abs_path.empty()) return nullptr;
-    // Prefix keeps local paths from colliding with URL keys and hitting the HTTP path.
+
     const std::string key = "file://" + std::string(abs_path);
     const std::string path(abs_path);
 

@@ -15,6 +15,10 @@ struct ToastItem {
     std::string account_id;     // empty for non-account toasts
     bool is_warning = false;    // false = danger styling
     ToastClickAction on_click_action = ToastClickAction::None;
+    // Which settings tab a Settings-action toast opens: a screens::SettingsCategory value,
+    // as an int so this header doesn't have to pull in the settings screen. Ignored unless
+    // on_click_action is Settings.
+    int settings_category = 0;
     std::int64_t expires_at_unix = 0;
 };
 

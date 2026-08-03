@@ -15,6 +15,7 @@
 #include "core/cs2_config/workshop_block.hpp"
 #include "core/log.hpp"
 #include "platform/paths.hpp"
+#include "platform/process.hpp"
 #include "platform/window_affinity.hpp"
 #include "ui/fonts.hpp"
 #include "ui/screens/settings_sections.hpp"
@@ -25,9 +26,6 @@ namespace sam::ui::screens {
 
 namespace {
 
-// Settings are per-vault, bar the handful that can't be (see app/settings.hpp).
-// Tag those, or changing one in this vault and finding it already changed in the
-// next reads as a bug.
 void global_badge() {
     ImGui::SameLine();
     ImGui::TextDisabled("(global)");
@@ -38,19 +36,16 @@ void draw_clipboard_lock_section(app::AppState& state) {
     separator_text("Clipboard & auto-lock");
     ImGui::SetNextItemWidth(200);
     ImGui::SliderInt("Clipboard auto-clear (s)", &state.settings.clipboard_clear_seconds, 10, 120);
-    hover_tooltip("Passwords and Steam Guard codes copied from the app are wiped from the "
-                  "clipboard after this many seconds.");
+    hover_tooltip("Wipes copied passwords and codes from the clipboard after this long.");
     ImGui::SetNextItemWidth(200);
     ImGui::SliderInt("Auto-lock (minutes)", &state.settings.auto_lock_minutes, 0, 240);
-    hover_tooltip("Re-lock the vault after this many idle minutes. 0 disables auto-lock for the "
-                  "current session.");
+    hover_tooltip("Re-locks the vault after this long idle. 0 disables it.");
 }
 
 void draw_updates_section(app::AppState& state) {
     separator_text("Updates");
     ImGui::Checkbox("Check for updates on launch", &state.settings.check_updates_on_launch);
-    hover_tooltip("On launch, checks GitHub for a newer release and shows an \"Update available\" "
-                  "prompt if one exists. No account data is sent.");
+    hover_tooltip("Checks GitHub for a newer release at startup. No account data is sent.");
     global_badge();
 }
 
@@ -58,38 +53,77 @@ void draw_appearance_section(app::AppState& state) {
     {
         int view_idx = static_cast<int>(state.settings.accounts_view);
         ImGui::SetNextItemWidth(200);
-        if (ImGui::Combo("Accounts view", &view_idx, "Grid\0List\0")) {
+        if (styled_combo("Accounts view", &view_idx, "Grid\0List\0")) {
             state.settings.accounts_view = (view_idx == 1)
                 ? app::AccountsViewMode::List
                 : app::AccountsViewMode::Grid;
         }
-        hover_tooltip("Grid: responsive card grid (the default). "
-                      "List: two-pane layout with user-created groups on the left "
-                      "and the selected account on the right.");
+        hover_tooltip("Grid: card grid. List: two-pane layout with groups on the left.");
     }
     ImGui::Checkbox("Hide account notes", &state.settings.hide_notes);
-    hover_tooltip("Hides account notes in grid and list views, including the selected "
-                  "account's detail panel. Notes stay editable on the add/edit screen.");
+    hover_tooltip("Hides notes everywhere. They stay editable on the add/edit screen.");
+}
+
+void draw_safe_mode_section(app::AppState& state) {
+    separator_text("Safe mode");
+
+    bool on = state.settings.safe_mode;
+    if (ImGui::Checkbox("Safe mode", &on)) {
+        if (on) {
+            state.settings.safe_mode = true;
+            state.save_settings();
+        } else {
+
+            ImGui::OpenPopup("Disable safe mode?");
+        }
+    }
+    hover_tooltip("Hides and disables the HWID spoofer, the external CS2 loaders and the "
+                  "tracer cleaner. Nothing is erased; turning it off restores everything. "
+                  "Per-vault.");
+
+    if (state.settings.safe_mode) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
+        ImGui::TextWrapped("On. No launch injects the HWID spoofer or runs an external "
+                           "loader, and the tracer cleaner never runs, whatever they are "
+                           "set to.");
+        ImGui::PopStyleColor();
+    }
+
+    if (begin_styled_modal("Disable safe mode?")) {
+        ImGui::TextWrapped("This brings back the HWID spoofer, the external CS2 loaders "
+                           "(gamesense, luminary) and the tracer cleaner, along with every "
+                           "account's stored HWID profile and launch method. Launching an "
+                           "account will inject and run them again, and any cleaner trigger "
+                           "you armed will start firing.");
+        ImGui::Spacing();
+        if (action_button("Cancel", ImVec2(110, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (action_button("Disable safe mode", ImVec2(160, 0))) {
+            state.settings.safe_mode = false;
+            state.save_settings();
+            ImGui::CloseCurrentPopup();
+        }
+        end_styled_modal();
+    }
 }
 
 void draw_privacy_section(app::AppState& state) {
     separator_text("Privacy");
     if (ImGui::Checkbox("Privacy mode - hide login names", &state.settings.privacy_mode)) {
-        // Reset per-account reveals on either toggle direction.
+
         state.clear_session_secrets();
     }
-    hover_tooltip("Replaces account login names with <hidden> everywhere they appear. Click a "
-                  "redacted name to reveal that one account for the rest of the session; click "
-                  "again to re-hide. Reveals are cleared when the vault locks.");
+    hover_tooltip("Replaces login names with <hidden>. Click one to reveal it until the "
+                  "vault locks.");
 
     if (ImGui::Checkbox("Hide from screen capture (streamproof)", &state.settings.streamproof)) {
         platform::set_capture_excluded(state.main_hwnd, state.settings.streamproof);
         state.save_settings();
     }
-    hover_tooltip("Excludes this window from screen-capture software (OBS, Discord, Snipping "
-                  "Tool) - they record a blank where the window is. It stays visible on your "
-                  "monitor. Requires Windows 10 2004 or newer; some hardware capture cards may "
-                  "still see it.");
+    hover_tooltip("Capture software (OBS, Discord) records a blank where the window is. "
+                  "Still visible on your monitor. Needs Windows 10 2004 or newer.");
 }
 
 void draw_steam_login_section(app::AppState& state) {
@@ -98,53 +132,54 @@ void draw_steam_login_section(app::AppState& state) {
     {
         int method = static_cast<int>(state.settings.sign_in_method);
         ImGui::SetNextItemWidth(200);
-        if (ImGui::Combo("Sign-in method", &method,
+        if (styled_combo("Sign-in method", &method,
                          "Sign-in driver\0Token injection\0")) {
             state.settings.sign_in_method = static_cast<app::SignInMethod>(method);
             state.save_settings();
         }
-        hover_tooltip("Sign-in driver: automates the Steam login window (types password and "
-                      "Steam Guard code). Token injection: writes a saved login token directly "
-                      "into Steam's config so it auto-signs in without a login window. Token "
-                      "injection requires a stored password to mint the token on first use. "
-                      "NFA accounts always use token injection regardless of this setting.");
+        hover_tooltip("Driver types into Steam's login window. Token injection skips the "
+                      "window, but needs a stored password to mint the token once.");
     }
 
     if (ImGui::Checkbox("Disable Steam Cloud on login",
                         &state.settings.disable_cloud_on_login)) {
         state.save_settings();
     }
-    hover_tooltip("When you launch an account, set CloudEnabled=0 for it (Steam's \"Enable "
-                  "Steam Cloud\" off). Applies to every account you launch. Turning this off "
-                  "does not re-enable cloud; it just stops the app touching the file. Note: "
-                  "this flips the account's account-wide cloud setting.");
+    hover_tooltip("Turns Steam Cloud off for every account you launch. This is an "
+                  "account-wide Steam setting, and it is not put back.");
 
     if (ImGui::Checkbox("Disable new-release news on login",
                         &state.settings.disable_news_on_login)) {
         state.save_settings();
     }
-    hover_tooltip("When you launch an account, set NotifyAvailableGames=0 (Steam's \"Notify "
-                  "me about additions or changes to my games, new releases\" off). Applies to "
-                  "every account you launch; turning it off leaves Steam's setting as-is.");
+    hover_tooltip("Turns off new-release notifications for every account you launch. "
+                  "Not put back afterwards.");
+
+    if (ImGui::Checkbox("Sign in as Invisible", &state.settings.login_invisible)) {
+        state.save_settings();
+    }
+    hover_tooltip("Sets friends status to Invisible before sign-in, so switching never "
+                  "flashes an account online. Not put back afterwards.");
+
+    if (ImGui::Checkbox("Disable Remote Play on login",
+                        &state.settings.disable_remote_play_on_login)) {
+        state.save_settings();
+    }
+    hover_tooltip("Turns off Remote Play for every account you launch. Not put back "
+                  "afterwards.");
 
     if (ImGui::Checkbox("Disable CS2 workshop map downloads on login",
                         &state.settings.disable_workshop_on_login)) {
         state.save_settings();
     }
-    hover_tooltip("When you launch an account, stop its subscribed CS2 workshop maps from "
-                  "downloading: the shared appworkshop_730.acf is stripped of that account's "
-                  "not-yet-installed items and locked read-only. Applies to every account you "
-                  "launch. Subscriptions are kept; turning it off unlocks the file on the next "
-                  "launch. Note: the acf is install-wide, so while on it also pauses workshop "
-                  "downloads for your other accounts.");
+    hover_tooltip("Stops subscribed workshop maps downloading, so CS2 starts straight "
+                  "away. Subscriptions are kept and restored on the next launch.");
 
     if (ImGui::Button("Re-enable Steam workshop downloads")) {
-        const auto r = cs2_config::unlock_workshop_block();
-        SAM_LOG_INFO("settings: unlock workshop downloads -> ok={} ({})", r.ok, r.message);
+        const auto r = cs2_config::clear_all_workshop_blocks();
+        SAM_LOG_INFO("settings: clear workshop blocks -> ok={} ({})", r.ok, r.message);
     }
-    hover_tooltip("Manually clears the read-only lock the option above places on Steam's "
-                  "appworkshop_730.acf, so Steam downloads subscribed CS2 workshop maps "
-                  "normally again. Launching an account with the toggle off also clears it.");
+    hover_tooltip("Restores every account's workshop subscriptions on this PC.");
 
     {
         const bool token_mode =
@@ -154,10 +189,8 @@ void draw_steam_login_section(app::AppState& state) {
                             &state.settings.remember_password_on_login)) {
             state.save_settings();
         }
-        hover_tooltip("Ticks Steam's \"Remember me\" box when signing a password account in, so "
-                      "Steam keeps the saved login. Turn off to have Steam forget the session "
-                      "after sign-in. Token injection always needs a remembered session, so this "
-                      "is ignored when using that method.");
+        hover_tooltip("Ticks Steam's \"Remember me\" box so the session is kept. "
+                      "Ignored by token injection, which always needs one.");
         ImGui::EndDisabled();
     }
 }
@@ -165,9 +198,8 @@ void draw_steam_login_section(app::AppState& state) {
 void draw_cs2_gc_section(app::AppState& state) {
     separator_text("CS2 Game Coordinator");
     ImGui::Checkbox("Enable CS2 tab", &state.settings.cs2_gc.enabled);
-    hover_tooltip("Shows the CS2 tab in the sidebar and lets the app open a live Game "
-                  "Coordinator connection to manage inventory and weekly drops. Turning this "
-                  "off hides the tab and closes any active connection.");
+    hover_tooltip("Shows the CS2 tab and allows a live Game Coordinator connection for "
+                  "inventory and weekly drops.");
     ImGui::BeginDisabled(!state.settings.cs2_gc.enabled);
     ImGui::Checkbox("Show weekly drop card", &state.settings.cs2_gc.show_weekly_drop);
     ImGui::Checkbox("Show weekly mission card", &state.settings.cs2_gc.show_weekly_mission);
@@ -175,44 +207,57 @@ void draw_cs2_gc_section(app::AppState& state) {
     ImGui::Checkbox("Show storage units card", &state.settings.cs2_gc.show_storage_units);
     ImGui::Checkbox("Mark weekly drop claimed automatically",
                     &state.settings.cs2_gc.auto_mark_claimed);
-    hover_tooltip("When connected, keep the account-list weekly-drop marker in step with the "
-                  "GC: light it once this week's drop is gone, and clear it when a new week "
-                  "resets. Off leaves the marker to the manual \"Mark claimed\" action only.");
+    hover_tooltip("Keeps the weekly-drop marker in step with the GC while connected. "
+                  "Off leaves it to the manual \"Mark claimed\" action.");
     ImGui::Checkbox("Auto-refresh on startup",
                     &state.settings.cs2_gc.auto_pull_on_startup);
-    hover_tooltip("On launch, run the Refresh all + Refresh GC sweeps automatically: Steam data, "
-                  "GCPD (full-access), CS2 GC data and the NFA/cached competitive cooldown. "
-                  "Signs in where needed, skips the account signed in to Steam on this PC and "
-                  "anything still within its cache window (so a quick restart does nothing). "
-                  "External funds are not fetched automatically.");
+    hover_tooltip("Runs Refresh all and Refresh GC at startup, signing in where needed. "
+                  "Skips anything still cached. External funds are never fetched.");
     ImGui::SetNextItemWidth(200);
     ImGui::SliderInt("GC cache duration (hours)", &state.settings.cs2_gc.cache_hours, 1, 24);
-    hover_tooltip("How long a pulled account stays cached before auto-pull will refresh it. "
-                  "The cache is saved to the vault, so it survives restarts.");
+    hover_tooltip("How long GC data stays cached before auto-pull refreshes it.");
     ImGui::EndDisabled();
 }
 
 void draw_account_info_section(app::AppState& state) {
     separator_text("Account info to display");
+
     if (ImGui::BeginTable("##info-grid", 3, ImGuiTableFlags_SizingStretchSame)) {
+        const char* kWebApi = "Needs a Steam Web API key, set under Network & Data.";
+        const char* kGcpd   = "Needs the GCPD scraper, enabled under Network & Data.";
+        const char* kGc     = "Needs the CS2 Game Coordinator, enabled under CS2.";
+
         ImGui::TableNextColumn(); ImGui::Checkbox("VAC ban",            &state.settings.info.show_vac);
+        hover_tooltip(kWebApi);
         ImGui::TableNextColumn(); ImGui::Checkbox("Game ban",           &state.settings.info.show_game_ban);
+        hover_tooltip(kWebApi);
         ImGui::TableNextColumn(); ImGui::Checkbox("Community ban",      &state.settings.info.show_community_ban);
+        hover_tooltip(kWebApi);
 
         ImGui::TableNextColumn(); ImGui::Checkbox("Trade ban",          &state.settings.info.show_trade_ban);
+        hover_tooltip(kWebApi);
         ImGui::TableNextColumn(); ImGui::Checkbox("Steam level",        &state.settings.info.show_steam_level);
+        hover_tooltip(kWebApi);
         ImGui::TableNextColumn(); ImGui::Checkbox("Owned games count",  &state.settings.info.show_owned_games);
+        hover_tooltip(kWebApi);
         ImGui::TableNextColumn(); ImGui::Checkbox("Steam ID",           &state.settings.info.show_steam_id);
 
-        // Populated by the GCPD scraper (gcpd_enabled below); needs a fresh login.
         ImGui::TableNextColumn(); ImGui::Checkbox("Premier rating",     &state.settings.info.show_premier);
+        hover_tooltip(kGcpd);
         ImGui::TableNextColumn(); ImGui::Checkbox("Wingman rank",       &state.settings.info.show_wingman);
+        hover_tooltip(kGcpd);
 
         ImGui::TableNextColumn(); ImGui::Checkbox("Prime status",       &state.settings.info.show_prime);
+        hover_tooltip("Inferred from CS2 level and XP, so it needs the GCPD scraper or the GC.");
         ImGui::TableNextColumn(); ImGui::Checkbox("VAC-Live indicator", &state.settings.info.show_vac_live);
+        hover_tooltip("VAC ban seen by the CS2 Game Coordinator, usually before the Web API.");
         ImGui::TableNextColumn(); ImGui::Checkbox("Cooldown countdown", &state.settings.info.show_cooldown);
+        hover_tooltip(kGc);
         ImGui::TableNextColumn(); ImGui::Checkbox("Weekly XP drop",     &state.settings.info.show_weekly_drop);
+        hover_tooltip(kGc);
         ImGui::TableNextColumn(); ImGui::Checkbox("External funds",     &state.settings.info.show_external_funds);
+        hover_tooltip("Filled by Refresh spent on the accounts toolbar, which signs in to "
+                      "each account.");
 
         ImGui::EndTable();
     }
@@ -231,46 +276,100 @@ void draw_integration_section(app::AppState& state) {
     if (action_button("Get key")) {
         open_url("https://steamcommunity.com/dev/apikey");
     }
-    hover_tooltip("Get a key at steamcommunity.com/dev/apikey. Used by the public-data refresh "
-                  "(level, owned games, ban status). Stored encrypted with the vault.");
+    hover_tooltip("Needed for bans, level and owned games. Stored encrypted with the vault.");
     ImGui::Checkbox("Refresh on launch", &state.settings.refresh_on_launch);
-    hover_tooltip("Re-query the Steam Web API for every account on startup. Off = no network "
-                  "calls at launch.");
+    hover_tooltip("Re-queries the Steam Web API for every account at startup.");
     ImGui::Checkbox("GCPD scraper", &state.settings.gcpd_enabled);
-    hover_tooltip("Populates Premier rating, Wingman rank, Prime status, and competitive "
-                  "cooldown by scraping the Game Coordinator Personal Data page. Requires a "
-                  "valid steamLoginSecure cookie (use the Full Login wizard in Add Account).");
+    hover_tooltip("Scrapes Premier rating, Wingman rank, Prime and cooldown. "
+                  "Needs a full login (Add Account > Full Login).");
 
     ImGui::SetNextItemWidth(200);
     ImGui::SliderInt("Steam data cache (hours)", &state.settings.steam_cache_hours, 1, 24);
-    hover_tooltip("Global 'refresh only if older than X' for the Steam Web API data (bans, "
-                  "level, games, summary) -- any batch/startup/auto refresh skips accounts "
-                  "newer than this, like the GC cache. A manual single-account Refresh forces.");
+    hover_tooltip("Batch refreshes skip accounts newer than this. A manual single-account "
+                  "Refresh always forces.");
 
     separator_text("Auto-refresh");
     ImGui::Checkbox("Auto-refresh while open", &state.settings.auto_refresh_enabled);
-    hover_tooltip("Every X minutes, refresh each account whose Steam or GC cache has expired "
-                  "(medals, ranks, and NFA/cached token validation), skipping the rest. Never "
-                  "runs the balance or GCPD scrapes.");
+    hover_tooltip("Refreshes accounts whose cache has expired, on a timer. Never runs "
+                  "the funds or GCPD scrapes.");
     ImGui::BeginDisabled(!state.settings.auto_refresh_enabled);
     ImGui::SetNextItemWidth(200);
     ImGui::SliderInt("Refresh interval (minutes)", &state.settings.auto_refresh_minutes, 10, 720);
     ImGui::EndDisabled();
 }
 
+void restart_elevated(app::AppState& state) {
+    if (platform::process::relaunch_elevated(L"--switch")) {
+        PostMessageW(state.main_hwnd, WM_CLOSE, 0, 0);
+    }
+}
+
+void draw_admin_section(app::AppState& state) {
+    separator_text("Administrator");
+
+    if (ImGui::Checkbox("Run as administrator", &state.settings.run_as_admin)) {
+        state.save_settings();
+        if (state.settings.run_as_admin && !state.is_elevated) {
+            ImGui::OpenPopup("Restart as administrator?");
+        } else if (!state.settings.run_as_admin && state.is_elevated) {
+            ImGui::OpenPopup("Close to drop administrator?");
+        }
+    }
+    hover_tooltip("Shows a UAC prompt at every launch. Only the logon task below and an "
+                  "elevated Steam need it; everything else works either way.");
+    global_badge();
+
+    if (state.settings.run_as_admin && !state.is_elevated) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::warning());
+        ImGui::TextWrapped("Not running as administrator this session.");
+        ImGui::PopStyleColor();
+        if (action_button("Restart as administrator", ImVec2(210, 0))) restart_elevated(state);
+    }
+
+    if (begin_styled_modal("Restart as administrator?")) {
+        ImGui::TextWrapped("A process can't gain administrator rights while it's running, so "
+                           "this takes effect on the next launch. Restart now?");
+        ImGui::Spacing();
+        if (action_button("Later", ImVec2(110, 0))) ImGui::CloseCurrentPopup();
+        ImGui::SameLine();
+        if (action_button("Restart now", ImVec2(140, 0))) {
+            ImGui::CloseCurrentPopup();
+            restart_elevated(state);
+        }
+        end_styled_modal();
+    }
+
+    if (begin_styled_modal("Close to drop administrator?")) {
+        ImGui::TextWrapped("This session stays elevated. An elevated process can't restart "
+                           "itself as a normal one. Close the app and open it again, and it "
+                           "will start without the UAC prompt.");
+        ImGui::Spacing();
+        if (action_button("Keep it open", ImVec2(140, 0))) ImGui::CloseCurrentPopup();
+        ImGui::SameLine();
+        if (action_button("Close now", ImVec2(110, 0))) {
+            ImGui::CloseCurrentPopup();
+            PostMessageW(state.main_hwnd, WM_CLOSE, 0, 0);
+        }
+        end_styled_modal();
+    }
+}
+
+bool s_logon_task_ok = true;
+
 void draw_startup_section(app::AppState& state) {
     separator_text("Startup");
 
+    ImGui::BeginDisabled(!state.is_elevated);
+
     int mode = static_cast<int>(state.settings.logon_action);
     ImGui::SetNextItemWidth(260);
-    if (ImGui::Combo("At Windows logon", &mode,
+    if (styled_combo("At Windows logon", &mode,
                      "Do nothing\0Refresh accounts in the background\0Open the app\0")) {
         const auto prev = state.settings.logon_action;
         state.settings.logon_action = static_cast<app::LogonAction>(mode);
 
         if (state.settings.logon_action == app::LogonAction::BackgroundRefresh) {
-            // Background refresh needs the vault to auto-unlock: enable
-            // refresh-on-launch and the DPAPI password cache alongside it.
+
             state.settings.refresh_on_launch = true;
             if (settings_detail::write_master_pw_cache(state))
                 state.settings.remember_master_password = true;
@@ -278,28 +377,24 @@ void draw_startup_section(app::AppState& state) {
                 SAM_LOG_ERROR("startup: background refresh needs the master-password cache");
                 state.settings.logon_action = prev;
             } else if (state.vault_registry.vaults.size() > 1) {
-                // The headless run opens the auto-open vault; point it at the one
-                // whose cache we just wrote (the currently active vault).
+
                 app::set_auto_open(state.vault_registry, platform::active_vault_id());
             }
         }
-        state.sync_logon_task();
+        s_logon_task_ok = state.sync_logon_task();
         state.save_settings();
     }
-    hover_tooltip("Do nothing: no logon task. Refresh accounts in the background: runs this app "
-                  "hidden at logon with admin rights, refreshes every account, shows a Windows "
-                  "notification for any new ban or cooldown, then exits. Open the app: launches "
-                  "the full window at logon. The app is requireAdministrator, so this uses a "
-                  "Scheduled Task (the Run key can't auto-start elevated apps).");
+    hover_tooltip("Background refresh runs hidden at logon, notifies on new bans or "
+                  "cooldowns, then exits. Open the app launches the full window.");
     global_badge();
 
     if (state.settings.logon_action == app::LogonAction::OpenApp) {
         if (ImGui::Checkbox("Start minimized", &state.settings.start_minimized)) {
-            state.sync_logon_task();  // the task's --minimized argument changes
+
+            s_logon_task_ok = state.sync_logon_task();
             state.save_settings();
         }
-        hover_tooltip("Opens minimized to the taskbar at logon. Manual launches always open "
-                      "normally.");
+        hover_tooltip("Only at logon. Manual launches always open normally.");
         global_badge();
     }
 
@@ -310,13 +405,25 @@ void draw_startup_section(app::AppState& state) {
                            "then open the vault without the password.");
         ImGui::PopStyleColor();
     }
+
+    ImGui::EndDisabled();
+
+    if (!state.is_elevated) {
+        ImGui::TextDisabled("Requires administrator.");
+        ImGui::SameLine();
+        if (action_button("Restart as administrator", ImVec2(210, 0))) restart_elevated(state);
+    } else if (!s_logon_task_ok) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
+        ImGui::TextWrapped("Windows Task Scheduler refused the logon task. See the log for "
+                           "the error code.");
+        ImGui::PopStyleColor();
+    }
 }
 
 void draw_notifications_section(app::AppState& state) {
     ImGui::Checkbox("Detect bans and cooldown changes", &state.settings.notifications.enabled);
-    hover_tooltip("When on, each refresh compares the new ban / cooldown state against the "
-                  "previous snapshot and records a notification if anything changed. The "
-                  "first refresh after adding an account just records the snapshot.");
+    hover_tooltip("Each refresh compares against the previous snapshot. The first refresh "
+                  "after adding an account only records the baseline.");
     ImGui::BeginDisabled(!state.settings.notifications.enabled);
     if (ImGui::BeginTable("##notif-surface", 3, ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableNextColumn();
@@ -328,8 +435,8 @@ void draw_notifications_section(app::AppState& state) {
         ImGui::TableNextColumn();
         ImGui::Checkbox("Show Windows notifications",
                         &state.settings.notifications.surface_windows_notification);
-        hover_tooltip("Out-of-app tray balloon for new bans / cooldowns. Suppressed while this "
-                      "window is focused; mainly for the background logon refresh.");
+        hover_tooltip("Tray balloon for new bans and cooldowns. Suppressed while this "
+                      "window is focused.");
         ImGui::EndTable();
     }
     ImGui::Spacing();
@@ -352,8 +459,8 @@ void draw_notifications_section(app::AppState& state) {
     ImGui::SetNextItemWidth(180);
     ImGui::SliderInt("Coalesce above N accounts",
                      &state.settings.notifications.coalesce_threshold, 2, 50);
-    hover_tooltip("If more than this many accounts change in one refresh, a single summary "
-                  "toast replaces the per-account toasts. Per-account badges still appear.");
+    hover_tooltip("Above this many changes in one refresh, a single summary toast "
+                  "replaces the per-account ones. Badges still appear.");
     ImGui::SetNextItemWidth(180);
     ImGui::SliderInt("Keep history (days)",
                      &state.settings.notifications.retention_days, 1, 365);
@@ -364,20 +471,16 @@ void draw_list_view_section(app::AppState& state) {
     separator_text("List view");
     ImGui::Checkbox("Show cooldown marker on rows",
                     &state.settings.list_view.show_cooldown_marker);
-    hover_tooltip("Adds an orange exclamation mark to the right of any list row whose "
-                  "account is currently on a CS2 competitive cooldown.");
+    hover_tooltip("Orange exclamation mark on rows currently on a CS2 cooldown.");
     ImGui::Checkbox("Show unread-event badge on rows",
                     &state.settings.list_view.show_unread_badge);
-    hover_tooltip("Adds a red exclamation mark to the right of any list row that has "
-                  "un-acknowledged ban or cooldown notifications.");
+    hover_tooltip("Red exclamation mark on rows with unread ban or cooldown events.");
     ImGui::Checkbox("Show weekly-drop marker on rows",
                     &state.settings.list_view.show_weekly_drop_marker);
-    hover_tooltip("Adds a green checkmark to the right of any list row whose account is "
-                  "marked as having claimed its weekly CS2 XP drop.");
+    hover_tooltip("Green checkmark on rows whose weekly XP drop is claimed.");
     ImGui::Checkbox("Hide account name in list",
                     &state.settings.list_view.hide_account_name);
-    hover_tooltip("Hides the Steam login/account name from account-list rows. The persona name "
-                  "still shows, and the selected account's detail panel is unaffected.");
+    hover_tooltip("Hides the login name from rows. The persona name still shows.");
 }
 
 void draw_vault_section(app::AppState& state) {
@@ -387,12 +490,12 @@ void draw_vault_section(app::AppState& state) {
         if (ImGui::Checkbox("Skip master-password prompt on launch (DPAPI)",
                             &state.settings.remember_master_password)) {
             if (state.settings.remember_master_password && !prev) {
-                // Revert the toggle if the cache write fails.
+
                 if (!settings_detail::write_master_pw_cache(state)) {
                     state.settings.remember_master_password = false;
                 }
             } else if (!state.settings.remember_master_password && prev) {
-                // Delete the cache so the next launch prompts.
+
                 std::error_code ec;
                 std::filesystem::remove(app::master_pw_cache_path(), ec);
                 SAM_LOG_INFO("auto-unlock: DPAPI cache removed");
@@ -400,17 +503,11 @@ void draw_vault_section(app::AppState& state) {
             state.save_settings();
         }
     }
-    hover_tooltip("Caches your master password under your Windows account via DPAPI so the "
-                  "vault opens automatically next launch. Anyone signed in as you on this "
-                  "machine can open the vault without typing the password. Turning it off "
-                  "deletes this vault's cached password, and stops every vault opening "
-                  "automatically.");
+    hover_tooltip("Opens the vault automatically at launch. Anyone signed in as you on "
+                  "this PC can then open it without the password.");
     global_badge();
 }
 
-// Category button for the settings sub-rail, styled like the main rail nav's
-// sidebar_item (rail_nav.cpp): selected gets a faint fill + accent left bar,
-// hover gets a fainter fill. Returns true on click.
 bool category_item(const char* label, bool selected, float width) {
     const ImVec2 size{width, 32.0F};
     const ImVec2 cursor = ImGui::GetCursorScreenPos();
@@ -441,15 +538,15 @@ bool category_item(const char* label, bool selected, float width) {
 void render_general(app::AppState& state) {
     draw_updates_section(state);
     ImGui::Spacing();
-    draw_startup_section(state);
+    draw_admin_section(state);
     ImGui::Spacing();
-    settings_detail::draw_storage_section(state);
+    draw_startup_section(state);
 }
 
 void render_security(app::AppState& state) {
-    draw_clipboard_lock_section(state);
+    draw_safe_mode_section(state);
     ImGui::Spacing();
-    draw_vault_section(state);
+    draw_clipboard_lock_section(state);
     ImGui::Spacing();
     draw_privacy_section(state);
 }
@@ -476,10 +573,15 @@ void render_launch_steam(app::AppState& state) {
     draw_steam_login_section(state);
     ImGui::Spacing();
     settings_detail::draw_cs2_config_section(state);
+    if (state.settings.safe_mode) return;
     ImGui::Spacing();
     settings_detail::draw_gamesense_section(state);
     ImGui::Spacing();
     settings_detail::draw_luminary_section(state);
+}
+
+void render_cleaner(app::AppState& state) {
+    settings_detail::draw_cleaner_section(state);
 }
 
 void render_network_data(app::AppState& state) {
@@ -495,8 +597,8 @@ void render_cs2(app::AppState& state) {
 void render_hwid(app::AppState& state) {
     if (ImGui::Checkbox("Always spoof HWID", &state.settings.hwid.always_spoof))
         state.save_settings();
-    hover_tooltip("Automatically spoof hardware identifiers for every account on launch.\n"
-                  "Excluded accounts can be set via the right-click menu.");
+    hover_tooltip("Spoofs hardware identifiers for every account on launch. "
+                  "Exclude individual accounts from the right-click menu.");
 
     ImGui::Spacing();
     separator_text("Components");
@@ -617,65 +719,74 @@ void render_hwid(app::AppState& state) {
 struct CategoryDef {
     const char* label;
     void (*render)(app::AppState&);
+
+    bool unsafe = false;
 };
 
 void render_vaults(app::AppState& state) {
     settings_detail::draw_vaults_section(state);
+    ImGui::Spacing();
+    draw_vault_section(state);
+    ImGui::Spacing();
+    settings_detail::draw_storage_section(state);
 }
 
 constexpr CategoryDef kCategories[] = {
     {"General",            render_general},
-    {"Security & Privacy", render_security},
     {"Appearance",         render_appearance},
     {"Notifications",      render_notifications},
     {"Steam Guard",        render_steam_guard},
     {"Launch & Steam",     render_launch_steam},
-    {"Network & Data",     render_network_data},
     {"CS2",                render_cs2},
-    {"HWID Spoofer",       render_hwid},
+    {"Network & Data",     render_network_data},
     {"Vaults",             render_vaults},
+    {"Security & Privacy", render_security},
+    {"Cleaner",            render_cleaner,  true},
+    {"HWID Spoofer",       render_hwid,     true},
 };
 
-// Keep SettingsCategory (header) in lockstep with kCategories order/count.
-static_assert(IM_ARRAYSIZE(kCategories) == 10);
+bool category_hidden(const app::AppState& state, int i) {
+    return state.settings.safe_mode && kCategories[i].unsafe;
+}
+
+static_assert(IM_ARRAYSIZE(kCategories) == 11);
 static_assert(static_cast<int>(SettingsCategory::NetworkData) == 6);
-static_assert(static_cast<int>(SettingsCategory::Vaults) == 9);
+static_assert(static_cast<int>(SettingsCategory::Vaults) == 7);
+static_assert(static_cast<int>(SettingsCategory::Cleaner) == 9);
+static_assert(static_cast<int>(SettingsCategory::HwidSpoofer) == 10);
 
 }  // namespace
 
-// Gap above the pinned Save settings footer row.
 constexpr float kFooterGap = 8.0F;
 
 void draw_settings(app::AppState& state) {
     ImGui::TextUnformatted("Settings");
     ImGui::Spacing();
 
-    // Pin the footer: the body scrolls in a child that reserves room for everything
-    // drawn after it, so the parent doesn't grow a second scrollbar. Trailing content
-    // is the gap + button row plus three item-spacings and main_window's Dummy(0,24).
-    constexpr float kButtonRowHeight = 26.0F;  // action_button height
-    constexpr float kTrailingDummy   = 24.0F;  // main_window's Dummy after draw_screen
+    constexpr float kButtonRowHeight = 26.0F;
+    constexpr float kTrailingDummy   = 24.0F;
     const float footer_reserved = ImGui::GetStyle().ItemSpacing.y * 3.0F +
                                   kFooterGap + kButtonRowHeight + kTrailingDummy;
 
     ImGui::BeginChild("##settings-body", ImVec2(0, -footer_reserved),
                       ImGuiChildFlags_NavFlattened);
 
-    // Selected category for the sub-rail. Transient view state, kept for the
-    // session only (not persisted to settings).
     static int active_category = 0;
-    // A one-shot external request (e.g. the missing-key toast) can jump to a tab.
+
     if (state.pending_settings_category >= 0 &&
-        state.pending_settings_category < IM_ARRAYSIZE(kCategories)) {
+        state.pending_settings_category < IM_ARRAYSIZE(kCategories) &&
+        !category_hidden(state, state.pending_settings_category)) {
         active_category = state.pending_settings_category;
     }
     state.pending_settings_category = -1;
+
+    if (category_hidden(state, active_category)) active_category = 0;
     constexpr float kRailWidth = 184.0F;
 
     ImGui::BeginChild("##settings-cats", ImVec2(kRailWidth, 0), false,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     {
-        // Faint divider on the rail's right edge, matching the main rail nav.
+
         auto* draw = ImGui::GetWindowDrawList();
         const ImVec2 wp = ImGui::GetWindowPos();
         const float wh = ImGui::GetWindowSize().y;
@@ -685,6 +796,7 @@ void draw_settings(app::AppState& state) {
     }
     ImGui::Dummy(ImVec2(0.0F, 4.0F));
     for (int i = 0; i < IM_ARRAYSIZE(kCategories); ++i) {
+        if (category_hidden(state, i)) continue;
         ImGui::SetCursorPosX(8.0F);
         if (category_item(kCategories[i].label, active_category == i, kRailWidth - 16.0F)) {
             active_category = i;
@@ -696,7 +808,7 @@ void draw_settings(app::AppState& state) {
     ImGui::SameLine(0.0F, 16.0F);
 
     ImGui::BeginChild("##settings-content", ImVec2(0, 0), ImGuiChildFlags_NavFlattened);
-    // PushItemWidth doesn't carry across the child boundary; re-apply so right edges match.
+
     ImGui::PushItemWidth(-kContentPaddingX);
 
     ImFont* tf = fonts::title();
@@ -717,7 +829,6 @@ void draw_settings(app::AppState& state) {
         state.save_settings();
         ImGui::OpenPopup("Settings saved");
     }
-    hover_tooltip("Persist settings to the config directory.");
 
     if (begin_styled_modal("Settings saved")) {
         ImGui::TextWrapped("Settings saved.");

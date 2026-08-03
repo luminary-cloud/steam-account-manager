@@ -68,11 +68,15 @@ public:
     std::optional<Element> first_descendant_by_control_type(int control_type_id) const;
     std::vector<Element>   all_children() const;
     std::vector<Element>   children_by_control_type(int control_type_id) const;
+    std::vector<Element>   descendants_by_control_type(int control_type_id) const;
     std::optional<Element> first_child_by_control_type(int control_type_id) const;
 
     // False if the pattern is unsupported or the call errored.
     bool set_value(std::wstring_view text);   // ValuePattern::SetValue
     bool invoke();                             // InvokePattern::Invoke
+    // LegacyIAccessible::DoDefaultAction. Chromium exposes this on nodes whose
+    // InvokePattern call fails, so it makes a useful second attempt.
+    bool do_default_action();
 
     // TogglePattern (checkboxes). toggle_state() is nullopt when the pattern is
     // unsupported or the state is indeterminate; toggle() flips it.

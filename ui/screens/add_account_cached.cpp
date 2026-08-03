@@ -22,11 +22,9 @@ namespace add_account_detail {
 
 namespace {
 
-// A logged-in account on this PC that has a usable cached login token and isn't
-// already in the vault.
 struct CachedCandidate {
     steam_local::LocalAccount local;
-    crypto::SecureString token;     // decrypted refresh-token JWT
+    crypto::SecureString token;
     std::int64_t expires = 0;
     std::uint64_t steam_id = 0;
     bool expired = false;
@@ -38,16 +36,16 @@ void rescan(app::AppState& state, std::vector<CachedCandidate>& out) {
     const std::int64_t now = now_seconds();
     for (const auto& la : steam_local::read_loginusers()) {
         if (la.account_name.empty()) continue;
-        // Hide accounts already present in the vault.
+
         if (core::store::find_existing_account(state.vault, la.steam_id_64,
                                                la.account_name) != nullptr) {
             continue;
         }
-        // Only importable ones: must have a decryptable cached login token.
+
         auto token = steam_local::read_connect_cache_token(la.account_name);
         if (!token) continue;
         const std::int64_t exp = steam_login::jwt_expiry(*token);
-        if (exp == 0) continue;  // not a parseable JWT
+        if (exp == 0) continue;
 
         CachedCandidate c;
         c.local = la;
@@ -56,16 +54,11 @@ void rescan(app::AppState& state, std::vector<CachedCandidate>& out) {
         c.steam_id = steam_login::jwt_steam_id(*token);
         if (c.steam_id == 0) c.steam_id = la.steam_id_64;
         c.token = std::move(*token);
-        c.selected = !c.expired;  // pre-tick the ones that will work right away
+        c.selected = !c.expired;
         out.push_back(std::move(c));
     }
 }
 
-// ImGui::TextWrapped wraps at the full work rect, but separator_text insets the
-// right edge by kContentPaddingX. Push this so wrapped body text lines up with the
-// separators (and PushItemWidth(-kContentPaddingX) widgets) instead of running to
-// the window edge. Use TextUnformatted/Text after this, not TextWrapped (which
-// overrides the wrap pos).
 void push_inset_wrap() {
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() +
                            ImGui::GetContentRegionAvail().x - kContentPaddingX);
@@ -177,7 +170,7 @@ void draw_import_cached(app::AppState& state) {
     if (action_button("Import selected")) {
         imported_count = 0;
         expired_count = 0;
-        // Reserved ids stay valid even if the vaults' vectors reallocate during import.
+
         const std::string cached_group = core::store::ensure_cached_group(state.vault);
         const std::string cached_tag = core::store::ensure_cached_tag(state.vault);
         std::vector<std::string> account_ids;
@@ -185,13 +178,12 @@ void draw_import_cached(app::AppState& state) {
             if (!c.selected) continue;
             const std::string raw =
                 c.local.account_name + "----" + std::string(c.token.begin(), c.token.end());
-            const JwtImportResult r = import_jwt_token(state, raw, /*assign_nfa_group=*/false);
+            const JwtImportResult r = import_jwt_token(state, raw, false);
             if (!r.ok) continue;
             ++imported_count;
             if (r.expired) ++expired_count;
             state.nfa_dead_notified.erase(r.account_id);
-            // Override import_jwt_token's NFA group with the Cached group + tag so these
-            // are distinguishable from plain NFA-token accounts.
+
             if (core::Account* a = state.find_account(r.account_id)) {
                 a->group_id = cached_group;
                 if (std::find(a->tag_ids.begin(), a->tag_ids.end(), cached_tag) ==
@@ -208,11 +200,11 @@ void draw_import_cached(app::AppState& state) {
                 state.pull_all_for_account(account_ids.front());
             } else {
                 state.refresh_accounts_staggered(std::move(account_ids));
-                state.start_gc_validate(/*force=*/false);  // cached = NFA: validate + pull GC
+                state.start_gc_validate(false);
             }
         }
         has_summary = true;
-        // Imported accounts are now in the vault; drop them from the list.
+
         rescan(state, candidates);
     }
     ImGui::EndDisabled();

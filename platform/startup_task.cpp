@@ -26,7 +26,6 @@ using Microsoft::WRL::ComPtr;
 
 constexpr wchar_t kTaskName[] = L"Luminary Steam Account Manager";
 
-// Tolerate an existing apartment; we usually own COM on this thread.
 struct ComInit {
     HRESULT hr;
     bool owned = false;
@@ -50,8 +49,6 @@ std::wstring current_exe_path() {
     return std::wstring(buf, n);
 }
 
-// SAM-compatible name (DOMAIN\user or MicrosoftAccount\...); Task Scheduler
-// accepts it for local, domain and Microsoft accounts alike.
 std::wstring current_user_sam() {
     wchar_t buf[512];
     ULONG n = ARRAYSIZE(buf);
@@ -81,7 +78,7 @@ ComPtr<ITaskFolder> connect_root(ComPtr<ITaskService>& svc) {
     return folder;
 }
 
-bool create_task(const std::wstring& args, bool persistent) {
+bool create_task(const std::wstring& args, bool persistent, bool highest) {
     const std::wstring exe = current_exe_path();
     if (exe.empty()) return false;
 
@@ -104,14 +101,14 @@ bool create_task(const std::wstring& args, bool persistent) {
 
     if (ComPtr<IPrincipal> principal; SUCCEEDED(task->get_Principal(principal.GetAddressOf())) && principal) {
         principal->put_LogonType(TASK_LOGON_INTERACTIVE_TOKEN);
-        principal->put_RunLevel(TASK_RUNLEVEL_HIGHEST);
+        principal->put_RunLevel(highest ? TASK_RUNLEVEL_HIGHEST : TASK_RUNLEVEL_LUA);
     }
 
     if (ComPtr<ITaskSettings> settings; SUCCEEDED(task->get_Settings(settings.GetAddressOf())) && settings) {
         settings->put_StartWhenAvailable(VARIANT_TRUE);
         settings->put_DisallowStartIfOnBatteries(VARIANT_FALSE);
         settings->put_StopIfGoingOnBatteries(VARIANT_FALSE);
-        // The GUI runs indefinitely; a time limit would kill it. PT0S = no limit.
+
         settings->put_ExecutionTimeLimit(_bstr_t(persistent ? L"PT0S" : L"PT5M"));
         settings->put_MultipleInstances(TASK_INSTANCES_IGNORE_NEW);
         settings->put_AllowDemandStart(VARIANT_TRUE);
@@ -177,8 +174,8 @@ bool delete_task() {
 
 }  // namespace
 
-bool set_run_at_logon(bool enable, const std::wstring& args, bool persistent) {
-    return enable ? create_task(args, persistent) : delete_task();
+bool set_run_at_logon(bool enable, const std::wstring& args, bool persistent, bool highest) {
+    return enable ? create_task(args, persistent, highest) : delete_task();
 }
 
 bool is_run_at_logon_enabled() {

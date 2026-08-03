@@ -66,7 +66,6 @@ void enc_uint64(std::vector<std::uint8_t>& out, int field, std::uint64_t v) {
     enc_varint(out, v);
 }
 
-// fixed64: 8 bytes little-endian, wire type 1.
 void enc_fixed64(std::vector<std::uint8_t>& out, int field, std::uint64_t v) {
     enc_tag(out, field, kWireFixed64);
     for (int i = 0; i < 8; ++i) {
@@ -156,8 +155,6 @@ std::string format_post_error(const std::string& fallback, const std::string& er
     return fallback;
 }
 
-// nullopt on transport/HTTP failure or any Steam-side x-eresult error; the raw
-// x-eresult goes to *eresult_out so callers can tell rejection from unreachable.
 std::optional<std::string> post_protobuf(const std::string& path,
                                           const std::vector<std::uint8_t>& msg,
                                           const std::string& access_token = "",
@@ -170,8 +167,7 @@ std::optional<std::string> post_protobuf(const std::string& path,
     }
 
     req.headers["Content-Type"] = "application/x-www-form-urlencoded";
-    // Browser-shape headers: IAuthenticationService rate-limits non-browser
-    // clients aggressively (5/15min/IP).
+
     req.headers["Origin"]  = "https://steamcommunity.com";
     req.headers["Referer"] = "https://steamcommunity.com/login/";
     req.headers["Accept"]  = "*/*";
@@ -194,8 +190,6 @@ std::optional<std::string> post_protobuf(const std::string& path,
     return resp.body;
 }
 
-// Wire values per EAuthSessionGuardType in steammessages_auth.steamclient.proto:
-// None=1, EmailCode=2, DeviceCode=3, DeviceConfirmation=4, EmailConfirmation=5.
 constexpr std::array<std::pair<int, GuardKind>, 5> kGuardKindTable{{
     {1, GuardKind::None},
     {2, GuardKind::EmailCode},
@@ -246,25 +240,23 @@ BeginSessionResult begin_session(const MobileLogin& login) {
         return out;
     }
 
-    // device_details (field 9) is required for a session with mobileconf write
-    // capability; without it accept/reject return `{"success":false}`.
     const bool client = login.steam_client;
     std::vector<std::uint8_t> device;
     enc_string(device, 1, login.device_friendly_name);
-    enc_int32 (device, 2, client ? 1 : 3);    // platform_type: SteamClient / MobileApp
-    enc_int32 (device, 3, client ? 16 : -500);  // os_type: Windows / Android
+    enc_int32 (device, 2, client ? 1 : 3);
+    enc_int32 (device, 3, client ? 16 : -500);
 
     std::vector<std::uint8_t> msg;
     enc_string (msg, 1, login.device_friendly_name);
     enc_string (msg, 2, login.username);
     enc_string (msg, 3, encrypted);
     enc_uint64 (msg, 4, rsa->timestamp);
-    enc_bool   (msg, 5, true);              // remember_login (deprecated, harmless)
-    enc_int32  (msg, 6, client ? 1 : 3);    // platform_type: SteamClient / MobileApp
-    enc_int32  (msg, 7, 1);                 // persistence = Persistent
+    enc_bool   (msg, 5, true);
+    enc_int32  (msg, 6, client ? 1 : 3);
+    enc_int32  (msg, 7, 1);
     enc_string (msg, 8, client ? "Client" : "Mobile");
     enc_message(msg, 9, device);
-    enc_int32  (msg, 11, 0);                // language
+    enc_int32  (msg, 11, 0);
 
     std::string er;
     const auto body_opt = post_protobuf(
@@ -290,7 +282,7 @@ BeginSessionResult begin_session(const MobileLogin& login) {
         switch (field) {
             case 1:  out.client_id = std::to_string(r.varint()); break;
             case 2:  out.request_id = std::string(r.lendelim()); break;
-            case 3: { // interval is float, wire-type 5 (fixed32 IEEE-754)
+            case 3: {
                 if (wire == 5) {
                     if (r.p + 4 > r.end) { r.ok = false; break; }
                     std::uint32_t bits = 0;
@@ -360,7 +352,7 @@ bool submit_guard_code(const std::string& client_id,
     std::string er;
     const auto body_opt = post_protobuf(
         "/IAuthenticationService/UpdateAuthSessionWithSteamGuardCode/v1/", msg, "", &er);
-    // Success is an empty body + HTTP 200 + x-eresult absent/1 (code accepted).
+
     if (!body_opt) {
         if (error_out) *error_out = format_post_error(
             "UpdateAuthSessionWithSteamGuardCode rejected (HTTP/eresult error)", er);
@@ -391,7 +383,6 @@ PollResult poll_session(const std::string& client_id, const std::string& request
         return out;
     }
     const std::string& body = *body_opt;
-    // Empty body means no progress yet; caller keeps polling.
 
     Reader r{reinterpret_cast<const std::uint8_t*>(body.data()),
              reinterpret_cast<const std::uint8_t*>(body.data() + body.size())};
@@ -417,7 +408,7 @@ PollResult poll_session(const std::string& client_id, const std::string& request
         out.finished = true;
         out.ok = true;
     } else {
-        out.ok = true;  // call succeeded but no tokens yet; keep polling
+        out.ok = true;
     }
     return out;
 }
@@ -475,15 +466,11 @@ FullLoginResult run_full_login(
             result.account.access_token = std::move(poll.access_token);
             result.account.refresh_token = std::move(poll.refresh_token);
             result.account.access_token_expires = jwt_expiry(result.account.access_token);
-            // Fallback cookie for /getlist; /ajaxop needs the settoken-minted
-            // value, which the transfer_login block below upgrades to.
+
             result.account.steam_login_secure = crypto::make_secure(
                 make_steam_login_secure(begin.steam_id, result.account.access_token));
             result.account.session_id = crypto::random_session_id();
-            // finalizelogin + settoken registers the community session and mints
-            // the per-domain steamLoginSecure cookie /mobileconf/ajaxop reads.
-            // On failure the getlist cookie above still works and a later
-            // refresh/relogin retries.
+
             if (on_status) on_status("registering community session");
             std::string registered_cookie;
             if (transfer_login(begin.steam_id,
@@ -582,7 +569,7 @@ std::string default_guard_provider(
 
     if (wants_device_code && sda.has_value() && !sda->shared_secret.empty()) {
         if (!time_aligner::synced()) {
-            // Codes off an unsynced clock are rejected with EResult 88.
+
             (void)time_aligner::sync_now();
         }
         const std::string code = sda::generate_code_now(sda->shared_secret);

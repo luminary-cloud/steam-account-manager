@@ -1,7 +1,5 @@
 #include "ui/widgets/login_method_control.hpp"
 
-#include <string>
-
 #include "app/gamesense_loader.hpp"
 #include "app/luminary_loader.hpp"
 #include "ui/util.hpp"
@@ -32,6 +30,47 @@ const char* method_tooltip(core::LoginMethod m) {
             break;
     }
     return "On login: sign in only. Use the arrow to also launch CS2.";
+}
+
+void draw_sign_in_override(app::AppState& state, const core::Account& a) {
+    const app::SignInMethod def = state.settings.sign_in_method;
+    const app::SignInMethod eff = state.effective_sign_in_method(a.id);
+    const bool overridden = state.sign_in_override.count(a.id) != 0;
+
+    auto entry = [&](const char* label, app::SignInMethod m, bool capable,
+                     const char* blocked_tip, const char* override_tip) {
+
+        const bool is_default = (m == def);
+        const bool disabled = (is_default && !overridden) || !capable;
+
+        ImGui::BeginDisabled(disabled);
+        if (ImGui::Selectable(label, eff == m)) {
+            if (is_default) state.sign_in_override.erase(a.id);
+            else            state.sign_in_override[a.id] = m;
+        }
+        ImGui::EndDisabled();
+
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            if (!capable) {
+                set_tooltip("%s", blocked_tip);
+            } else if (is_default && !overridden) {
+                set_tooltip("Already the default, set in Settings > Steam login.");
+            } else if (is_default) {
+                set_tooltip("Drop the override and follow Settings again.");
+            } else {
+                set_tooltip("%s", override_tip);
+            }
+        }
+    };
+
+    const bool has_password = !a.password.empty();
+    entry("Sign-in driver", app::SignInMethod::Driver, has_password,
+          "Needs a stored password: the driver types it into Steam's login window.",
+          "Sign this account in through the login window, until the app restarts.");
+    entry("Token injection", app::SignInMethod::TokenInject,
+          has_password || app::cm_token_valid(a),
+          "Needs a stored login token, or a password to mint one from.",
+          "Sign this account in without a login window, until the app restarts.");
 }
 
 }  // namespace
@@ -77,9 +116,12 @@ bool draw_login_split_button(app::AppState& state, core::Account& a, float total
 
     const ImVec2 origin = ImGui::GetCursorScreenPos();
 
-    // Two hit regions; the unified button is painted on top.
+    const bool blocked_by_clean = state.cleaner_busy.load();
+
+    ImGui::BeginDisabled(blocked_by_clean);
     const bool login_clicked = ImGui::InvisibleButton("##login-half", ImVec2(login_w, kHeight));
-    const bool login_hovered = ImGui::IsItemHovered();
+    ImGui::EndDisabled();
+    const bool login_hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
     const bool login_active  = ImGui::IsItemActive();
     ImGui::SameLine(0.0F, 0.0F);
     const bool caret_clicked = ImGui::InvisibleButton("##caret-half", ImVec2(caret_w, kHeight));
@@ -91,7 +133,7 @@ bool draw_login_split_button(app::AppState& state, core::Account& a, float total
     const float seam_x = origin.x + login_w;
 
     dl->AddRectFilled(origin, br, ImGui::GetColorU32(ImGuiCol_Button), kRounding);
-    if (login_hovered || login_active) {
+    if (!blocked_by_clean && (login_hovered || login_active)) {
         dl->AddRectFilled(origin, ImVec2(seam_x, br.y),
                           ImGui::GetColorU32(login_active ? ImGuiCol_ButtonActive
                                                           : ImGuiCol_ButtonHovered),
@@ -110,16 +152,31 @@ bool draw_login_split_button(app::AppState& state, core::Account& a, float total
     const ImVec2 ts = ImGui::CalcTextSize(label);
     dl->AddText(ImVec2(origin.x + (login_w - ts.x) * 0.5F,
                        origin.y + (kHeight - ts.y) * 0.5F),
-                ImGui::GetColorU32(ImGuiCol_Text), label);
+                ImGui::GetColorU32(blocked_by_clean ? ImGuiCol_TextDisabled : ImGuiCol_Text),
+                label);
+
+    const core::LoginMethod eff_method =
+        core::effective_login_method(a.login_method, state.settings.safe_mode);
 
     const float cx = seam_x + caret_w * 0.5F;
     const float cy = origin.y + kHeight * 0.5F;
     const float r = 3.5F;
     dl->AddTriangleFilled(ImVec2(cx - r, cy - r * 0.5F), ImVec2(cx + r, cy - r * 0.5F),
-                          ImVec2(cx, cy + r), login_method_color(a.login_method));
+                          ImVec2(cx, cy + r), login_method_color(eff_method));
 
-    if (login_hovered) set_tooltip("%s", method_tooltip(a.login_method));
-    if (caret_hovered) set_tooltip("Choose what Login does (launch CS2, inject gamesense/luminary).");
+    if (login_hovered) {
+        if (blocked_by_clean) {
+            set_tooltip("The cleaner is running. Launching now would be undone by it.");
+        } else {
+            set_tooltip("%s", method_tooltip(eff_method));
+        }
+    }
+    if (caret_hovered) {
+        set_tooltip(state.settings.safe_mode
+            ? "Set what Login does, and override the sign-in method for this session."
+            : "Set what Login does (CS2, loaders), and override the sign-in method "
+              "for this session.");
+    }
 
     if (caret_clicked) ImGui::OpenPopup("##login-method-popup");
 
@@ -131,35 +188,36 @@ bool draw_login_split_button(app::AppState& state, core::Account& a, float total
             state.save_vault_if_dirty();
         };
         if (ImGui::Selectable("Normal login",
-                              a.login_method == core::LoginMethod::Normal)) {
+                              eff_method == core::LoginMethod::Normal)) {
             set_method(core::LoginMethod::Normal);
         }
         if (ImGui::Selectable("Launch CS2",
-                              a.login_method == core::LoginMethod::LaunchCs2)) {
+                              eff_method == core::LoginMethod::LaunchCs2)) {
             set_method(core::LoginMethod::LaunchCs2);
         }
-        if (ImGui::Selectable("Launch CS2 + gamesense",
-                              a.login_method == core::LoginMethod::LaunchCs2Gamesense)) {
-            if (app::gamesense_loader_path()) {
-                set_method(core::LoginMethod::LaunchCs2Gamesense);
-            } else {
-                state.gamesense_pick_request = a.id;
+
+        if (!state.settings.safe_mode) {
+            if (ImGui::Selectable("Launch CS2 + gamesense",
+                                  a.login_method == core::LoginMethod::LaunchCs2Gamesense)) {
+                if (app::gamesense_loader_path()) {
+                    set_method(core::LoginMethod::LaunchCs2Gamesense);
+                } else {
+                    state.gamesense_pick_request = a.id;
+                }
+            }
+            if (ImGui::Selectable("Launch CS2 + luminary",
+                                  a.login_method == core::LoginMethod::LaunchCs2Luminary)) {
+                if (app::luminary_loader_path()) {
+                    set_method(core::LoginMethod::LaunchCs2Luminary);
+                } else {
+                    state.luminary_pick_request = a.id;
+                }
             }
         }
-        if (ImGui::Selectable("Launch CS2 + luminary",
-                              a.login_method == core::LoginMethod::LaunchCs2Luminary)) {
-            if (app::luminary_loader_path()) {
-                set_method(core::LoginMethod::LaunchCs2Luminary);
-            } else {
-                state.luminary_pick_request = a.id;
-            }
-        }
-        ImGui::Separator();
-        if (ImGui::Selectable("Update gamesense loader...")) {
-            state.gamesense_pick_request = std::string{};
-        }
-        if (ImGui::Selectable("Update luminary loader...")) {
-            state.luminary_pick_request = std::string{};
+
+        if (!a.is_nfa) {
+            ImGui::Separator();
+            draw_sign_in_override(state, a);
         }
         ImGui::EndPopup();
     }

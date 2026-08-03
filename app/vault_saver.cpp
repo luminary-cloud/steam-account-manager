@@ -9,7 +9,7 @@
 namespace sam::app {
 
 namespace {
-// Coalesces bursts of vault_dirty events into one write.
+
 constexpr std::chrono::milliseconds kSaveDebounce{250};
 }  // namespace
 
@@ -44,7 +44,7 @@ void VaultSaver::flush() {
     std::unique_lock lk(mtx_);
     if (!started_) return;
     if (pending_.has_value()) {
-        // Pull the deadline forward so the worker fires now.
+
         pending_->deadline = std::chrono::steady_clock::now();
         cv_.notify_all();
     }
@@ -58,8 +58,6 @@ void VaultSaver::run() {
             std::unique_lock lk(mtx_);
             cv_.wait(lk, [&] { return stop_ || pending_.has_value(); });
 
-            // Wait for the deadline; later schedule() calls push it. Spurious
-            // wait_until wakeups are fine here.
             while (!stop_ && pending_.has_value() &&
                    pending_->deadline > std::chrono::steady_clock::now()) {
                 cv_.wait_until(lk, pending_->deadline);
@@ -86,7 +84,6 @@ void VaultSaver::run() {
         }
     }
 
-    // Drain a final pending save on shutdown so the last edit isn't lost.
     std::optional<Pending> final_work;
     {
         std::lock_guard lk(mtx_);

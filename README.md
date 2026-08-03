@@ -76,41 +76,56 @@ No installer, no telemetry, nothing leaves your machine.
   level by Steam ID, on a cache window you set.
 
 ### Launch
-- One-click sign-in: closes Steam, relaunches, and types the login and Steam Guard code
-  via UI Automation, falling back to the clipboard with auto-clear.
-- Token sign-in method: inject a client-scoped JWT into Steam's ConnectCache to log in
-  without the login window, available as an alternative to the default UI Automation driver.
-- NFA accounts sign in by injecting their token into the Steam client, with no password
-  or code typing.
-- Per-launch CS2 config: copy a `video.txt` or a whole `730` folder into the account's
-  CS2 config on login (existing files are backed up first).
-- Set CS2 launch options once and have them written into the launched account's `730`
-  config on login (applied while Steam restarts so Steam will not overwrite them).
-- Optionally disable Steam Cloud or new-release news notifications per account on login,
-  written while Steam restarts so Steam keeps them off (existing files are backed up first).
-- Optionally block a launched account's subscribed CS2 workshop maps from downloading, so
-  it goes straight into the game instead of pulling maps first. Subscriptions are kept.
-- Per-account launch method: stop after login, launch CS2, or launch CS2 with a
-  user-supplied external loader.
-- Open any account signed-in in your browser from the right-click menu.
+- One-click sign-in: closes Steam, relaunches, and types the login and Steam Guard code via
+  UI Automation, falling back to the clipboard with auto-clear.
+- Or sign in without the login window by injecting a client-scoped JWT into Steam's
+  ConnectCache. NFA accounts always use this, with no password or code typing.
+- Copy a `video.txt` or a whole `730` folder into the account's CS2 config on login.
+- Or point it at a `userdata\<id>` folder and every game folder in it (`730`, `570`, `440`, ...)
+  is copied on login. Steam's own per-account settings are left alone.
+- Set CS2 launch options once and have them written for whichever account you launch.
+- Optionally turn off Steam Cloud, new-release news, Remote Play, or friends visibility for
+  each account you launch. Existing files are backed up first.
+- Optionally block a launched account's subscribed CS2 workshop maps from downloading, so it
+  goes straight into the game. Subscriptions are kept.
+- Per-account launch method: stop after login, launch CS2, or launch CS2 with an external loader.
+- Open any account in your browser, already signed in, from the right-click menu.
+
+### Tracer cleaner
+- Wipes what Steam leaves on the PC, as one of three profiles: **Quick Clean** (caches,
+  logs, crash dumps), **Account Reset** (adds saved logins, the ConnectCache login tokens
+  in `config.vdf` / `local.vdf`, ssfn files, the HKCU autologin values, per-account caches),
+  or **Full Wipe** (adds each account's whole `userdata` folder).
+- A keep list decides what survives. Tick any vault account, or any Steam login found on this
+  PC, and its saved login, `userdata`, registry subtree, avatar and login token are spared.
+  `loginusers.vdf` and the ConnectCache are edited entry by entry rather than deleted, so kept
+  accounts stay signed in. Everything unticked is signed out.
+- Runs on demand, or automatically before every sign-in, when the vault is unlocked, or when
+  the app closes. The pre-launch trigger fires while Steam is already down, so it never fights
+  the sign-in.
+- Preview first: the exact list of files, registry values and VDF entries, with sizes. There is
+  no backup and no undo.
+- Gated by safe mode: with safe mode on the tab is hidden and no trigger fires, and your profile
+  and keep list are kept for when you turn it back off.
 
 ### HWID spoofer (educational purposes only)
 - Injects a DLL into the Steam process on launch that hooks WMI, SMBIOS, DXGI, D3D9, and
   display APIs to present spoofed hardware identifiers.
 - Spoofable components: machine GUID, MAC address, disk serial, PC name, GPU, motherboard,
   RAM, monitor, storage, and sound card, each individually toggleable.
-- Per-account hardware profiles: each account can have its own randomly generated profile,
-  or be excluded from spoofing entirely.
-- "Always spoof" toggle applies a profile to every launch; per-component mask lets you
-  choose exactly which identifiers are replaced.
+- Per-account hardware profiles: each account gets its own randomly generated profile, or is
+  excluded from spoofing entirely.
+- "Always spoof" applies a profile to every launch; the per-component mask picks exactly which
+  identifiers are replaced.
 - Hardware comparison table in Settings shows real vs. spoofed values side by side.
 
 ### Background refresh
-- Refresh every account on launch, or schedule a logon task that refreshes in the
-  background and notifies on new bans or cooldown changes.
-- Optional periodic auto-refresh while the app is open, on an interval you set, updating
-  only accounts whose cached data has expired.
+- Refresh every account on launch, or schedule a logon task that refreshes in the background
+  and notifies on new bans or cooldown changes.
+- Optional periodic auto-refresh while the app is open, updating only accounts whose cached
+  data has expired.
 - The logon task can instead just open the app, optionally minimized.
+- Optional update check on launch, against the GitHub releases page. No account data is sent.
 
 ### Import and export
 - Passphrase-protected `.sambundle` to carry accounts between machines, with a merge
@@ -118,11 +133,16 @@ No installer, no telemetry, nothing leaves your machine.
 - Plain `login:password` export gated behind a typed confirmation phrase.
 
 ### Privacy and security
-- Vault encrypted with AES-256-GCM under PBKDF2-HMAC-SHA256 (600,000 iterations).
-  No recovery path.
-- Optional DPAPI auto-unlock to skip the master-password prompt on launch.
-- Streamproof mode hides the window from screen-capture software (OBS, Discord, Snipping
-  Tool) while it stays fully visible on your monitor.
+- Vault encrypted with AES-256-GCM under PBKDF2-HMAC-SHA256 (600,000 iterations). No recovery
+  path. Optional DPAPI auto-unlock skips the master-password prompt on launch.
+- Safe mode hides and disables everything that can get an account banned: the HWID spoofer, the
+  external CS2 loaders and the tracer cleaner all leave the interface, no launch injects or runs
+  them, and no cleaner trigger fires. Set per vault, and reversible. Nothing is erased, so
+  turning it off restores everything.
+- Optional administrator elevation, on by default. Only the Windows-logon task and controlling
+  an elevated Steam need it, so most setups can turn it off and never see a UAC prompt again.
+- Streamproof mode hides the window from screen-capture software (OBS, Discord, Snipping Tool)
+  while it stays fully visible on your monitor.
 - Per-account or single proxy (SOCKS5 / HTTP / HTTPS, with credentials) and a test button.
 - Portable mode and a relocatable data folder (USB stick, another drive, network share).
 - No telemetry. Details in [SECURITY.md](SECURITY.md).
@@ -132,8 +152,9 @@ No installer, no telemetry, nothing leaves your machine.
 Grab the latest `steam-account-manager.exe` from the [Releases](../../releases) page.
 It is statically linked, so no Visual C++ redistributable is required.
 
-- **Requirements:** Windows 10 or 11, 64-bit. The app runs as administrator because
-  the Steam login flow needs it.
+- **Requirements:** Windows 10 or 11, 64-bit. The app asks for administrator on launch,
+  which you can turn off in Settings > General if you don't need the Windows-logon task
+  (see [Privacy and security](#privacy-and-security)).
 - **First run:** the binary is unsigned, so SmartScreen may show "Windows protected
   your PC". Click **More info**, then **Run anyway**.
 - On first launch you set a master password (there is no recovery), then add an account.

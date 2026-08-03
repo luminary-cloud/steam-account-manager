@@ -43,7 +43,7 @@ struct LoginWizard {
 
     std::array<char, 64> username{};
     std::string password;
-    std::string shared_secret;        // base64; if set, auto-generates Guard codes
+    std::string shared_secret;
     std::array<char, 8> guard_code{};
 
     std::string client_id;
@@ -54,15 +54,15 @@ struct LoginWizard {
     steam_login::GuardKind chosen_guard = steam_login::GuardKind::None;
     bool has_device_code = false;
     bool has_email_code = false;
-    bool confirmation_mode = false;   // Steam offered approve-on-phone for this session
-    bool email_confirmation_mode = false;  // Steam offered approve-via-email-link
+    bool confirmation_mode = false;
+    bool email_confirmation_mode = false;
 
     core::Account account;
     std::string status;
     std::string error;
-    std::string guard_note;           // inline guard feedback that doesn't abort the flow
-    bool busy = false;                // a foreground request (sign in / submit) is in flight
-    bool poll_running = false;        // the token poll worker is active
+    std::string guard_note;
+    bool busy = false;
+    bool poll_running = false;
     bool auto_guard_submitted = false;
 
     void reset() { *this = {}; }
@@ -80,9 +80,6 @@ bool poll_aborted(LoginWizard* w) {
            w->phase == LoginWizard::Phase::Credentials;
 }
 
-// Polls PollAuthSessionStatus until tokens arrive (the session is confirmed by either a
-// submitted Guard code or an approval in the Steam Mobile app), then registers the community
-// session and merges the account into the vault. Safe to call every frame: launches at most once.
 void launch_poll_worker(LoginWizard* w, app::AppState& state) {
     if (w->poll_running) return;
     w->poll_running = true;
@@ -114,10 +111,6 @@ void launch_poll_worker(LoginWizard* w, app::AppState& state) {
                 auto login_secure = crypto::make_secure(
                     steam_login::make_steam_login_secure(sid, poll.access_token));
 
-                // Register the session in Steam's community session table so the
-                // new account can accept confirmations without an auto-relogin first.
-                // sess_id must be the sessionid we store: mobileconf sends it back as
-                // a cookie and Steam matches it to this registered session.
                 std::string sess_id = crypto::random_session_id();
                 std::string registered_cookie;
                 if (steam_login::transfer_login(sid, poll.refresh_token,
@@ -137,8 +130,6 @@ void launch_poll_worker(LoginWizard* w, app::AppState& state) {
                         sess_id = std::move(sess_id)] {
                     if (poll_aborted(w)) return;
 
-                    // Merge by steam_id or login to avoid duplicates when re-logging
-                    // into an already-imported account (e.g. maFile with different casing).
                     core::Account* existing = core::store::find_existing_account(
                         state.vault, w->account.steam_id_64, w->account.login);
 
@@ -150,12 +141,11 @@ void launch_poll_worker(LoginWizard* w, app::AppState& state) {
                         existing->refresh_token    = rt;
                         existing->access_token_expires = expiry;
                         existing->steam_login_secure   = ls;
-                        // Must match the sessionid bound to ls, or mobileconf rejects the cookie.
+
                         existing->session_id = sess_id;
                         existing->last_login_unix = now_seconds();
                         id_for_refresh = existing->id;
-                        // Carry over a supplied shared_secret, but don't clobber a
-                        // previously-imported maFile when Full Login is re-run without one.
+
                         if (w->account.sda.has_value() &&
                             !w->account.sda->shared_secret.empty()) {
                             if (!existing->sda.has_value()) {
@@ -221,7 +211,6 @@ void draw_full_login(app::AppState& state) {
     static LoginWizard wiz;
     auto* w = &wiz;
 
-    // Background refresh flagged this account for re-login; prefill username once, clear signal.
     if (state.pending_relogin_login.has_value() &&
         wiz.phase == LoginWizard::Phase::Credentials) {
         const auto& login = *state.pending_relogin_login;
@@ -261,12 +250,11 @@ void draw_full_login(app::AppState& state) {
         ImGui::InputText("Username", wiz.username.data(), wiz.username.size());
         hover_tooltip("Steam account name (lowercase username, not your persona).");
         widgets::draw_password_field("Password##login", wiz.password, false, 280.0F);
-        hover_tooltip("Sent once to Steam's login endpoint to begin a mobile-confirmation "
-                      "session. Stored encrypted in the vault on success.");
+        hover_tooltip("Sent once to Steam to start the login. Stored encrypted on success.");
         widgets::draw_password_field("Shared secret (optional)##login-sda",
                                       wiz.shared_secret, false, 280.0F);
-        hover_tooltip("Base64 shared_secret from your maFile. Optional: when present we "
-                      "auto-generate the Steam Guard code and skip the manual code prompt.");
+        hover_tooltip("Base64 shared_secret from your maFile. Set it to skip the manual "
+                      "code prompt.");
         ImGui::Spacing();
 
         const bool can_submit = wiz.username[0] != 0 && !wiz.password.empty() && !wiz.busy;
@@ -275,8 +263,6 @@ void draw_full_login(app::AppState& state) {
             wiz.busy = true;
             wiz.status = "Requesting RSA key...";
 
-            // Stash shared_secret on the pending account so begin_session can auto-submit
-            // the Guard code and so it persists alongside the tokens on success.
             if (!wiz.shared_secret.empty()) {
                 core::SteamGuardAccount g;
                 g.account_name = wiz.username.data();
@@ -327,7 +313,7 @@ void draw_full_login(app::AppState& state) {
                         else if (k == steam_login::GuardKind::EmailConfirmation)
                             w->email_confirmation_mode = true;
                     }
-                    // The code kind we'd submit if the user chooses to type one.
+
                     w->chosen_guard = w->has_device_code ? steam_login::GuardKind::DeviceCode
                                     : w->has_email_code  ? steam_login::GuardKind::EmailCode
                                                          : steam_login::GuardKind::None;
@@ -336,8 +322,7 @@ void draw_full_login(app::AppState& state) {
                         w->phase = LoginWizard::Phase::GuardWait;
                         w->status = "Waiting for approval in your Steam Mobile app...";
                     } else if (w->email_confirmation_mode) {
-                        // Approve-by-email-link: no code to submit, the poll worker
-                        // (started in GuardWait) picks up the session once approved.
+
                         w->phase = LoginWizard::Phase::GuardWait;
                         w->status = "Waiting for email approval...";
                     } else if (w->chosen_guard != steam_login::GuardKind::None) {
@@ -353,17 +338,12 @@ void draw_full_login(app::AppState& state) {
         ImGui::EndDisabled();
 
     } else if (wiz.phase == LoginWizard::Phase::GuardWait) {
-        // A confirmation prompt (mobile-app approval or an email link) means
-        // PollAuthSessionStatus returns the tokens once it's approved, no separate RPC
-        // needed, so poll immediately. The user can approve there or type a code below;
-        // whichever lands first finishes the login.
+
         const bool conf_active = wiz.confirmation_mode || wiz.email_confirmation_mode;
         if (conf_active) {
             launch_poll_worker(w, state);
         }
 
-        // With a shared_secret and an accepted DeviceCode, generate the TOTP and submit on the
-        // first frame so a Guard-enrolled account never needs the manual prompt.
         const bool can_auto_submit = !wiz.auto_guard_submitted &&
             wiz.has_device_code &&
             wiz.account.sda.has_value() &&
@@ -391,8 +371,7 @@ void draw_full_login(app::AppState& state) {
                 state.completed_jobs.push_back({"", [w, &state, ok, err, conf] {
                     w->busy = false;
                     if (!ok) {
-                        // Non-fatal: in confirmation mode the phone approval is still open;
-                        // auto_guard_submitted stays true so we don't resubmit the stale code.
+
                         w->guard_note = "Auto-submitted code rejected: " + err;
                         return;
                     }
@@ -400,8 +379,7 @@ void draw_full_login(app::AppState& state) {
                         w->phase = LoginWizard::Phase::Polling;
                         w->status = "Polling for session tokens...";
                     }
-                    // In confirmation mode the poll worker is already running and will pick up
-                    // the now-confirmed session.
+
                 }});
             });
         }
@@ -429,7 +407,7 @@ void draw_full_login(app::AppState& state) {
             ImGui::Spacing();
             ImGui::SetNextItemWidth(120.0F);
             ImGui::InputText("Guard code", wiz.guard_code.data(), wiz.guard_code.size());
-            hover_tooltip("The 5-character Steam Guard code (from email or the official mobile app).");
+            hover_tooltip("The 5-character code from your email or mobile app.");
             ImGui::Spacing();
 
             const bool can_submit = wiz.guard_code[0] != 0 && !wiz.busy;
@@ -454,7 +432,7 @@ void draw_full_login(app::AppState& state) {
                         w->busy = false;
                         if (!ok) {
                             if (conf) {
-                                // Phone approval is still viable, so stay on the page.
+
                                 w->guard_note = "Code rejected: " + err;
                             } else {
                                 w->error = "Guard code rejected: " + err;
@@ -463,7 +441,7 @@ void draw_full_login(app::AppState& state) {
                             return;
                         }
                         if (conf) {
-                            launch_poll_worker(w, state);  // no-op if already polling
+                            launch_poll_worker(w, state);
                         } else {
                             w->phase = LoginWizard::Phase::Polling;
                             w->status = "Polling for session tokens...";
@@ -493,7 +471,7 @@ void draw_full_login(app::AppState& state) {
 
         ImGui::TextWrapped("Waiting for Steam to confirm the session...");
         ImGui::Spacing();
-        // The poll worker bails on its next post-back once the phase leaves Polling/GuardWait.
+
         if (action_button("Cancel", ImVec2(120, 0))) {
             wiz.busy = false;
             wiz.error = "Login cancelled.";
