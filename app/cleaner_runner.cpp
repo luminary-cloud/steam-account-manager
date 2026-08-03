@@ -24,6 +24,7 @@ std::int64_t now_unix() {
 const char* trigger_name(Trigger why) {
     switch (why) {
         case Trigger::Manual: return "manual";
+        case Trigger::QuickClean: return "quick";
         case Trigger::BeforeLaunch: return "before-launch";
         case Trigger::Unlock: return "unlock";
         case Trigger::Exit: return "exit";
@@ -117,7 +118,11 @@ void run_async(AppState& state, Trigger why) {
         return;
     }
 
-    const Settings snapshot = state.settings;
+    Settings snapshot = state.settings;
+    if (why == Trigger::QuickClean) {
+        snapshot.cleaner.enabled = true;
+        snapshot.cleaner.profile = CleanerProfile::QuickClean;
+    }
     const bool measure = (why == Trigger::Manual);
     const int toast_seconds = state.settings.notifications.toast_duration_seconds;
     const char* tag = trigger_name(why);

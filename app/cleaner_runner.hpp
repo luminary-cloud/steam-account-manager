@@ -13,6 +13,9 @@ namespace sam::app::cleaner_runner {
 
 enum class Trigger {
     Manual,        // the Run now button
+    QuickClean,    // the accounts-screen button: forces the Quick Clean profile and ignores
+                   // Settings::cleaner.enabled, since the click is the intent. Still gated
+                   // by safe mode.
     BeforeLaunch,  // inside the launch path's Steam-down window
     Unlock,
     Exit,

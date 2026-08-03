@@ -158,6 +158,9 @@ void draw_keep_list(app::AppState& state) {
             std::min(ImGui::GetContentRegionAvail().x - kContentPaddingX, 620.0F);
 
         ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, ImVec4(1.0F, 1.0F, 1.0F, 0.025F));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.015F, 0.015F, 0.015F, 1.0F));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.0F, 1.0F, 1.0F, 0.28F));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0F);
         constexpr ImGuiTableFlags kFlags = ImGuiTableFlags_SizingStretchProp |
                                            ImGuiTableFlags_RowBg |
                                            ImGuiTableFlags_ScrollY |
@@ -228,7 +231,8 @@ void draw_keep_list(app::AppState& state) {
             }
             ImGui::EndTable();
         }
-        ImGui::PopStyleColor();
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor(3);
     }
 
     if (action_button("Rescan this PC", ImVec2(150, 0))) refresh_disk_scan();

@@ -478,6 +478,36 @@ void draw_accounts(app::AppState& state) {
                 ImGui::TextDisabled("Fetching funds...");
         }
     }
+    if (!state.settings.safe_mode) {
+        ImGui::SameLine();
+        const bool cleaning = state.cleaner_busy.load();
+        ImGui::BeginDisabled(cleaning);
+        if (action_button("Quick clean")) ImGui::OpenPopup("Quick clean?");
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            set_tooltip(cleaning ? "Cleaning..."
+                                 : "Deletes Steam's caches, logs and crash dumps. "
+                                   "No account is signed out.");
+        }
+        if (cleaning) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("Cleaning...");
+        }
+
+        if (begin_styled_modal("Quick clean?")) {
+            ImGui::TextWrapped("Closes Steam, then deletes its caches, logs and crash dumps. "
+                               "No account is signed out and no saved login is touched.");
+            ImGui::Spacing();
+            if (action_button("Cancel", ImVec2(110, 0))) ImGui::CloseCurrentPopup();
+            ImGui::SameLine();
+            if (action_button("Clean", ImVec2(110, 0))) {
+                app::cleaner_runner::run_async(state, app::cleaner_runner::Trigger::QuickClean);
+                ImGui::CloseCurrentPopup();
+            }
+            end_styled_modal();
+        }
+    }
+
     if (state.settings.accounts_view == app::AccountsViewMode::List) {
         ImGui::SameLine();
         if (action_button("New group")) {

@@ -103,6 +103,8 @@ No installer, no telemetry, nothing leaves your machine.
 - Runs on demand, or automatically before every sign-in, when the vault is unlocked, or when
   the app closes. The pre-launch trigger fires while Steam is already down, so it never fights
   the sign-in.
+- A **Quick clean** button on the accounts page runs the caches-and-logs profile in one click,
+  whatever the Cleaner tab is set to. It signs nobody out.
 - Preview first: the exact list of files, registry values and VDF entries, with sizes. There is
   no backup and no undo.
 - Gated by safe mode: with safe mode on the tab is hidden and no trigger fires, and your profile
