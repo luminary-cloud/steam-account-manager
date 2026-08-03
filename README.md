@@ -4,6 +4,7 @@
 
 [![build](https://github.com/luminary-cloud/steam-account-manager/actions/workflows/build.yml/badge.svg)](https://github.com/luminary-cloud/steam-account-manager/actions/workflows/build.yml)
 [![release](https://img.shields.io/github/v/release/luminary-cloud/steam-account-manager?cacheSeconds=3600)](../../releases)
+[![downloads](https://img.shields.io/github/downloads/luminary-cloud/steam-account-manager/total?cacheSeconds=3600)](../../releases)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
 
